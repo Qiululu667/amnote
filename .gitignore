@@ -1,0 +1,15 @@
+.DS_Store
+__pycache__/
+*.pyc
+dist/
+*.app
+.amnote/
+*.db
+*.db-shm
+*.db-wal
+OSS_SPEC.md
+src/_backend_done.md
+src/_shell_done.md
+src/_ui_done.md
+src/_iconset/
+src/_icon.iconset/
