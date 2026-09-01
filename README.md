@@ -8,7 +8,7 @@ macOS 12 或更新。
 
 ## 安装
 
-- 有现成的包：打开 `dist/AM·Note.app`。
+- 给同事：到 [Releases](https://github.com/Qiululu667/amnote/releases) 下载 `AMNote-mac.zip`，解开后得到 `AM·Note.app`。
 - 自己编：在仓库根目录跑 `python3 src/build_app.py`。编完的 app 在 `dist/`。
 
 ## 第一次打开
