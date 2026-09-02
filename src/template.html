@@ -406,6 +406,7 @@ body.toc-pin .tick .lab{opacity:1}
    层级主要靠字重、留白和灰阶，不靠到处加粗。版式三项仍能在设置里调。 */
 .md{color:var(--t1);margin:0 auto;max-width:var(--docw)}
 .md h1{font-size:24px;font-weight:680;letter-spacing:-.025em;line-height:1.28;margin:0 0 12px}
+.md > h1:first-child{font-size:28px;font-weight:660;letter-spacing:-.03em;line-height:1.22;margin:0 0 14px}
 .md h2{font-size:17px;font-weight:640;letter-spacing:-.01em;margin:38px 0 10px;line-height:1.45}
 .md h3{font-size:15px;font-weight:600;margin:1.5em 0 .45em}
 .md h4{font-size:1em;font-weight:500;margin:1.3em 0 .35em;color:var(--t2)}
@@ -456,6 +457,16 @@ body.toc-pin .tick .lab{opacity:1}
 .md pre,.md pre code,.md th,.md td{overflow-wrap:normal}
 .md a.wl{text-decoration:underline;text-decoration-style:dotted;text-underline-offset:3px;cursor:pointer}
 .pane.edit .md p:empty,.pane.edit .md li:empty{min-height:1em}
+.pane.edit .md h1:first-child{min-height:1.22em}
+/* 空标题 / 空段的占位。绝对定位叠在块上，不占光标位，也不会进 innerText。 */
+.pane.edit .md h1[data-ph],
+.pane.edit .md p[data-ph]{position:relative}
+.pane.edit .md h1[data-ph]::before,
+.pane.edit .md p[data-ph]::before{
+  position:absolute;left:0;top:0;right:0;
+  color:var(--t4);letter-spacing:0;pointer-events:none;user-select:none}
+.pane.edit .md h1[data-ph]::before{content:"无标题";font-weight:500}
+.pane.edit .md p[data-ph]::before{content:"写点什么…";font-weight:400}
 .f-sans{font-family:var(--ui)}
 .f-serif{font-family:Georgia,"Songti SC","Noto Serif CJK SC",serif}
 .f-mono{font-family:var(--mono)}
@@ -1258,7 +1269,7 @@ function blkMd(el){
    词与词中间的空白照比，代码块里的缩进和换行也照比。 */
 function normHtml(h){
   return String(h)
-    .replace(/\s(data-(l0|l1|bid|dirty|lock)|contenteditable|id)="[^"]*"/g, '')
+    .replace(/\s(data-(l0|l1|bid|dirty|lock|ph)|contenteditable|id)="[^"]*"/g, '')
     // 块末尾那一个 <br> 不参与比较：浏览器拿它当光标位，显示上等于没有，
     // inlMd 出口处本来就不写出去。留着比会让「按一次换行再贴图」这种正常操作
     // 在存盘自检里报一次假警。连着两个以上是真的空行，照旧比，报警是对的。
@@ -1373,7 +1384,9 @@ function newPane(t){
   // 正文本身就是编辑区，打字直接落在这上面。这里只挂几件浏览器不管的事。
   md0.addEventListener('keydown', e=>{ if(t.editing && !p.classList.contains('src')) edKey(t, e); });
   md0.addEventListener('input', e=>{
-    if(t.editing && !p.classList.contains('src') && !COMPOSING) tryMdShortcut(t);
+    if(!t.editing || p.classList.contains('src')) return;
+    syncPh(t);
+    if(!COMPOSING) tryMdShortcut(t);
   });
   md0.addEventListener('paste', e=>{ if(t.editing && !p.classList.contains('src')) onPaste(t, e); });
   md0.addEventListener('click', e=>{
@@ -2019,6 +2032,8 @@ function watchEdits(t){
       list.forEach(b=>{ if(b.isConnected) cleanBlock(b); });
       if(md.innerHTML!==before) restoreSel(md, keep);
       watchEdits(t);
+      syncPh(t);
+      if(t.id===curTab && !COMPOSING) syncTabTitle(t);
     });
     autoKick(t);                                 // 停笔两秒自动落盘
   });
@@ -2048,6 +2063,7 @@ function prepEdit(t){
   try{ document.execCommand('defaultParagraphSeparator', false, 'p'); }catch(e){}
   watchEdits(t);
   t.lock=lock;
+  syncPh(t);
 }
 
 /* 光标落到某一块的末尾（atStart 则到开头）。空块先补 <br> 再放光标。 */
@@ -2061,6 +2077,54 @@ function caretEnd(el, atStart){
     r.collapse(!!atStart);
     const s=getSelection(); s.removeAllRanges(); s.addRange(r);
   }catch(e){}
+}
+/* 选中一块里的文字（不含末尾那个当光标位的 <br>）。新建笔记用来圈住默认标题。 */
+function caretSelect(el){
+  if(!el) return;
+  try{
+    const texts=[];
+    const w=document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+    let n; while((n=w.nextNode())) if(n.nodeValue) texts.push(n);
+    const r=document.createRange();
+    if(texts.length){
+      r.setStart(texts[0], 0);
+      const last=texts[texts.length-1];
+      r.setEnd(last, last.nodeValue.length);
+    }else{
+      ensureBr(el);
+      r.selectNodeContents(el);
+    }
+    const s=getSelection(); s.removeAllRanges(); s.addRange(r);
+  }catch(e){}
+}
+function isBlankBlock(el){
+  if(!el || el.nodeType!==1) return true;
+  if(el.querySelector('img,table,ul,ol,pre')) return false;
+  return !tidyTxt(el.textContent).trim();
+}
+/* 空标题、文首空段叠一层占位。data-ph 不进序列化（normHtml 会剥掉）。 */
+function syncPh(t){
+  const p=t&&paneOf(t); if(!p || !t.editing || p.classList.contains('src')) return;
+  const md=p.querySelector('.md'); if(!md) return;
+  const kids=[...md.children].filter(el=>el.nodeType===1 && el.tagName!=='TEXTAREA');
+  kids.forEach(el=>el.removeAttribute('data-ph'));
+  const h1=kids[0] && kids[0].tagName==='H1' ? kids[0] : null;
+  if(h1 && isBlankBlock(h1)) h1.setAttribute('data-ph','1');
+  const para=kids.find(el=>el.tagName==='P');
+  const rest=kids.filter(el=>el!==h1 && el!==para);
+  if(para && isBlankBlock(para) && rest.every(isBlankBlock)) para.setAttribute('data-ph','1');
+}
+function syncTabTitle(t){
+  if(!t || t.ext) return;
+  const md=paneOf(t)&&paneOf(t).querySelector('.md');
+  const h1=md && md.firstElementChild && md.firstElementChild.tagName==='H1'
+    ? tidyTxt(md.firstElementChild.textContent).trim() : '';
+  const title=h1 || '无标题';
+  if(t.title===title) return;
+  t.title=title;
+  drawTabs();
+  lastNat='';
+  syncNative();
 }
 function caretAtStart(el){
   const s=getSelection();
@@ -2416,7 +2480,11 @@ document.addEventListener('compositionstart', ()=>{ COMPOSING=true; });
 document.addEventListener('compositionend', ()=>{
   COMPOSING=false;
   const t=active();
-  if(t && t.editing) requestAnimationFrame(()=>tryMdShortcut(t));
+  if(t && t.editing) requestAnimationFrame(()=>{
+    syncPh(t);
+    if(t.id===curTab) syncTabTitle(t);
+    tryMdShortcut(t);
+  });
 });
 
 function tryMdShortcut(t){
@@ -2526,16 +2594,21 @@ function edKey(t, e){
       return;
     }
 
-    // 标题末尾回车 → 下面起一个正文段，而不是再来一个标题
+    // 标题末尾回车 → 下面起一个正文段，而不是再来一个标题。
+    // 下面已经有一个空段（新建笔记会先垫一个）就落到那一段，不再插一层。
     if(/^H[1-4]$/.test(blk.tagName)){
       const s=getSelection();
       const r=s.getRangeAt(0), tail=r.cloneRange();
       tail.selectNodeContents(blk); tail.setStart(r.endContainer, r.endOffset);
       if(!tail.toString().trim()){
         e.preventDefault();
-        const p=document.createElement('p'); p.dataset.dirty='1';
-        ensureBr(p);
-        blk.after(p); caretEnd(p, true); t.touched=true; return;
+        let p=blk.nextElementSibling;
+        if(!(p && p.tagName==='P' && isBlankBlock(p))){
+          p=document.createElement('p'); p.dataset.dirty='1';
+          ensureBr(p);
+          blk.after(p);
+        }
+        caretEnd(p, true); t.touched=true; return;
       }
     }
   }
@@ -2727,16 +2800,34 @@ async function startEdit(opt){
   p.querySelector('.ed').value=t.raw;
   t.work=t.raw;
   t.editing=true; t.touched=false; t.pendingBad=null; t.savedAt=null;
-  p.classList.add('edit'); p.classList.remove('src');
+  p.classList.add('edit'); p.classList.remove('src','fresh');
   paintWork(t); prepEdit(t); buildToc(); buildFmtBar();
-  const kids=[...p.querySelector('.md').children];
-  const tgt = hi>=0 ? kids[hi] : null;
-  if(tgt && !tgt.hasAttribute('data-lock')){
-    if(opt.at!==undefined) caretAtOffset(tgt, opt.at); else caretEnd(tgt);
+  if(opt.fresh){
+    const md=p.querySelector('.md');
+    const h1=[...md.children].find(el=>el.tagName==='H1' && !el.hasAttribute('data-lock'));
+    unwatch(t);
+    if(![...md.children].some(el=>el.tagName==='P')){
+      const np=document.createElement('p');
+      ensureBr(np);
+      if(h1) h1.after(np); else md.appendChild(np);
+    }
+    t.touched=false;
+    watchEdits(t);
+    p.classList.add('fresh');
+    md.focus();
+    if(h1) caretSelect(h1); else ensureCaret(t);
+    syncPh(t);
+    syncTabTitle(t);
+  }else{
+    const kids=[...p.querySelector('.md').children];
+    const tgt = hi>=0 ? kids[hi] : null;
+    if(tgt && !tgt.hasAttribute('data-lock')){
+      if(opt.at!==undefined) caretAtOffset(tgt, opt.at); else caretEnd(tgt);
+    }
+    // v27 的病根：进了编辑态但选区不在 #doc 里，键盘敲进去没有插入点。
+    // 这里判一次，不成立就 focus 正文、把光标放到第一个可编辑块末尾。
+    ensureCaret(t);
   }
-  // v27 的病根：进了编辑态但选区不在 #doc 里，键盘敲进去没有插入点。
-  // 这里判一次，不成立就 focus 正文、把光标放到第一个可编辑块末尾。
-  ensureCaret(t);
   syncBar();
 }
 
@@ -2752,7 +2843,7 @@ function endEdit(t){
     ['bid','dirty'].forEach(k=>delete el.dataset[k]);
     el.removeAttribute('data-lock');
   });
-  p.classList.remove('edit','src');
+  p.classList.remove('edit','src','fresh');
   t.editing=false; t.work=undefined; t.reg=null; t.touched=false;
   t.pendingBad=null;
   bnr('conflict', false);
@@ -2844,8 +2935,14 @@ async function saveEdit(force, opt){
   if(body===t.raw){ t.touched=false; if(t.id===curTab) syncStatusLine(); return; }
 
   t.saving=true; if(t.id===curTab) syncStatusLine();
+  const payload={路径:t.path, 正文:body, 基于:t.rawAt, 强制:!!force};
+  // keepalive 这条路上响应可能到不了，不改名——下次正常保存再跟标题对齐。
+  if(!opt.keepalive){
+    const dest=suggestRename(t.path, firstHeading(body));
+    if(dest) payload.新路径=dest;
+  }
   const req={method:'POST', headers:hdrs(),
-             body:JSON.stringify({路径:t.path, 正文:body, 基于:t.rawAt, 强制:!!force})};
+             body:JSON.stringify(payload)};
   if(opt.keepalive) req.keepalive=true;
   let r=null;
   try{ r=await (await fetch('/__save', req)).json(); }
@@ -2867,6 +2964,8 @@ async function saveEdit(force, opt){
   t.raw=body; t.touched=false; t.conflict=null;
   bnr('conflict', false);
   t.savedAt=hhmm(); t.lastArchive=r.留档||'';
+  if(r.路径 && r.路径!==t.path) applyRenamedPath(t, r.路径);
+  else if(t.id===curTab) syncTabTitle(t);
   // 留档只在手动 ⌘S 之后报一句；自动保存不吭声，状态字里只有「已保存 HH:MM」
   if(!auto && r.留档 && t.id===curTab){
     flash('已保存 · 留档 '+r.留档);
@@ -3564,41 +3663,117 @@ $('#ck').onkeydown=e=>{
 $('#cmdkScrim').onclick=closeQuick;
 
 /* ── 新建随手记 ─────────────────────────
-   落在随手记目录。⌘N 全局可用；编辑中先自动保存再新建。 */
+   落在随手记目录。⌘N 全局可用；编辑中先自动保存再新建。
+   不再弹命名框：直接落一份「无标题」，打开正文，标题圈住就能改。
+   第一次写出真正的一级标题时，文件名跟着改。 */
 function syncNotePv(){
   NOTEPV.clear();
   ((TREE&&TREE.随手记)||[]).forEach(n=>{ if(n.预览) NOTEPV.set(n.路径, n.预览); });
 }
+const UNTITLED = '无标题';
+const UNTITLED_FN = /^无标题(?:_\d+)?_20\d{6}\.md$/i;
+function ymdParts(d){
+  d=d||new Date();
+  const z=n=>String(n).padStart(2,'0');
+  return {
+    日:`${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`,
+    紧:`${d.getFullYear()}${z(d.getMonth()+1)}${z(d.getDate())}`
+  };
+}
+function safeNoteStem(title, 日){
+  let safe=String(title||'').replace(/[\/\\:*?"<>|]/g,'-').replace(/\s+/g,' ').trim().slice(0,60);
+  if(日) safe=safe.replace(new RegExp('[ _\\-]*'+日.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'$'),'').trim() || safe;
+  return safe;
+}
+function takenPaths(){
+  const s=new Set(items.map(i=>i.路径));
+  TABS.forEach(t=>{ if(t.path) s.add(t.path); });
+  return s;
+}
+function firstHeading(src){
+  let skip=String(src||'');
+  if(skip.startsWith('---')){
+    const e=skip.indexOf('\n---',3);
+    if(e!==-1){
+      const cut=skip.indexOf('\n', e+1)+1;
+      if(cut>0) skip=skip.slice(cut);
+    }
+  }
+  let fence=false;
+  for(const ln of skip.split('\n').slice(0,400)){
+    const s=ln.trim();
+    if(s.startsWith('```')||s.startsWith('~~~')){ fence=!fence; continue; }
+    if(fence) continue;
+    if(s.startsWith('# ')) return s.slice(2).replace(/#+$/,'').trim();
+  }
+  return '';
+}
+function suggestRename(rel, title){
+  const fn=(rel||'').split('/').pop();
+  if(!UNTITLED_FN.test(fn)) return null;
+  const stamp=(fn.match(/20\d{6}/)||[])[0];
+  if(!stamp) return null;
+  const 日=stamp.replace(/(\d{4})(\d{2})(\d{2})/,'$1-$2-$3');
+  const stem=safeNoteStem(title, 日);
+  if(!stem || stem===UNTITLED) return null;
+  const dir=rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : '';
+  const used=takenPaths();
+  used.delete(rel);
+  for(let i=1;i<=20;i++){
+    const name=`${stem}${i>1?'_'+i:''}_${stamp}.md`;
+    const dest=dir ? dir+'/'+name : name;
+    if(dest===rel || !used.has(dest)) return dest===rel ? null : dest;
+  }
+  return null;
+}
+function applyRenamedPath(t, next){
+  const old=t.path;
+  if(!next || next===old) return;
+  t.path=next;
+  ST.lastPath=next; saveST();
+  items.forEach(i=>{ if(i.路径===old){ i.路径=next; if(t.title) i.标题=t.title; } });
+  if(TREE && TREE.文档) TREE.文档.forEach(d=>{ if(d.路径===old){ d.路径=next; if(t.title) d.标题=t.title; } });
+  lastNat='';
+  syncTabTitle(t);
+  drawTabs();
+  pushState();
+  if(LISTS) render();
+}
+let newNoteBusy=false;
 async function newNote(){
+  if(newNoteBusy) return;
   if(!IS_HTTP){ tell('新建要服务在跑','双击 AM·Note.app 打开就行。'); return; }
   const cur=active(); if(cur && cur.editing) flushSave(cur);
-  const d=new Date(), z=n=>String(n).padStart(2,'0');
-  const 日=`${d.getFullYear()}-${z(d.getMonth()+1)}-${z(d.getDate())}`;
-  const 紧=`${d.getFullYear()}${z(d.getMonth()+1)}${z(d.getDate())}`;
-
-  const raw=prompt('这篇叫什么？', '反馈 '+日);
-  if(raw===null) return;
-  const title=(raw.trim() || '反馈 '+日);
-  let safe=title.replace(/[\/\\:*?"<>|]/g,'-').replace(/\s+/g,' ').trim().slice(0,60);
-  safe=safe.replace(new RegExp('[ _\\-]*'+日+'$'),'').trim() || safe;
-  if(!safe){ tell('建不了','这个标题落不成文件名，换一个'); return; }
-
-  const body=['# '+title, '', ''].join('\n');
-  for(let i=1;i<=20;i++){
-    const rel=`${NOTE_DIR}/${safe}${i>1?'_'+i:''}_${紧}.md`;
-    let r;
-    try{
-      r=await (await fetch('/__save',{method:'POST', headers:hdrs(),
-        body:JSON.stringify({路径:rel, 正文:body, 新建:true})})).json();
-    }catch(e){ tell('建不了','服务没应答'); return; }
-    if(r.ok){
-      await openDoc({路径:rel, 标题:title, 类型:'md'});
-      startEdit();
-      return;
+  const {日, 紧}=ymdParts();
+  const body='# '+UNTITLED+'\n\n';
+  newNoteBusy=true;
+  try{
+    const used=takenPaths();
+    for(let i=1;i<=20;i++){
+      const rel=`${NOTE_DIR}/${UNTITLED}${i>1?'_'+i:''}_${紧}.md`;
+      if(used.has(rel)) continue;
+      let r;
+      try{
+        r=await (await fetch('/__save',{method:'POST', headers:hdrs(),
+          body:JSON.stringify({路径:rel, 正文:body, 新建:true})})).json();
+      }catch(e){ tell('建不了','服务没应答'); return; }
+      if(r && r.ok){ await openFreshNote(r.路径||rel, 日); return; }
+      if(!/已经有了|刚被建走/.test((r&&r.错误)||'')){ tell('建不了', (r&&r.错误)||''); return; }
+      used.add(rel);
     }
-    if(!/已经有了|刚被建走/.test(r.错误||'')){ tell('建不了', r.错误||''); return; }
+    tell('建不了','今天的无标题已经建了 20 份了');
+  }finally{ newNoteBusy=false; }
+}
+async function openFreshNote(rel, 日){
+  const now=Date.now()/1000;
+  if(!items.some(i=>i.路径===rel)){
+    items.unshift({路径:rel, 标题:UNTITLED, 类型:'md', 修改时间:now, 日期:日||ymdParts().日});
+    prepItems();
   }
-  tell('建不了','这个标题今天已经建了 20 份了，换一个');
+  await openDoc({路径:rel, 标题:UNTITLED, 类型:'md'});
+  const t=active();
+  if(t && t.path===rel) t.fresh=true;
+  await startEdit({fresh:true});
 }
 
 /* ── 设置：版式 ｜ 外观 ｜ 库 ｜ 关于 ───── */

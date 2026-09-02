@@ -574,6 +574,30 @@ def _mtime_str(full: str) -> str:
         return ""
 
 
+def _rename_md(rel: str, new_rel: str):
+    """保存成功后把文件改个名。只改文件名，不换目录。
+
+    失败不回滚正文——调用方已经写完了。返回 (实际路径, 错误)；错误为空串即成功。
+    """
+    new_rel = (new_rel or "").strip()
+    if not new_rel or new_rel == rel:
+        return rel, ""
+    if os.path.dirname(new_rel) != os.path.dirname(rel):
+        return rel, "只能改文件名"
+    dest, err = _edit_full(new_rel, must_exist=False)
+    if err:
+        return rel, err
+    src, err = _edit_full(rel, must_exist=True)
+    if err:
+        return rel, err
+    try:
+        note_portal_write(new_rel)
+        os.rename(src, dest)
+    except OSError as e:
+        return rel, f"改名失败：{e}"
+    return new_rel, ""
+
+
 def save_md(req: dict):
     """整篇覆写一份 md。
 
@@ -632,6 +656,13 @@ def save_md(req: dict):
         except OSError:
             pass
         return {"ok": False, "错误": f"写失败：{e}"}
+
+    new_rel = (req.get("新路径") or "").strip()
+    if new_rel:
+        rel, _ = _rename_md(rel, new_rel)
+        full, err2 = _edit_ok(rel)
+        if err2 or not full:
+            full = os.path.realpath(os.path.join(ROOT, rel))
 
     return {"ok": True, "结果": "已保存", "路径": rel,
             "字节": {"写前": len(old.encode()), "写后": len(body.encode())},
