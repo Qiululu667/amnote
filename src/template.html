@@ -2302,13 +2302,19 @@ function indentLi(t, li){
   t.touched=true;
   caretEnd(li);
 }
+/* 后面那些兄弟。不能写成 while (el.nextElementSibling) rest.push(...)：
+   只读不挪的话下一兄弟永远还是它，空项夹在中间一按删除就卡死。 */
+function nextSiblings(el){
+  const rest=[];
+  for(let n=el.nextElementSibling; n; n=n.nextElementSibling) rest.push(n);
+  return rest;
+}
 function outdentLi(t, li){
   if(!li) return false;
   const list=li.parentElement;
   const parentLi=list && list.parentElement;
   if(!parentLi || parentLi.tagName!=='LI') return false;
-  const rest=[];
-  while(li.nextElementSibling) rest.push(li.nextElementSibling);
+  const rest=nextSiblings(li);
   parentLi.after(li);
   if(rest.length){
     let sub=[...li.children].reverse().find(c=>c.tagName===list.tagName);
@@ -2323,8 +2329,7 @@ function outdentLi(t, li){
 }
 function liftLiToP(t, li){
   const list=li.parentElement; if(!list) return;
-  const rest=[];
-  while(li.nextElementSibling) rest.push(li.nextElementSibling);
+  const rest=nextSiblings(li);
   const p=document.createElement('p');
   p.dataset.dirty='1';
   while(li.firstChild){
@@ -2348,6 +2353,37 @@ function liftLiToP(t, li){
 function exitOrOutdentLi(t, li){
   if(outdentLi(t, li)) return;
   liftLiToP(t, li);
+}
+/* 空项上按删除：只拿掉这一条，光标落到上一条末尾。不要做出缩——
+   夹在中间的空项做出缩会把后面整段列表拖走，而且原先那圈兄弟会卡死。 */
+function removeEmptyLi(t, li){
+  const list=li.parentElement; if(!list) return;
+  const prev=li.previousElementSibling;
+  const parentLi=list.parentElement && list.parentElement.tagName==='LI' ? list.parentElement : null;
+  li.remove();
+  t.touched=true;
+  if(list.children.length){
+    const top=list.closest('.md>*')||list;
+    top.dataset.dirty='1';
+    if(prev) caretEnd(prev);
+    else{
+      const first=[...list.children].find(n=>n.tagName==='LI');
+      if(first) caretEnd(first, true);
+    }
+    return;
+  }
+  if(parentLi){
+    const top=parentLi.closest('.md>*');
+    list.remove();
+    if(top) top.dataset.dirty='1';
+    caretEnd(parentLi);
+    return;
+  }
+  const p=document.createElement('p');
+  p.dataset.dirty='1';
+  ensureBr(p);
+  list.replaceWith(p);
+  caretEnd(p, true);
 }
 
 /* 行内标记。已经在这个标记里就取消，跟加粗按钮该有的行为一致。 */
@@ -2550,7 +2586,7 @@ function edKey(t, e){
     const li=closestTag(s && s.anchorNode,'LI');
     if(li && s && s.isCollapsed && caretAtStart(li) && !tidyTxt(li.textContent).trim() && !li.querySelector('img')){
       e.preventDefault();
-      exitOrOutdentLi(t, li);
+      removeEmptyLi(t, li);
       return;
     }
   }
