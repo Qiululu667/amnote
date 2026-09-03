@@ -17,7 +17,7 @@
 // clang 编 Objective-C 不碰那个目录，同样 import AppKit + WebKit，实测 0.65 秒。
 // 所以这里选 ObjC：代码啰嗦一点，但构建是干净的一条 clang 命令，换台机器也能跑。
 //
-// ─── 八条设计约束，改代码前先看 ─────────────────────────────────────────
+// ─── 九条设计约束，改代码前先看 ─────────────────────────────────────────
 //
 // 1. ⌘W / ⌘S / ⌘K / ⌘E 现在进菜单了（20260822 收 ⌘W ⌘S，20260829 加 ⌘K ⌘E；
 //    旧规矩作废但要知道它为什么存在过）。
@@ -79,10 +79,18 @@
 //    否则访达双击进来的路径会被静默丢掉，窗口只停在首页。flushPending
 //    在网页还没 _loadedOnce 且 _pageReady 时也不许倒掉队列——amn: 这时
 //    会因为壳还没就绪而把调用丢掉。
+// 9. 更新只问 GitHub Releases，不另搭服务器、不上 Sparkle（没买开发者签名，
+//    也撑不起再塞一个 framework）。默认第二次启动起，大约一天查一次；
+//    只访问 github.com / api.github.com，不上传笔记。装新版本的顺序是：
+//    下载 AMNote-mac.zip → 有 digest 就核 sha256 → 解开后核对 bundle id
+//    必须是 app.amnote → 退出后脚本 ditto 覆盖当前 .app → open。
+//    已经在用的旧版不会凭空获得这条能力，得先手动装一版带检查的。
 
 #import <AppKit/AppKit.h>
 #import <WebKit/WebKit.h>
+#import <CommonCrypto/CommonDigest.h>
 #import <signal.h>
+#import <unistd.h>
 
 // ─────────────────────────── 配置 ───────────────────────────
 
@@ -119,6 +127,16 @@ static const NSTimeInterval kStateTick = 0.5;
 /// Python 预检的单次超时。3 秒足够跑起一个解释器再退出；卡在这个量级的
 /// 多半就是 CLT 那个占位壳子在等用户点弹窗，等下去也不会有结果。
 static const NSTimeInterval kPyProbe = 3.0;
+
+/// GitHub Releases。仓库、安装包文件名、检查间隔都写死——这个壳只服务这一个 app。
+static NSString *const kUpdateRepo     = @"Qiululu667/amnote";
+static NSString *const kUpdateAsset    = @"AMNote-mac.zip";
+static NSString *const kAutoCheckKey   = @"AMNAutoCheckUpdates";
+static NSString *const kLastCheckKey   = @"AMNLastUpdateCheck";
+static NSString *const kSkipVerKey     = @"AMNSkippedUpdateVersion";
+static NSString *const kLaunchCountKey = @"AMNLaunchCount";
+static const NSTimeInterval kUpdateEvery = 24.0 * 60.0 * 60.0;
+static const NSTimeInterval kUpdateDelay = 18.0;
 
 // 工具栏项标识（设计约束 5：默认就三件，标识随之从 amn.sidebar 改成 amn.lists）
 static NSString *const kTBLists  = @"amn.lists";
@@ -243,6 +261,111 @@ static void prepareVault(NSString *path) {
                               withIntermediateDirectories:YES
                                                attributes:nil
                                                     error:nil];
+}
+
+// ── 更新用的纯函数。不碰 UI，方便核对版本和包是不是自己的。
+
+static BOOL amnAutoCheckOn(void) {
+    NSUserDefaults *d = NSUserDefaults.standardUserDefaults;
+    if (![d objectForKey:kAutoCheckKey]) return YES;   // 没写过＝默认开
+    return [d boolForKey:kAutoCheckKey];
+}
+
+static NSString *amnShortVersion(void) {
+    NSString *v = NSBundle.mainBundle.infoDictionary[@"CFBundleShortVersionString"];
+    return v.length ? v : @"0";
+}
+
+/// 去掉 v 前缀和 -beta 这类尾巴，只留 1.2.3。
+static NSString *amnStripVer(NSString *s) {
+    if (!s.length) return @"0";
+    s = [s stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    if ([s hasPrefix:@"v"] || [s hasPrefix:@"V"]) s = [s substringFromIndex:1];
+    NSRange cut = [s rangeOfCharacterFromSet:[NSCharacterSet characterSetWithCharactersInString:@"- +"]];
+    if (cut.location != NSNotFound) s = [s substringToIndex:cut.location];
+    return s.length ? s : @"0";
+}
+
+static NSInteger amnCmpVersion(NSString *a, NSString *b) {
+    NSArray *pa = [amnStripVer(a) componentsSeparatedByString:@"."];
+    NSArray *pb = [amnStripVer(b) componentsSeparatedByString:@"."];
+    NSUInteger n = MAX(pa.count, pb.count);
+    for (NSUInteger i = 0; i < n; i++) {
+        NSInteger ia = i < pa.count ? [pa[i] integerValue] : 0;
+        NSInteger ib = i < pb.count ? [pb[i] integerValue] : 0;
+        if (ia < ib) return -1;
+        if (ia > ib) return 1;
+    }
+    return 0;
+}
+
+/// 下载地址只认 GitHub。被跳到别的域就中止，避免 zip 被劫持。
+static BOOL amnURLTrusted(NSURL *u) {
+    if (!u) return NO;
+    if (![u.scheme.lowercaseString isEqualToString:@"https"]) return NO;
+    NSString *h = u.host.lowercaseString;
+    if (!h.length) return NO;
+    if ([h isEqualToString:@"github.com"] || [h hasSuffix:@".github.com"]) return YES;
+    if ([h isEqualToString:@"githubusercontent.com"] || [h hasSuffix:@".githubusercontent.com"]) return YES;
+    return NO;
+}
+
+static NSString *amnPlainNotes(NSString *md) {
+    if (!md.length) return @"";
+    NSString *s = [md stringByTrimmingCharactersInSet:NSCharacterSet.whitespaceAndNewlineCharacterSet];
+    while ([s containsString:@"\n\n\n"])
+        s = [s stringByReplacingOccurrencesOfString:@"\n\n\n" withString:@"\n\n"];
+    if (s.length > 1000) s = [[s substringToIndex:1000] stringByAppendingString:@"…"];
+    return s;
+}
+
+static NSString *amnSHA256File(NSString *path) {
+    NSInputStream *in = [NSInputStream inputStreamWithFileAtPath:path];
+    if (!in) return nil;
+    [in open];
+    if (in.streamStatus == NSStreamStatusError) { [in close]; return nil; }
+    CC_SHA256_CTX ctx;
+    CC_SHA256_Init(&ctx);
+    uint8_t buf[65536];
+    for (;;) {
+        NSInteger n = [in read:buf maxLength:sizeof(buf)];
+        if (n == 0) break;
+        if (n < 0) { [in close]; return nil; }
+        CC_SHA256_Update(&ctx, buf, (CC_LONG)n);
+    }
+    [in close];
+    unsigned char dig[CC_SHA256_DIGEST_LENGTH];
+    CC_SHA256_Final(dig, &ctx);
+    NSMutableString *hex = [NSMutableString stringWithCapacity:CC_SHA256_DIGEST_LENGTH * 2];
+    for (int i = 0; i < CC_SHA256_DIGEST_LENGTH; i++) [hex appendFormat:@"%02x", dig[i]];
+    return hex;
+}
+
+static NSString *amnFindApp(NSString *dir) {
+    NSFileManager *fm = NSFileManager.defaultManager;
+    NSArray *items = [fm contentsOfDirectoryAtPath:dir error:nil];
+    NSMutableArray<NSString *> *apps = [NSMutableArray array];
+    for (NSString *n in items) {
+        if ([n hasPrefix:@"."]) continue;
+        NSString *p = [dir stringByAppendingPathComponent:n];
+        if ([n.pathExtension.lowercaseString isEqualToString:@"app"]) [apps addObject:p];
+        BOOL isDir = NO;
+        if (![n.pathExtension.lowercaseString isEqualToString:@"app"] &&
+            [fm fileExistsAtPath:p isDirectory:&isDir] && isDir) {
+            for (NSString *n2 in [fm contentsOfDirectoryAtPath:p error:nil]) {
+                if ([n2.pathExtension.lowercaseString isEqualToString:@"app"])
+                    [apps addObject:[p stringByAppendingPathComponent:n2]];
+            }
+        }
+    }
+    for (NSString *p in apps)
+        if ([p.lastPathComponent isEqualToString:@"AM·Note.app"]) return p;
+    return apps.count == 1 ? apps.firstObject : nil;
+}
+
+static NSString *amnUserAgent(void) {
+    return [NSString stringWithFormat:@"AMNote/%@ (https://github.com/%@)",
+            amnShortVersion(), kUpdateRepo];
 }
 
 /// 问某个端口上的 /__status。成功返回解析后的 JSON。8770 直接当没有，不去连。
@@ -677,7 +800,7 @@ static void applySeamlessChrome(NSWindow *window) {
 @interface AppDelegate : NSObject <NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate,
                                    WKScriptMessageHandler, NSToolbarDelegate, NSSearchFieldDelegate,
                                    NSMenuItemValidation, NSToolbarItemValidation,
-                                   NSWindowDelegate>
+                                   NSWindowDelegate, NSURLSessionDownloadDelegate, NSURLSessionTaskDelegate>
 @end
 
 @implementation AppDelegate {
@@ -712,6 +835,17 @@ static void applySeamlessChrome(NSWindow *window) {
     BOOL            _quitting;      // 正在走退出流程，别再起新的定时器
     WKUserContentController *_ucc;  // 拆 web 时要从它上面把 amn handler 摘掉
 
+    NSURLSession              *_updSession;
+    NSURLSessionDownloadTask  *_updTask;
+    NSWindow                  *_updWin;
+    NSProgressIndicator       *_updBar;
+    NSTextField               *_updLabel;
+    NSDictionary              *_updInfo;         // version / zip / notes / page / digest
+    BOOL                       _updBusy;
+    BOOL                       _updInteractive;  // 菜单点的才报「已是最新 / 连不上」
+    BOOL                       _updCancel;       // 关进度窗之后，后台解压结果必须丢掉
+    BOOL                       _installingUpdate;
+
     /// 独立文稿窗口。**两份都要存**：ARC 下 releasedWhenClosed=NO 的窗口
     /// 没人强引用的话，close 之后就直接没了，windowWillClose: 里再去拿就是空的。
     NSMutableArray<WKWebView *> *_soloWebs;
@@ -745,6 +879,7 @@ static void applySeamlessChrome(NSWindow *window) {
     [NSTimer scheduledTimerWithTimeInterval:kShowTimeout repeats:NO block:^(NSTimer *t) {
         [self showWindowIfNeeded];
     }];
+    [self scheduleAutoUpdateCheck];
 }
 
 /// 第一次打开还没选过库：主线程弹说明 + 只选文件夹的面板。取消就退出。
@@ -1035,6 +1170,13 @@ static void applySeamlessChrome(NSWindow *window) {
 /// dirty 只读缓存（documentEdited 由门户的 dirty 消息维护，state 每 0.5 秒刷一次），
 /// 不在这里同步等 JS——windowShouldClose: 是同步返回的，等不起。
 - (BOOL)windowShouldClose:(NSWindow *)sender {
+    if (sender == _updWin) {
+        _updCancel = YES;
+        [_updTask cancel];
+        _updTask = nil;
+        _updBusy = NO;
+        return YES;
+    }
     // 独立文稿窗口：能编辑就可能有没存的改动，跟主窗口一样拦一道，只是话短一点
     if (sender != _win) {
         if (!sender.documentEdited) return YES;
@@ -1062,6 +1204,13 @@ static void applySeamlessChrome(NSWindow *window) {
 
 /// 关窗口只关窗口：服务和状态栏图标都留着，只把门户卸掉。
 - (void)windowWillClose:(NSNotification *)n {
+    if (n.object == _updWin) {
+        _updWin = nil;
+        _updBar = nil;
+        _updLabel = nil;
+        return;
+    }
+    if (n.object != _win && ![_soloWins containsObject:n.object]) return;
     // 独立文稿窗口：拆掉它那块 webview 就完事。**不摘 amn handler**——
     // 那是跟主窗口共用的一个，摘了主窗口的标题和脏点就不再更新。
     if (n.object != _win) {
@@ -1124,6 +1273,8 @@ static void applySeamlessChrome(NSWindow *window) {
     // 这条菜单要在 app 不活跃的时候也点得动，不走 validateMenuItem:，全部常亮。
     m.autoenablesItems = NO;
     [[m addItemWithTitle:@"打开窗口" action:@selector(mOpenWindow:) keyEquivalent:@""] setTarget:self];
+    [m addItem:NSMenuItem.separatorItem];
+    [[m addItemWithTitle:@"检查更新…" action:@selector(mCheckUpdate:) keyEquivalent:@""] setTarget:self];
     [m addItem:NSMenuItem.separatorItem];
     [[m addItemWithTitle:@"重扫全库" action:@selector(rescan:) keyEquivalent:@""] setTarget:self];
     [[m addItemWithTitle:@"服务信息" action:@selector(serviceInfo:) keyEquivalent:@""] setTarget:self];
@@ -1690,6 +1841,11 @@ static void applySeamlessChrome(NSWindow *window) {
     NSMenu *app = [NSMenu new];
     [app addItemWithTitle:@"关于 AM·Note"
                    action:@selector(orderFrontStandardAboutPanel:) keyEquivalent:@""];  // X-17
+    [[app addItemWithTitle:@"检查更新…" action:@selector(mCheckUpdate:) keyEquivalent:@""] setTarget:self];
+    NSMenuItem *autoUp = [app addItemWithTitle:@"自动检查更新"
+                                        action:@selector(mToggleAutoUpdate:)
+                                 keyEquivalent:@""];
+    autoUp.target = self;
     [app addItem:NSMenuItem.separatorItem];
     [[app addItemWithTitle:@"设置…" action:@selector(mSettings:) keyEquivalent:@","] setTarget:self];
     [app addItem:NSMenuItem.separatorItem];
@@ -1874,6 +2030,11 @@ static void applySeamlessChrome(NSWindow *window) {
     if (a == @selector(rescan:) || a == @selector(openInBrowser:) || a == @selector(serviceInfo:)) {
         return _svc.port > 0;
     }
+    if (a == @selector(mCheckUpdate:)) return !_updBusy;
+    if (a == @selector(mToggleAutoUpdate:)) {
+        item.state = amnAutoCheckOn() ? NSControlStateValueOn : NSControlStateValueOff;
+        return YES;
+    }
     return YES;
 }
 
@@ -1995,11 +2156,594 @@ static void applySeamlessChrome(NSWindow *window) {
     a.informativeText =
         @"⌘N 新建随手记\n⌥⌘C 拷贝路径\n⇧⌘R 在访达中显示\n⌥⌘O 在新窗口打开\n"
          "⌘E 进入编辑\n⌘S 存储\n⌘W 关闭标签／首页关窗口\n⇧⌘W 关闭窗口\n⌘P 打印\n"
+         "⌃Tab 切换标签\n"
          "⌘K 快速直达\n⌥⌘K 跳到搜索框\n⌃⌘S 显示列表\n⌥⌘I 显示检查器\n"
          "⌘F 在本页查找\n⌘R 重新载入\n"
          "⌃⌘F 进入全屏\nEsc 关浮层 / 退出编辑";
     [a addButtonWithTitle:@"好"];
     [a runModal];
+}
+
+// MARK: 更新（GitHub Releases）
+//
+// 查版本用 /releases/latest；API 不通就跟网页跳转拿 tag。装包只认 AMNote-mac.zip。
+// 正在跑的二进制不能自己覆盖自己，所以真正替换交给退出后的 bash 脚本。
+
+- (void)mToggleAutoUpdate:(id)s {
+    [NSUserDefaults.standardUserDefaults setBool:!amnAutoCheckOn() forKey:kAutoCheckKey];
+}
+
+- (void)mCheckUpdate:(id)s {
+    [NSApp activateIgnoringOtherApps:YES];
+    [self checkForUpdateInteractive:YES];
+}
+
+- (void)scheduleAutoUpdateCheck {
+    NSUserDefaults *d = NSUserDefaults.standardUserDefaults;
+    NSInteger n = [d integerForKey:kLaunchCountKey] + 1;
+    [d setInteger:n forKey:kLaunchCountKey];
+    if (!amnAutoCheckOn()) return;
+    if (n < 2) return;        // 第一次打开别弹，跟 Sparkle 同一份客气
+    NSDate *last = [d objectForKey:kLastCheckKey];
+    if ([last isKindOfClass:NSDate.class] &&
+        [[NSDate date] timeIntervalSinceDate:last] < kUpdateEvery) return;
+    dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(kUpdateDelay * NSEC_PER_SEC)),
+                   dispatch_get_main_queue(), ^{
+        if (_quitting || _updBusy || !amnAutoCheckOn()) return;
+        [self checkForUpdateInteractive:NO];
+    });
+}
+
+- (void)checkForUpdateInteractive:(BOOL)interactive {
+    if (_updBusy) {
+        if (interactive && _updWin) [_updWin makeKeyAndOrderFront:nil];
+        return;
+    }
+    _updBusy = YES;
+    _updInteractive = interactive;
+    _updCancel = NO;
+    [NSUserDefaults.standardUserDefaults setObject:[NSDate date] forKey:kLastCheckKey];
+
+    NSString *api = [NSString stringWithFormat:
+                     @"https://api.github.com/repos/%@/releases/latest", kUpdateRepo];
+    NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:[NSURL URLWithString:api]];
+    [req setValue:amnUserAgent() forHTTPHeaderField:@"User-Agent"];
+    [req setValue:@"application/vnd.github+json" forHTTPHeaderField:@"Accept"];
+    req.timeoutInterval = 20;
+
+    __weak AppDelegate *weak = self;
+    [[NSURLSession.sharedSession dataTaskWithRequest:req
+        completionHandler:^(NSData *data, NSURLResponse *resp, NSError *err) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSHTTPURLResponse *http = ([resp isKindOfClass:NSHTTPURLResponse.class]
+                                       ? (NSHTTPURLResponse *)resp : nil);
+            if (!err && http.statusCode == 200 && data.length) {
+                [weak parseUpdateAPIData:data];
+                return;
+            }
+            [weak fallbackLatestTag];
+        });
+    }] resume];
+}
+
+- (void)parseUpdateAPIData:(NSData *)data {
+    id obj = [NSJSONSerialization JSONObjectWithData:data options:0 error:nil];
+    if (![obj isKindOfClass:NSDictionary.class]) { [self fallbackLatestTag]; return; }
+    NSDictionary *d = obj;
+    NSString *tag = d[@"tag_name"];
+    if (![tag isKindOfClass:NSString.class] || !tag.length) { [self fallbackLatestTag]; return; }
+
+    NSURL *zip = nil;
+    NSString *digest = nil;
+    NSNumber *size = nil;
+    id assets = d[@"assets"];
+    if ([assets isKindOfClass:NSArray.class]) {
+        for (id a in (NSArray *)assets) {
+            if (![a isKindOfClass:NSDictionary.class]) continue;
+            if (![a[@"name"] isEqualToString:kUpdateAsset]) continue;
+            NSString *u = a[@"browser_download_url"];
+            if (![u isKindOfClass:NSString.class]) continue;
+            NSURL *url = [NSURL URLWithString:u];
+            if (!amnURLTrusted(url)) continue;
+            zip = url;
+            if ([a[@"digest"] isKindOfClass:NSString.class]) digest = a[@"digest"];
+            if ([a[@"size"] isKindOfClass:NSNumber.class]) size = a[@"size"];
+            break;
+        }
+    }
+    if (!zip) {
+        zip = [NSURL URLWithString:
+               [NSString stringWithFormat:@"https://github.com/%@/releases/download/%@/%@",
+                kUpdateRepo, tag, kUpdateAsset]];
+        if (!amnURLTrusted(zip)) zip = nil;
+    }
+    NSString *page = [d[@"html_url"] isKindOfClass:NSString.class] ? d[@"html_url"] : nil;
+    NSString *notes = [d[@"body"] isKindOfClass:NSString.class] ? d[@"body"] : @"";
+    [self handleRemoteVersion:tag zip:zip page:page notes:notes digest:digest size:size];
+}
+
+/// API 被限流或墙了：跟着 /releases/latest 的跳转读 tag，没有说明也没有 digest。
+- (void)fallbackLatestTag {
+    NSURL *u = [NSURL URLWithString:
+                [NSString stringWithFormat:@"https://github.com/%@/releases/latest", kUpdateRepo]];
+    NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:u];
+    [req setValue:amnUserAgent() forHTTPHeaderField:@"User-Agent"];
+    req.timeoutInterval = 20;
+    __weak AppDelegate *weak = self;
+    [[NSURLSession.sharedSession dataTaskWithRequest:req
+        completionHandler:^(NSData *data, NSURLResponse *resp, NSError *err) {
+        dispatch_async(dispatch_get_main_queue(), ^{
+            NSURL *final = resp.URL;
+            NSString *tag = nil;
+            if (final && !err) {
+                NSArray *parts = final.pathComponents;
+                NSUInteger i = [parts indexOfObject:@"tag"];
+                if (i != NSNotFound && i + 1 < parts.count) tag = parts[i + 1];
+            }
+            if (!tag.length) {
+                [weak updateFail:@"连不上 GitHub。可以一会儿再试，或到仓库 Releases 手动下载。"];
+                return;
+            }
+            NSURL *zip = [NSURL URLWithString:
+                          [NSString stringWithFormat:@"https://github.com/%@/releases/download/%@/%@",
+                           kUpdateRepo, tag, kUpdateAsset]];
+            NSString *page = [NSString stringWithFormat:@"https://github.com/%@/releases/tag/%@",
+                              kUpdateRepo, tag];
+            [weak handleRemoteVersion:tag zip:zip page:page notes:@"" digest:nil size:nil];
+        });
+    }] resume];
+}
+
+- (void)handleRemoteVersion:(NSString *)tag zip:(NSURL *)zip page:(NSString *)page
+                      notes:(NSString *)notes digest:(NSString *)digest size:(NSNumber *)size {
+    if (amnCmpVersion(tag, amnShortVersion()) <= 0) {
+        [self updateUpToDate];
+        return;
+    }
+    if (!zip || !amnURLTrusted(zip)) {
+        [self updateFail:@"GitHub 上这个版本没有 mac 安装包（AMNote-mac.zip）。"];
+        return;
+    }
+    NSString *ver = amnStripVer(tag);
+    NSMutableDictionary *info = [@{
+        @"version": ver,
+        @"tag": tag,
+        @"zip": zip.absoluteString,
+        @"page": page.length ? page :
+            [NSString stringWithFormat:@"https://github.com/%@/releases/tag/%@", kUpdateRepo, tag],
+        @"notes": amnPlainNotes(notes) ?: @""
+    } mutableCopy];
+    if (digest.length) info[@"digest"] = digest;
+    if (size) info[@"size"] = size;
+    _updInfo = info;
+
+    if (!_updInteractive) {
+        NSString *skip = [NSUserDefaults.standardUserDefaults stringForKey:kSkipVerKey];
+        if (skip.length && amnCmpVersion(skip, ver) == 0) {
+            _updBusy = NO;
+            return;
+        }
+    }
+    [self offerUpdate:info];
+}
+
+- (void)updateUpToDate {
+    _updBusy = NO;
+    if (!_updInteractive) return;
+    [NSApp activateIgnoringOtherApps:YES];
+    NSAlert *a = [NSAlert new];
+    a.messageText = @"已是最新版本";
+    a.informativeText = [NSString stringWithFormat:@"当前是 %@。", amnShortVersion()];
+    [a addButtonWithTitle:@"好"];
+    [a runModal];
+}
+
+- (void)updateFail:(NSString *)msg {
+    _updBusy = NO;
+    [self closeUpdateProgress];
+    if (!_updInteractive) return;
+    [NSApp activateIgnoringOtherApps:YES];
+    NSAlert *a = [NSAlert new];
+    a.messageText = @"现在检查不了更新";
+    a.informativeText = msg.length ? msg : @"连不上 GitHub。";
+    [a addButtonWithTitle:@"好"];
+    if (_updInfo[@"page"]) [a addButtonWithTitle:@"打开下载页"];
+    NSModalResponse r = [a runModal];
+    if (r == NSAlertSecondButtonReturn) [self openUpdatePage];
+}
+
+- (void)openUpdatePage {
+    NSString *p = _updInfo[@"page"];
+    if (!p.length)
+        p = [NSString stringWithFormat:@"https://github.com/%@/releases/latest", kUpdateRepo];
+    NSURL *u = [NSURL URLWithString:p];
+    if (u) [NSWorkspace.sharedWorkspace openURL:u];
+}
+
+- (void)offerUpdate:(NSDictionary *)info {
+    [NSApp activateIgnoringOtherApps:YES];
+    NSString *ver = info[@"version"] ?: @"";
+    NSMutableString *body = [NSMutableString stringWithFormat:
+                             @"现在是 %@。安装会替换当前的 AM·Note，装完自动打开。\n笔记还在原来的文件夹里，不会被动。",
+                             amnShortVersion()];
+    NSString *notes = info[@"notes"];
+    if (notes.length) [body appendFormat:@"\n\n%@", notes];
+
+    NSAlert *a = [NSAlert new];
+    a.messageText = [NSString stringWithFormat:@"有新版本 %@", ver];
+    a.informativeText = body;
+    [a addButtonWithTitle:@"安装更新"];
+    [a addButtonWithTitle:@"稍后"];
+    [a addButtonWithTitle:@"跳过此版本"];
+
+    void (^done)(NSModalResponse) = ^(NSModalResponse r) {
+        if (r == NSAlertFirstButtonReturn) {
+            [self startUpdateDownload];
+            return;
+        }
+        if (r == NSAlertThirdButtonReturn && ver.length) {
+            [NSUserDefaults.standardUserDefaults setObject:ver forKey:kSkipVerKey];
+        }
+        _updBusy = NO;
+    };
+
+    if (_win.isVisible) {
+        [a beginSheetModalForWindow:_win completionHandler:done];
+    } else {
+        done([a runModal]);
+    }
+}
+
+- (void)closeUpdateProgress {
+    if (!_updWin) return;
+    NSWindow *w = _updWin;
+    _updWin = nil;
+    _updBar = nil;
+    _updLabel = nil;
+    w.delegate = nil;
+    [w close];
+}
+
+- (void)showUpdateProgress:(NSString *)text {
+    if (!_updWin) {
+        NSRect r = NSMakeRect(0, 0, 400, 128);
+        _updWin = [[NSWindow alloc] initWithContentRect:r
+                                              styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable)
+                                                backing:NSBackingStoreBuffered
+                                                  defer:NO];
+        _updWin.title = @"更新 AM·Note";
+        _updWin.releasedWhenClosed = NO;
+        _updWin.delegate = self;
+        _updWin.level = NSFloatingWindowLevel;
+
+        NSView *c = _updWin.contentView;
+        _updLabel = [[NSTextField alloc] initWithFrame:NSMakeRect(20, 72, 360, 22)];
+        _updLabel.editable = NO;
+        _updLabel.bordered = NO;
+        _updLabel.drawsBackground = NO;
+        _updLabel.font = [NSFont systemFontOfSize:13];
+        [c addSubview:_updLabel];
+
+        _updBar = [[NSProgressIndicator alloc] initWithFrame:NSMakeRect(20, 44, 360, 16)];
+        _updBar.style = NSProgressIndicatorStyleBar;
+        _updBar.indeterminate = YES;
+        _updBar.minValue = 0;
+        _updBar.maxValue = 100;
+        [c addSubview:_updBar];
+        [_updBar startAnimation:nil];
+
+        NSButton *cancel = [[NSButton alloc] initWithFrame:NSMakeRect(300, 12, 80, 24)];
+        cancel.title = @"取消";
+        cancel.bezelStyle = NSBezelStyleRounded;
+        cancel.target = self;
+        cancel.action = @selector(mCancelUpdate:);
+        cancel.keyEquivalent = @"\033";
+        [c addSubview:cancel];
+        [_updWin center];
+    }
+    _updLabel.stringValue = text ?: @"正在下载…";
+    [_updWin makeKeyAndOrderFront:nil];
+}
+
+- (void)mCancelUpdate:(id)s {
+    [_updWin performClose:nil];
+}
+
+- (NSURLSession *)updateSession {
+    if (_updSession) return _updSession;
+    NSURLSessionConfiguration *cfg = [NSURLSessionConfiguration ephemeralSessionConfiguration];
+    cfg.timeoutIntervalForRequest = 30;
+    cfg.timeoutIntervalForResource = 600;
+    cfg.HTTPAdditionalHeaders = @{ @"User-Agent": amnUserAgent() };
+    _updSession = [NSURLSession sessionWithConfiguration:cfg
+                                               delegate:self
+                                          delegateQueue:NSOperationQueue.mainQueue];
+    return _updSession;
+}
+
+- (void)startUpdateDownload {
+    _updCancel = NO;
+    NSString *zip = _updInfo[@"zip"];
+    NSURL *url = [NSURL URLWithString:zip];
+    if (!amnURLTrusted(url)) {
+        [self updateFail:@"下载地址不是 GitHub，已中止。"];
+        return;
+    }
+    NSString *ver = _updInfo[@"version"] ?: @"";
+    [self showUpdateProgress:[NSString stringWithFormat:@"正在下载 %@…", ver]];
+    NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
+    [req setValue:amnUserAgent() forHTTPHeaderField:@"User-Agent"];
+    req.timeoutInterval = 60;
+    _updTask = [[self updateSession] downloadTaskWithRequest:req];
+    [_updTask resume];
+}
+
+- (void)URLSession:(NSURLSession *)session
+              task:(NSURLSessionTask *)task
+willPerformHTTPRedirection:(NSHTTPURLResponse *)response
+        newRequest:(NSURLRequest *)request
+ completionHandler:(void (^)(NSURLRequest *))completionHandler {
+    if (!amnURLTrusted(request.URL)) { completionHandler(nil); return; }
+    completionHandler(request);
+}
+
+- (void)URLSession:(NSURLSession *)session
+      downloadTask:(NSURLSessionDownloadTask *)downloadTask
+      didWriteData:(int64_t)bytesWritten
+ totalBytesWritten:(int64_t)totalBytesWritten
+totalBytesExpectedToWrite:(int64_t)totalBytesExpectedToWrite {
+    if (!_updBar) return;
+    if (totalBytesExpectedToWrite > 0) {
+        if (_updBar.indeterminate) {
+            [_updBar stopAnimation:nil];
+            _updBar.indeterminate = NO;
+        }
+        _updBar.doubleValue = 100.0 * (double)totalBytesWritten / (double)totalBytesExpectedToWrite;
+        double mb = totalBytesWritten / (1024.0 * 1024.0);
+        double tot = totalBytesExpectedToWrite / (1024.0 * 1024.0);
+        NSString *ver = _updInfo[@"version"] ?: @"";
+        _updLabel.stringValue = [NSString stringWithFormat:@"正在下载 %@…  %.1f / %.1f MB",
+                                 ver, mb, tot];
+    }
+}
+
+- (void)URLSession:(NSURLSession *)session
+              task:(NSURLSessionTask *)task
+didCompleteWithError:(NSError *)error {
+    if (!error) return;
+    if ([error.domain isEqualToString:NSURLErrorDomain] && error.code == NSURLErrorCancelled) {
+        _updBusy = NO;
+        return;
+    }
+    [self updateFail:error.localizedDescription ?: @"下载失败。"];
+}
+
+- (void)URLSession:(NSURLSession *)session
+      downloadTask:(NSURLSessionDownloadTask *)downloadTask
+didFinishDownloadingToURL:(NSURL *)location {
+    NSHTTPURLResponse *http = ([downloadTask.response isKindOfClass:NSHTTPURLResponse.class]
+                               ? (NSHTTPURLResponse *)downloadTask.response : nil);
+    if (_updCancel) { _updBusy = NO; return; }
+    if (http && http.statusCode != 200) {
+        [self updateFail:[NSString stringWithFormat:@"下载失败（HTTP %ld）。", (long)http.statusCode]];
+        return;
+    }
+    NSString *tmp = [NSTemporaryDirectory() stringByAppendingPathComponent:
+                     [NSString stringWithFormat:@"amnote-upd-%@", NSUUID.UUID.UUIDString]];
+    NSError *err = nil;
+    NSFileManager *fm = NSFileManager.defaultManager;
+    if (![fm createDirectoryAtPath:tmp withIntermediateDirectories:YES attributes:nil error:&err]) {
+        [self updateFail:err.localizedDescription ?: @"建临时目录失败。"];
+        return;
+    }
+    NSString *zipPath = [tmp stringByAppendingPathComponent:kUpdateAsset];
+    NSURL *destURL = [NSURL fileURLWithPath:zipPath];
+    if (![fm moveItemAtURL:location toURL:destURL error:&err]) {
+        err = nil;
+        if (![fm copyItemAtURL:location toURL:destURL error:&err]) {
+            [self updateFail:err.localizedDescription ?: @"保存安装包失败。"];
+            return;
+        }
+    }
+
+    NSString *digest = _updInfo[@"digest"];
+    NSNumber *size = _updInfo[@"size"];
+    NSString *ver = _updInfo[@"version"];
+    _updLabel.stringValue = @"正在校验…";
+    _updBar.indeterminate = YES;
+    [_updBar startAnimation:nil];
+
+    dispatch_async(dispatch_get_global_queue(QOS_CLASS_USER_INITIATED, 0), ^{
+        NSString *fail = [self verifyAndStageZip:zipPath inDir:tmp
+                                          digest:digest size:size expectVer:ver];
+        dispatch_async(dispatch_get_main_queue(), ^{
+            if (_updCancel) { _updBusy = NO; return; }
+            if (fail) { [self updateFail:fail]; return; }
+            [self installStagedApp:[tmp stringByAppendingPathComponent:@"AM·Note.app"]];
+        });
+    });
+}
+
+/// 后台线程：核 sha256、解压、核对 bundle id。成功后把 app 挪到 dir/AM·Note.app。
+- (NSString *)verifyAndStageZip:(NSString *)zip inDir:(NSString *)dir
+                         digest:(NSString *)digest size:(NSNumber *)size expectVer:(NSString *)ver {
+    NSFileManager *fm = NSFileManager.defaultManager;
+    if (size) {
+        NSDictionary *attr = [fm attributesOfItemAtPath:zip error:nil];
+        unsigned long long got = [attr[NSFileSize] unsignedLongLongValue];
+        if (got != size.unsignedLongLongValue)
+            return [NSString stringWithFormat:@"安装包大小不对（%llu，期望 %@）。", got, size];
+    }
+    if (digest.length) {
+        NSString *want = digest;
+        NSRange col = [want rangeOfString:@":"];
+        if (col.location != NSNotFound) {
+            NSString *alg = [want substringToIndex:col.location].lowercaseString;
+            want = [want substringFromIndex:col.location + 1];
+            if (![alg isEqualToString:@"sha256"])
+                return [NSString stringWithFormat:@"不认识的校验算法：%@。", alg];
+        }
+        NSString *got = amnSHA256File(zip);
+        if (!got.length) return @"算不了安装包的校验值。";
+        if ([got caseInsensitiveCompare:want] != NSOrderedSame)
+            return @"安装包校验失败，没有安装。请到 GitHub Releases 重新下载。";
+    }
+
+    NSString *outDir = [dir stringByAppendingPathComponent:@"out"];
+    NSTask *t = [NSTask new];
+    t.executableURL = [NSURL fileURLWithPath:@"/usr/bin/ditto"];
+    t.arguments = @[ @"-xk", zip, outDir ];
+    t.standardInput = NSFileHandle.fileHandleWithNullDevice;
+    t.standardOutput = NSFileHandle.fileHandleWithNullDevice;
+    t.standardError = NSFileHandle.fileHandleWithNullDevice;
+    NSError *e = nil;
+    if (![t launchAndReturnError:&e]) return e.localizedDescription ?: @"解压失败。";
+    [t waitUntilExit];
+    if (t.terminationStatus != 0) return @"解压安装包失败。";
+
+    NSString *app = amnFindApp(outDir);
+    if (!app.length) return @"压缩包里没有 AM·Note.app。";
+
+    NSString *plistPath = [app stringByAppendingPathComponent:@"Contents/Info.plist"];
+    NSDictionary *info = [NSDictionary dictionaryWithContentsOfFile:plistPath];
+    if (![info[@"CFBundleIdentifier"] isEqualToString:@"app.amnote"])
+        return @"安装包的 Bundle ID 不是 app.amnote，已中止。";
+    NSString *gotVer = info[@"CFBundleShortVersionString"] ?: @"";
+    if (amnCmpVersion(gotVer, amnShortVersion()) <= 0)
+        return [NSString stringWithFormat:@"包里的版本是 %@，不比现在的新。", gotVer];
+    if (ver.length && amnCmpVersion(gotVer, ver) < 0)
+        return [NSString stringWithFormat:@"包里的版本是 %@，比 GitHub 上的 %@ 还旧。", gotVer, ver];
+    NSString *exeName = info[@"CFBundleExecutable"] ?: @"AM·Note";
+    NSString *exe = [[app stringByAppendingPathComponent:@"Contents/MacOS"]
+                     stringByAppendingPathComponent:exeName];
+    if (![fm isExecutableFileAtPath:exe]) return @"安装包里缺少可执行文件。";
+
+    NSString *staged = [dir stringByAppendingPathComponent:@"AM·Note.app"];
+    if ([fm fileExistsAtPath:staged]) [fm removeItemAtPath:staged error:nil];
+    if (![fm moveItemAtPath:app toPath:staged error:&e])
+        return e.localizedDescription ?: @"挪新版本失败。";
+    NSTask *xa = [NSTask new];
+    xa.executableURL = [NSURL fileURLWithPath:@"/usr/bin/xattr"];
+    xa.arguments = @[ @"-dr", @"com.apple.quarantine", staged ];
+    xa.standardInput = NSFileHandle.fileHandleWithNullDevice;
+    xa.standardOutput = NSFileHandle.fileHandleWithNullDevice;
+    xa.standardError = NSFileHandle.fileHandleWithNullDevice;
+    [xa launchAndReturnError:NULL];
+    [xa waitUntilExit];
+    return nil;
+}
+
+- (void)installStagedApp:(NSString *)staged {
+    if (_updCancel) { _updBusy = NO; return; }
+    NSString *dest = NSBundle.mainBundle.bundlePath;
+    if (![dest.pathExtension.lowercaseString isEqualToString:@"app"]) {
+        [self updateFail:@"当前不是从 .app 运行的，没法自动替换。请到 GitHub 手动下载。"];
+        return;
+    }
+    if (![[NSFileManager defaultManager] fileExistsAtPath:staged]) {
+        [self updateFail:@"找不到解好的新版本。"];
+        return;
+    }
+
+    BOOL dirty = _win.documentEdited || [self stateFlag:@"dirty"];
+    if (!dirty) {
+        for (NSWindow *w in _soloWins) if (w.documentEdited) { dirty = YES; break; }
+    }
+    if (dirty) {
+        NSAlert *a = [NSAlert new];
+        a.alertStyle = NSAlertStyleWarning;
+        a.messageText = @"有改动还没保存";
+        a.informativeText = @"安装更新要退出 AM·Note。未保存的改动会丢掉。";
+        [a addButtonWithTitle:@"回去保存"];
+        NSButton *go = [a addButtonWithTitle:@"放弃改动并更新"];
+        if (@available(macOS 11.0, *)) go.hasDestructiveAction = YES;
+        if (_win.isVisible) {
+            [a beginSheetModalForWindow:_win completionHandler:^(NSModalResponse r) {
+                if (r != NSAlertSecondButtonReturn) {
+                    _updBusy = NO;
+                    [self closeUpdateProgress];
+                    return;
+                }
+                [self launchUpdateHelperFrom:staged to:dest];
+            }];
+            return;
+        }
+        if ([a runModal] != NSAlertSecondButtonReturn) {
+            _updBusy = NO;
+            [self closeUpdateProgress];
+            return;
+        }
+    }
+    [self launchUpdateHelperFrom:staged to:dest];
+}
+
+- (void)launchUpdateHelperFrom:(NSString *)src to:(NSString *)dst {
+    NSString *script = [NSTemporaryDirectory() stringByAppendingPathComponent:@"amnote-upd-install.sh"];
+    NSString *body =
+        @"#!/bin/bash\n"
+        @"trap '' HUP\n"
+        @"PID=\"$1\"; SRC=\"$2\"; DST=\"$3\"\n"
+        @"LOG=\"${TMPDIR:-/tmp}/amnote-update.log\"\n"
+        @"log() { echo \"$(date '+%Y-%m-%d %H:%M:%S') $*\" >> \"$LOG\"; }\n"
+        @"log \"wait pid=$PID\"\n"
+        @"n=0\n"
+        @"while kill -0 \"$PID\" 2>/dev/null; do\n"
+        @"  n=$((n+1))\n"
+        @"  if [ \"$n\" -gt 300 ]; then log timeout; exit 1; fi\n"
+        @"  sleep 0.2\n"
+        @"done\n"
+        @"sleep 0.4\n"
+        @"/usr/bin/xattr -dr com.apple.quarantine \"$SRC\" >/dev/null 2>&1 || true\n"
+        @"OLD=\"${DST}.amn-old-$$\"\n"
+        @"ok=0\n"
+        @"if mv \"$DST\" \"$OLD\" 2>/dev/null; then\n"
+        @"  if /usr/bin/ditto \"$SRC\" \"$DST\"; then rm -rf \"$OLD\"; ok=1\n"
+        @"  else rm -rf \"$DST\"; mv \"$OLD\" \"$DST\" 2>/dev/null; log ditto-restore\n"
+        @"  fi\n"
+        @"fi\n"
+        @"if [ \"$ok\" -eq 0 ]; then\n"
+        @"  if /usr/bin/ditto \"$SRC\" \"$DST\"; then ok=1\n"
+        @"  else\n"
+        @"    /usr/bin/osascript - \"$SRC\" \"$DST\" <<'AS' >>\"$LOG\" 2>&1\n"
+        @"on run argv\n"
+        @"  set src to item 1 of argv\n"
+        @"  set dst to item 2 of argv\n"
+        @"  do shell script \"/usr/bin/ditto \" & quoted form of src & \" \" & quoted form of dst with administrator privileges\n"
+        @"end run\n"
+        @"AS\n"
+        @"    if [ $? -eq 0 ]; then ok=1; fi\n"
+        @"  fi\n"
+        @"fi\n"
+        @"if [ \"$ok\" -eq 0 ]; then log fail; exit 1; fi\n"
+        @"/usr/bin/xattr -dr com.apple.quarantine \"$DST\" >/dev/null 2>&1 || true\n"
+        @"log open\n"
+        @"/usr/bin/open \"$DST\"\n"
+        @"PARENT=\"$(/usr/bin/dirname \"$SRC\")\"\n"
+        @"case \"$PARENT\" in */amnote-upd-*) rm -rf \"$PARENT\" ;; esac\n"
+        @"exit 0\n";
+    NSError *err = nil;
+    if (![body writeToFile:script atomically:YES encoding:NSUTF8StringEncoding error:&err]) {
+        [self updateFail:err.localizedDescription ?: @"写更新脚本失败。"];
+        return;
+    }
+    [[NSFileManager defaultManager] setAttributes:@{ NSFilePosixPermissions: @0755 }
+                                     ofItemAtPath:script error:nil];
+
+    NSTask *t = [NSTask new];
+    t.executableURL = [NSURL fileURLWithPath:@"/usr/bin/nohup"];
+    t.arguments = @[ @"/bin/bash", script,
+                     [NSString stringWithFormat:@"%d", getpid()], src, dst ];
+    t.standardInput = NSFileHandle.fileHandleWithNullDevice;
+    t.standardOutput = NSFileHandle.fileHandleWithNullDevice;
+    t.standardError = NSFileHandle.fileHandleWithNullDevice;
+    if (![t launchAndReturnError:&err]) {
+        [self updateFail:err.localizedDescription ?: @"拉不起更新脚本。"];
+        return;
+    }
+
+    _installingUpdate = YES;
+    [self closeUpdateProgress];
+    [NSApp terminate:nil];
 }
 
 // MARK: WKNavigationDelegate
@@ -2264,6 +3008,7 @@ static BOOL isBenignNavError(NSError *e) {
 /// 门户的 beforeunload 在 WKWebView 里是被忽略的，所以未保存改动这道拦必须在原生这边做。
 /// 新门户看 AMN.state().dirty，老门户退回 TABS.some(dirty)。
 - (NSApplicationTerminateReply)applicationShouldTerminate:(NSApplication *)sender {
+    if (_installingUpdate) return NSTerminateNow;
     BOOL soloDirty = NO;
     for (NSWindow *w in _soloWins) if (w.documentEdited) { soloDirty = YES; break; }
     if (soloDirty) {
@@ -2302,6 +3047,12 @@ static BOOL isBenignNavError(NSError *e) {
 - (void)applicationWillTerminate:(NSNotification *)n {
     _quitting = YES;
     [_stateTimer invalidate];
+    if (!_installingUpdate) {
+        [_updTask cancel];
+        _updTask = nil;
+        [_updSession invalidateAndCancel];
+        _updSession = nil;
+    }
     if (_statusItem) { [NSStatusBar.systemStatusBar removeStatusItem:_statusItem]; _statusItem = nil; }
     [_svc stop];
 }

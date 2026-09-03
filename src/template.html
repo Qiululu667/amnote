@@ -13,6 +13,9 @@
    AM·Note 门户样式 · v22
    视觉依据：_工作区/20260830_AMNote首页重设计Demo_v2/qa/10_home_light_recent_title_final.png
    实现依据：_工作区/20260830_AMNote首页重设计Demo_v2/src/styles.css
+   v23 正文默认 17 / 1.85 / 640，中文标题不做负字距；打开后的纯正文更像一页纸。
+   列表和首页最近一篇带一行摘录，搜索结果露出命中片段。⌘K 能找笔记也能做动作。
+   编辑时空段打 / 出插入菜单；排版可从命令面板拉出浮层。
    v22 首页浅色底改纯白，去掉全屏标题栏那条「上面偏白、下面偏灰」的假接缝；
    最近文稿不再套 rrow 选中白卡片，搜索框底下是一条轻标题，不再叠层。
    v21 按最终确认稿收紧首页：搜索框改为 640×54；最近文稿只留轻色标题，
@@ -70,7 +73,7 @@
   /* ── 骨架尺寸 ── */
   --sbw:224px;    /* 边栏宽，可拖，存 localStorage */
   --lcw:320px;    /* 列表栏宽，可拖 */
-  --docw:680px;   /* 正文栏宽，跟 PREF.w 走 */
+  --docw:640px;   /* 正文栏宽，跟 PREF.w 走 */
 }
 @supports (color:AccentColor){ :root{ --accent:AccentColor } }
 @supports (color:-apple-system-control-accent){ :root{ --accent:-apple-system-control-accent } }
@@ -209,8 +212,10 @@ body.nodoc:not(.lists-on):not(.searching) #hubbody{padding-top:0}
    上一版把 home-last 和 rrow 叠在同一颗节点上，选中态变成白卡片，
    搜索框的阴影又压在卡片上，看起来像两层错位。 */
 body.nodoc:not(.lists-on):not(.searching) #hub .home-last{
-  width:100%;height:46px;margin:14px 0 0;padding:0 18px 0 20px;
-  display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:18px;
+  width:100%;min-height:52px;margin:14px 0 0;padding:10px 18px 10px 20px;
+  display:grid;grid-template-columns:minmax(0,1fr) auto;
+  grid-template-areas:"title time" "ex time";
+  align-items:start;gap:4px 18px;
   border-radius:14px;background:transparent;box-shadow:none;cursor:pointer;
   transition:background-color .15s ease,transform .10s ease-out;
 }
@@ -219,12 +224,16 @@ body.nodoc:not(.lists-on):not(.searching) #hub .home-last:hover{
 }
 body.nodoc:not(.lists-on):not(.searching) #hub .home-last:active{transform:scale(.992)}
 body.nodoc:not(.lists-on):not(.searching) #hub .home-last .last-title{
-  min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  grid-area:title;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   font-size:14px;font-weight:450;letter-spacing:-.012em;color:var(--recent)
 }
+body.nodoc:not(.lists-on):not(.searching) #hub .home-last .last-ex{
+  grid-area:ex;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  font-size:12px;color:var(--t4)
+}
 body.nodoc:not(.lists-on):not(.searching) #hub .home-last .last-time{
-  display:inline-flex;align-items:center;justify-self:end;gap:7px;
-  font-size:13px;font-weight:400;color:var(--t4);white-space:nowrap
+  grid-area:time;display:inline-flex;align-items:center;justify-self:end;align-self:start;gap:7px;
+  font-size:13px;font-weight:400;color:var(--t4);white-space:nowrap;padding-top:2px
 }
 body.nodoc:not(.lists-on):not(.searching) #hub .home-last .last-time svg{
   width:15px;height:15px;flex:none;stroke-width:1.45
@@ -255,9 +264,10 @@ body.nodoc:not(.lists-on) .res.sel{background:rgba(0,0,0,.04);box-shadow:none}
   transition:background-color .15s ease}
 .res:hover{background:var(--hover)}
 .res.sel{background:var(--sel);box-shadow:var(--selshadow)}
-.res .rt{font-size:13px;font-weight:470;letter-spacing:-.006em;color:var(--t1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.res .rt{display:flex;align-items:center;gap:8px;min-width:0}
+.res .rt .t{font-size:13px;font-weight:470;letter-spacing:-.006em;color:var(--t1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
 .res .rp{font-size:11px;color:var(--t4);margin-top:3px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.res .rx{display:none} /* 搜索结果只给标题＋位置，不常驻正文片段，减少信息压力 */
+.res .rx{font-size:12px;color:var(--t3);margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* 命中词：加粗 ＋ 强调色下划线，不铺底色 */
 .hit{
   font-weight:600;font-style:normal;
@@ -302,15 +312,24 @@ body.nodoc:not(.lists-on) .res.sel{background:rgba(0,0,0,.04);box-shadow:none}
 /* ═══ 列表栏 ═══════════════════════════════ */
 #listpane{grid-area:list;background:var(--list);padding:18px 0 0;
   display:flex;flex-direction:column;overflow:hidden;min-width:0}
-.listtop{padding:0 10px;flex:none}
+.listtop{padding:0 10px 10px;flex:none;display:flex;flex-direction:column;gap:10px}
+.listtop .kindseg{width:100%}
+.listtop .kindseg button{flex:1}
+#hub .kindseg{margin-top:12px}
+body.nodoc:not(.lists-on):not(.searching) #hub .kindseg{display:none}
+.kindtag{font-size:10px;font-weight:500;letter-spacing:.02em;color:var(--t4);flex:none}
+.kindempty{padding:28px 16px;text-align:center;font-size:12px;color:var(--t4)}
 #listbody{flex:1;overflow-y:auto;padding:0 0 40px;min-height:0}
 .lgroup{font-size:11px;font-weight:560;color:var(--t4);letter-spacing:.01em;padding:0 20px;margin:18px 0 8px}
 .lrow{
-  height:43px;margin:0 8px;padding:0 12px;border-radius:10px;cursor:default;
-  display:flex;align-items:center;gap:12px;transition:background-color .15s ease;
+  min-height:43px;margin:0 8px;padding:10px 12px;border-radius:10px;cursor:default;
+  display:flex;flex-direction:column;justify-content:center;gap:3px;
+  transition:background-color .15s ease;
 }
+.lrow .top{display:flex;align-items:center;gap:12px;width:100%;min-width:0}
 .lrow .t{font-size:13px;font-weight:470;letter-spacing:-.006em;color:var(--t1);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lrow .m{font-size:11px;color:var(--t4);flex:none}
+.lrow .ex{font-size:12px;color:var(--t3);width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lrow:hover{background:var(--hover)}
 .lrow.sel{background:var(--sel);box-shadow:var(--selshadow)}
 #listbody .res{margin:0 8px;padding:10px 12px}
@@ -352,26 +371,59 @@ body.lists-on .listbtn{background:var(--sel);box-shadow:var(--selshadow);color:v
   overflow:hidden;text-overflow:ellipsis}
 .editstatus.act{cursor:pointer;color:var(--t2)}
 
-/* 标签栏：两份以上才出。当前项是圆角色块，不画下边框 */
+/* 标签栏：两份以上才出。当前项是圆角色块，不画下边框。
+   撞车标题保住尾巴；装不下的进 ▾，不横滑。闲置的 × 只在悬停时露。 */
 .tabbar{position:absolute;top:0;left:0;right:0;z-index:5;
-  display:none;gap:3px;padding:44px 16px 6px;overflow-x:auto;scrollbar-width:none;
+  display:none;align-items:center;gap:4px;padding:44px 16px 6px;overflow:hidden;
   background:var(--win)}
-.tabbar::-webkit-scrollbar{display:none}
 .tabbar.on{display:flex}
 body.tabs-on .pane{padding-top:88px}
-.tab{display:flex;align-items:center;gap:6px;height:26px;padding:0 6px 0 10px;
-  border-radius:7px;font-size:12px;color:var(--t2);cursor:default;
-  white-space:nowrap;max-width:220px;flex:none;transition:background-color .15s ease}
+.tab{position:relative;display:flex;align-items:center;gap:6px;height:26px;
+  padding:0 8px 0 10px;border-radius:7px;font-size:12px;color:var(--t2);cursor:default;
+  white-space:nowrap;overflow:hidden;min-width:72px;max-width:220px;
+  flex:1 1 108px;transition:background-color .15s ease}
+.tabbar .tab[hidden]{display:none!important}
 .tab:hover{background:var(--hover)}
-.tab.on{background:var(--sel);box-shadow:var(--selshadow);color:var(--t1);font-weight:500}
-.tab .tt{overflow:hidden;text-overflow:ellipsis}
+.tab.on{flex:2.1 1 240px;min-width:120px;max-width:380px;padding-right:6px;
+  background:var(--sel);box-shadow:var(--selshadow);color:var(--t1);font-weight:500}
+.tab .tt{display:flex;min-width:0;overflow:hidden;flex:1}
+.tab .tt.plain{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.tab .tt .h{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;min-width:0;flex:0 1 auto}
+.tab .tt .e{flex:none;white-space:nowrap}
 .tab .tx{width:16px;height:16px;border-radius:8px;flex:none;color:var(--t3);
-  display:flex;align-items:center;justify-content:center}
+  display:none;align-items:center;justify-content:center}
+.tab.on .tx{display:flex}
+.tab:hover:not(.on) .tx{display:flex;position:absolute;right:4px;top:5px;
+  background:var(--hover);color:var(--t2)}
 .tab .tx:hover{background:var(--hover);color:var(--t1)}
+.tab.on .tx:hover{background:var(--hover)}
 .tab .tx svg{width:11px;height:11px;stroke-width:1.6}
+.tab .ddot{width:6px;height:6px;border-radius:50%;flex:none;background:var(--t4);display:none}
+.tab.dirty:not(.on):not(:hover) .ddot{display:block}
+.tabmore{flex:none;height:26px;min-width:34px;padding:0 8px;border-radius:7px;
+  display:none;align-items:center;justify-content:center;gap:3px;
+  color:var(--t2);font-size:11px;font-weight:560}
+.tabbar.has-more .tabmore{display:flex}
+.tabmore:hover,.tabmore.open{background:var(--hover);color:var(--t1)}
+.tabmore svg{flex:none}
+#tabpick{position:fixed;z-index:90;display:none;min-width:240px;max-width:360px;
+  max-height:min(52vh,420px);overflow-y:auto;padding:6px;
+  background:var(--pop);border-radius:12px;box-shadow:var(--popshadow)}
+#tabpick.on{display:block}
+#tabpick .tprow{display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+  padding:8px 10px;border-radius:8px}
+#tabpick .tprow:hover{background:var(--hover)}
+#tabpick .nm{flex:1;min-width:0}
+#tabpick .a{display:block;font-size:13px;color:var(--t1);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#tabpick .b{display:block;font-size:11px;color:var(--t4);margin-top:1px}
+#tabpick .x{width:18px;height:18px;border-radius:9px;flex:none;color:var(--t4);
+  display:flex;align-items:center;justify-content:center}
+#tabpick .x:hover{background:var(--hover);color:var(--t1)}
 
 #panes{position:absolute;inset:0}
 .pane{position:absolute;inset:0;overflow-y:auto;padding:46px 42px 140px;display:none}
+body:not(.lists-on):not(.nodoc) .pane:not(.src){padding:56px 52px 160px}
 .pane.on{display:block}
 .pane .ed{display:none}
 .pane.edit .md{outline:none}
@@ -402,16 +454,22 @@ body.tabs-on .pane{padding-top:88px}
 body.toc-pin .tick .lab{opacity:1}
 
 /* ═══ Markdown 正文 ═══════════════════════
-   样张排版基线：系统字体；正文 15 / 1.8 / 680；大标题 24；二级标题 17。
-   层级主要靠字重、留白和灰阶，不靠到处加粗。版式三项仍能在设置里调。 */
+   默认 17 / 1.85 / 640。中文标题 letter-spacing 为 0，层级靠字重和留白。
+   版式三项仍能在设置和排版浮层里调。 */
 .md{color:var(--t1);margin:0 auto;max-width:var(--docw)}
-.md h1{font-size:24px;font-weight:680;letter-spacing:-.025em;line-height:1.28;margin:0 0 12px}
-.md > h1:first-child{font-size:28px;font-weight:660;letter-spacing:-.03em;line-height:1.22;margin:0 0 14px}
-.md h2{font-size:17px;font-weight:640;letter-spacing:-.01em;margin:38px 0 10px;line-height:1.45}
-.md h3{font-size:15px;font-weight:600;margin:1.5em 0 .45em}
+.md h1{font-size:1.4em;font-weight:600;letter-spacing:0;line-height:1.28;margin:0 0 12px}
+.md > h1:first-child{font-size:32px;font-weight:600;letter-spacing:0;line-height:1.28;margin:0 0 8px}
+.md h2{font-size:1.22em;font-weight:600;letter-spacing:0;margin:2.35em 0 .62em;line-height:1.4}
+.md h3{font-size:1.02em;font-weight:600;margin:1.7em 0 .4em}
 .md h4{font-size:1em;font-weight:500;margin:1.3em 0 .35em;color:var(--t2)}
 .md>:first-child{margin-top:0}
-.md p{margin:0 0 16px}
+.md p{margin:0 0 .88em}
+.md .doc-meta{
+  display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;
+  font-size:12px;line-height:1.4;color:var(--t4);margin:0 0 34px;font-weight:400;
+  user-select:none;
+}
+.md .doc-meta .path{letter-spacing:0}
 .md strong{font-weight:600}
 .md em{font-style:italic;color:var(--t2)}
 .md a{color:var(--accent);text-decoration:none}
@@ -525,8 +583,9 @@ body.toc-pin .tick .lab{opacity:1}
 .cmdk .q input{width:100%;border:0;background:none;outline:none;font-size:15px;color:var(--t1)}
 .cmdk .q input::placeholder{color:var(--t3)}
 .cmdk .rows{max-height:min(52vh,420px);overflow-y:auto}
-.krow{height:36px;margin:0 8px;padding:0 12px;border-radius:8px;cursor:default;
-  display:flex;align-items:center;gap:14px;transition:background-color .15s ease}
+.ksec{font-size:11px;font-weight:560;color:var(--t4);padding:8px 20px 4px;letter-spacing:.01em}
+.krow{height:36px;width:calc(100% - 16px);margin:0 8px;padding:0 12px;border-radius:8px;cursor:default;
+  display:flex;align-items:center;gap:14px;transition:background-color .15s ease;box-sizing:border-box}
 .krow .t{font-size:13px;color:var(--t1);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .krow .t b{font-weight:600}
 .krow .p{font-size:11px;color:var(--t3);flex:none;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -541,6 +600,28 @@ body.toc-pin .tick .lab{opacity:1}
 #ctx button:hover{background:var(--accent);color:#fff}
 #ctx button[disabled]{opacity:.4;pointer-events:none}
 #ctx .sep{height:1px;background:var(--rule-row);margin:5px 8px}
+
+#slash{position:fixed;z-index:85;display:none;width:240px;padding:6px;
+  background:var(--pop);border-radius:12px;box-shadow:var(--popshadow)}
+#slash.on{display:block}
+#slash .sh{font-size:11px;color:var(--t4);padding:6px 10px 4px}
+#slash button{display:flex;align-items:center;gap:10px;width:100%;text-align:left;
+  padding:7px 10px;border-radius:8px;font-size:13px}
+#slash button:hover,#slash button.on{background:var(--hover)}
+#slash .k{color:var(--t4);font-size:11px;margin-left:auto}
+
+#typeWrap{position:fixed;inset:0;z-index:110;display:none;pointer-events:none}
+#typeWrap.on{display:block}
+#typeWrap .scrim{position:absolute;inset:0;background:transparent;pointer-events:auto}
+.typepane{
+  position:absolute;top:64px;right:20px;width:280px;pointer-events:auto;
+  background:var(--pop);border-radius:14px;box-shadow:var(--popbig);padding:16px 16px 18px;
+}
+.typepane h3{margin:0 0 12px;font-size:13px;font-weight:600}
+.typepane .cfgrow .k{width:36px}
+.typepane .seg button{padding:0 9px}
+.typepane .cfgd{font-size:11px;color:var(--t3);margin:8px 0 0;line-height:1.55}
+body.type-on .toc{display:none!important}
 
 #wlpick{position:fixed;z-index:90;background:var(--pop);border-radius:10px;
   box-shadow:var(--popshadow);padding:5px;display:none;
@@ -639,7 +720,7 @@ body.solo .tabbar{display:none!important}
 @media print{
   html,body{height:auto;overflow:visible;background:#fff;color:#000}
   #side,#listpane,.split,#hub,.tabbar,.toc,.listbtn,.editstatus,
-  #banners,#ctx,#fmt,#wlpick,#cmdkWrap,#qlwrap,#cfgWrap{display:none!important}
+  #banners,#ctx,#fmt,#wlpick,#tabpick,#cmdkWrap,#qlwrap,#cfgWrap,#slash,#typeWrap{display:none!important}
   #app{display:block!important}
   #docpane{position:static;overflow:visible}
   #panes{position:static}
@@ -686,6 +767,11 @@ body.solo .tabbar{display:none!important}
         <input id="q2" type="search" autocomplete="off" spellcheck="false" aria-label="搜索整个库">
         <button class="clear" id="qclear2" title="清除"><i data-ic="close"></i></button>
       </label>
+      <div class="seg kindseg" role="radiogroup" aria-label="文件类型">
+        <button type="button" data-kind="all" class="on" aria-pressed="true">全部</button>
+        <button type="button" data-kind="md" aria-pressed="false">Markdown</button>
+        <button type="button" data-kind="html" aria-pressed="false">HTML</button>
+      </div>
     </div>
     <div id="listbody" tabindex="0" role="listbox" aria-label="文稿列表"></div>
   </div>
@@ -713,6 +799,11 @@ body.solo .tabbar{display:none!important}
       <input id="q" type="search" autocomplete="off" spellcheck="false" placeholder="搜索整个库">
       <button class="clear" id="qclear" title="清除"><i data-ic="close"></i></button>
     </label>
+    <div class="seg kindseg" role="radiogroup" aria-label="文件类型">
+      <button type="button" data-kind="all" class="on" aria-pressed="true">全部</button>
+      <button type="button" data-kind="md" aria-pressed="false">Markdown</button>
+      <button type="button" data-kind="html" aria-pressed="false">HTML</button>
+    </div>
     <div class="hitline off num" id="qhint"></div>
     <div id="hubbody" tabindex="0" role="listbox" aria-label="文稿列表"></div>
   </div>
@@ -723,12 +814,46 @@ body.solo .tabbar{display:none!important}
 <div id="cmdkWrap">
   <div class="scrim" id="cmdkScrim"></div>
   <div class="cmdk">
-    <div class="q"><input id="ck" type="text" autocomplete="off" spellcheck="false" aria-label="按名字直达"></div>
+    <div class="q"><input id="ck" type="text" autocomplete="off" spellcheck="false" placeholder="找笔记，或做一个动作…" aria-label="找笔记或做动作"></div>
     <div class="rows" id="ckList"></div>
   </div>
 </div>
 
+<div id="slash"></div>
+
+<div id="typeWrap">
+  <div class="scrim" id="typeScrim"></div>
+  <div class="typepane">
+    <h3>排版</h3>
+    <div class="cfgrow">
+      <span class="k">字体</span>
+      <span class="seg" data-k="font" id="typeFont">
+        <button type="button" data-v="f-sans">系统</button>
+        <button type="button" data-v="f-serif">宋体</button>
+        <button type="button" data-v="f-mono">等宽</button>
+      </span>
+    </div>
+    <div class="cfgrow">
+      <span class="k">字号</span>
+      <input type="range" id="typeFs" min="15" max="20" step="1">
+      <span class="v num" id="typeVfs"></span>
+    </div>
+    <div class="cfgrow">
+      <span class="k">行高</span>
+      <input type="range" id="typeLh" min="160" max="200" step="5">
+      <span class="v num" id="typeVlh"></span>
+    </div>
+    <div class="cfgrow">
+      <span class="k">栏宽</span>
+      <input type="range" id="typeW" min="560" max="760" step="20">
+      <span class="v num" id="typeVw"></span>
+    </div>
+    <p class="cfgd">中文正文不做负字距。栏宽略窄，一行大约三十多个字。</p>
+  </div>
+</div>
+
 <div id="ctx"></div>
+<div id="tabpick"></div>
 
 <div id="qlwrap">
   <div id="ql">
@@ -933,18 +1058,25 @@ function flash(t){
 }
 
 /* ── 阅读版式 ─────────────────────────────
-   默认 15px / 1.80 / 栏宽 680。旧默认栏宽是 740，只迁一次，
-   迁移标记记在 prefsGen 里；她自己调过的（不等于 740）一个字不动。 */
-const DEF_PREF = {font:'f-sans', fs:15, lh:180, w:680, theme:'auto'};
+   默认 17 / 1.85 / 640。prefsGen 2 把仍停在上一版默认 15/1.80/680 的迁过来；
+   自己调过的不动。 */
+const DEF_PREF = {font:'f-sans', fs:17, lh:185, w:640, theme:'auto'};
 const RESETTABLE = ['font','fs','lh','w'];
 const PREF = Object.assign({}, DEF_PREF,
   (()=>{ try{ return JSON.parse(localStorage.getItem('tp-pref')||'{}') }catch(e){ return {} } })());
 const savePref = () => { try{ localStorage.setItem('tp-pref', JSON.stringify(PREF)); }catch(e){} };
 (function migratePrefs(){
-  if(PREF.prefsGen) return;
-  if(+PREF.w === 740) PREF.w = 680;          // 旧默认 → 新默认
-  if(+ST.lcw === 336) { ST.lcw = 320; saveST(); }
-  PREF.prefsGen = 1;
+  if(!PREF.prefsGen){
+    if(+PREF.w === 740) PREF.w = 680;
+    if(+ST.lcw === 336) { ST.lcw = 320; saveST(); }
+    PREF.prefsGen = 1;
+  }
+  if(PREF.prefsGen < 2){
+    if(+PREF.fs===15 && +PREF.lh===180 && +PREF.w===680){
+      PREF.fs=17; PREF.lh=185; PREF.w=640;
+    }
+    PREF.prefsGen = 2;
+  }
   savePref();
 })();
 
@@ -982,6 +1114,14 @@ function syncPrefControls(){
   $$('.seg[data-k=theme] button').forEach(b=>b.classList.toggle('on',b.dataset.v===PREF.theme));
   const rb=$('#rstPref');
   if(rb) rb.disabled = RESETTABLE.every(k=>PREF[k]===DEF_PREF[k]);
+  const tfs=$('#typeFs');
+  if(tfs){
+    tfs.value=PREF.fs; $('#typeLh').value=PREF.lh; $('#typeW').value=PREF.w;
+    $('#typeVfs').textContent=PREF.fs;
+    $('#typeVlh').textContent=(PREF.lh/100).toFixed(2);
+    $('#typeVw').textContent=PREF.w;
+    $$('#typeFont button').forEach(b=>b.classList.toggle('on',b.dataset.v===PREF.font));
+  }
 }
 function setPref(k, v){ PREF[k]=v; savePref(); applyPref(); }
 function toggleTheme(){
@@ -1294,30 +1434,229 @@ function safeBlock(el, base){
 
 /* ── 标签页 ─────────────────────────────
    MD 都在门户里开，不弹新窗口。每个标签一个 pane，自己滚自己的，切回来还在原来的位置。
-   两份以上才出标签栏。 */
-const MAXTAB = 12;
+   两份以上才出标签栏。标题撞车时保住尾巴；装不下的进 ▾，不横滑、不偷偷踢掉最老的。 */
 let TABS = [], curTab = null, tabSeq = 0;
 
 const paneOf = t => document.getElementById('pane-'+t.id);
 const active = () => TABS.find(t=>t.id===curTab) || null;
 
+function tabFolder(t){
+  const p=String((t && (t.ext ? (t.abs||t.path) : t.path)) || '');
+  const parts=p.split('/').filter(Boolean);
+  if(t && t.ext) return parts.length>=2 ? parts[parts.length-2] : '库外';
+  return parts.length>1 ? parts[parts.length-2] : '';
+}
+function commonPrefixLen(a, b){
+  const n=Math.min(a.length, b.length);
+  let i=0; while(i<n && a[i]===b[i]) i++;
+  return i;
+}
+function lastSep(s){
+  const seps=[' · ','——',' — ',' – ',' - ',' / ','·','—','–','｜','|','/','-'];
+  let best=-1, len=0, end=-1;
+  for(const sep of seps){
+    const i=s.lastIndexOf(sep);
+    if(i<0) continue;
+    const e=i+sep.length;
+    if(e>end || (e===end && sep.length>len)){ best=i; len=sep.length; end=e; }
+  }
+  if(best<=0 || end>=s.length) return null;
+  const tail=s.slice(end);
+  if(!tail.trim() || tail.length>24) return null;
+  return {at:best, len, tail};
+}
+/* 标签上写什么：题名彼此独立就整段省略；撞车（长前缀相同）就切开，尾巴永远在。
+   完全同名再补所在文件夹。 */
+function tabLabel(t, all){
+  const title=String((t && t.title) || '').trim() || '无标题';
+  const others=(all||[]).filter(x=>x && x!==t)
+    .map(x=>String(x.title||'').trim() || '无标题');
+  if(others.some(o=>o===title)){
+    const folder=tabFolder(t);
+    return {kind:'plain', text: folder ? title+' · '+folder : title};
+  }
+  const PREFIX=8;
+  let hit=false, maxShared=0;
+  for(const o of others){
+    const n=commonPrefixLen(title, o);
+    if(n>=PREFIX && (n<title.length || o.length>title.length)){
+      hit=true; if(n>maxShared) maxShared=n;
+    }
+  }
+  if(!hit) return {kind:'plain', text:title};
+  const sep=lastSep(title);
+  if(sep && sep.at+sep.len>=Math.min(maxShared, title.length)-1)
+    return {kind:'tail', head:title.slice(0, sep.at+sep.len), tail:sep.tail};
+  if(maxShared>=title.length){
+    const keep=Math.min(4, title.length);
+    return {kind:'tail', head:title.slice(0, title.length-keep), tail:title.slice(title.length-keep)};
+  }
+  let cut=maxShared;
+  while(cut<title.length && /[\s·—–\-｜|/]/.test(title[cut])) cut++;
+  if(title.length-cut<2) cut=Math.max(0, title.length-6);
+  return {kind:'tail', head:title.slice(0, cut), tail:title.slice(cut)};
+}
+
 function drawTabs(){
   const bar=$('#tabbar');
+  closeTabPick();
   const on = TABS.length>=2 && !SOLO;
   bar.classList.toggle('on', on);
+  bar.classList.remove('has-more');
   document.body.classList.toggle('tabs-on', on);
   if(!on){ bar.innerHTML=''; return; }
-  bar.innerHTML = TABS.map(t=>
-    `<div class="tab${t.id===curTab?' on':''}" data-id="${t.id}" title="${esc(t.path)}">
-       <span class="tt">${esc(t.title)}</span>
-       <button class="tx" data-close="${t.id}" title="关掉">${icon('close',11)}</button>
-     </div>`).join('');
-  $$('#tabbar .tab').forEach(el=>el.onclick=e=>{
-    if(e.target.closest('[data-close]')) return;
-    showTab(el.dataset.id);
+  bar.innerHTML = TABS.map(t=>{
+    const lab=tabLabel(t, TABS);
+    const tt=lab.kind==='tail'
+      ? `<span class="tt"><span class="h">${esc(lab.head)}</span><span class="e">${esc(lab.tail)}</span></span>`
+      : `<span class="tt plain">${esc(lab.text)}</span>`;
+    const tip=esc(t.title||'')+(t.path?' — '+esc(t.path):'');
+    return `<div class="tab${t.id===curTab?' on':''}${dirty(t)?' dirty':''}" data-id="${t.id}" title="${tip}" role="tab" aria-selected="${t.id===curTab?'true':'false'}">
+       ${tt}<i class="ddot" title="未保存"></i>
+       <button type="button" class="tx" data-close="${t.id}" title="关掉">${icon('close',11)}</button>
+     </div>`;
+  }).join('')
+    + `<button type="button" class="tabmore" id="tabmore" aria-haspopup="menu" aria-expanded="false" title="其余标签">${icon('chevron-down',12)}<span class="n"></span></button>`;
+  $$('#tabbar .tab').forEach(el=>{
+    el.onclick=e=>{
+      if(e.target.closest('[data-close]')) return;
+      showTab(el.dataset.id);
+    };
+    el.onauxclick=e=>{ if(e.button===1){ e.preventDefault(); closeTab(el.dataset.id); } };
+    el.onmousedown=e=>{ if(e.button===1) e.preventDefault(); };
+    el.oncontextmenu=e=>tabMenu(e, el.dataset.id);
   });
   $$('#tabbar [data-close]').forEach(b=>b.onclick=e=>{
     e.stopPropagation(); closeTab(b.dataset.close);
+  });
+  const more=$('#tabmore');
+  if(more) more.onclick=e=>{ e.stopPropagation(); toggleTabPick(); };
+  requestAnimationFrame(layoutTabs);
+}
+
+function layoutTabs(){
+  const bar=$('#tabbar');
+  if(!bar || !bar.classList.contains('on')) return;
+  const tabs=[...bar.querySelectorAll('.tab')];
+  const more=$('#tabmore');
+  if(!tabs.length || !more) return;
+  tabs.forEach(el=>{ el.hidden=false; });
+  bar.classList.remove('has-more');
+
+  const fits=()=>{
+    const vis=tabs.filter(el=>!el.hidden);
+    const last=vis[vis.length-1];
+    if(!last) return true;
+    const br=bar.getBoundingClientRect();
+    const lr=last.getBoundingClientRect();
+    const padR=parseFloat(getComputedStyle(bar).paddingRight)||0;
+    const moreW=bar.classList.contains('has-more') ? more.offsetWidth+4 : 0;
+    return lr.right <= br.right-padR-moreW+1;
+  };
+  if(fits()){ if(tabPickOn()) closeTabPick(); return; }
+
+  bar.classList.add('has-more');
+  void more.offsetWidth;
+  const cur=tabs.find(el=>el.dataset.id===curTab);
+  const idx=cur?tabs.indexOf(cur):0;
+  const hideOrder=[...tabs.slice(idx+1).reverse(), ...tabs.slice(0, idx)];
+  let n=0;
+  more.querySelector('.n').textContent='1';
+  for(const el of hideOrder){
+    if(fits()) break;
+    el.hidden=true; n++;
+    more.querySelector('.n').textContent=String(n);
+  }
+  if(!n){ bar.classList.remove('has-more'); if(tabPickOn()) closeTabPick(); return; }
+  more.querySelector('.n').textContent=String(n);
+  more.title='其余 '+n+' 份';
+  more.setAttribute('aria-label','其余 '+n+' 份');
+}
+
+function tabPickOn(){ const p=$('#tabpick'); return !!(p && p.classList.contains('on')); }
+function closeTabPick(){
+  const p=$('#tabpick');
+  if(p){ p.classList.remove('on'); p.style.display=''; p.style.visibility=''; }
+  const m=$('#tabmore'); if(m){ m.classList.remove('open'); m.setAttribute('aria-expanded','false'); }
+}
+function toggleTabPick(){ tabPickOn() ? closeTabPick() : openTabPick(); }
+function openTabPick(){
+  const p=$('#tabpick'), more=$('#tabmore'), bar=$('#tabbar');
+  if(!p || !more || !bar) return;
+  const hidden=TABS.filter(t=>{
+    const el=bar.querySelector('.tab[data-id="'+t.id+'"]');
+    return el && el.hidden;
+  });
+  if(!hidden.length){ closeTabPick(); return; }
+  p.innerHTML=hidden.map(t=>{
+    const folder=tabFolder(t);
+    return `<button type="button" class="tprow" data-id="${t.id}">
+      <span class="nm"><span class="a">${esc(t.title||'无标题')}</span>
+      ${folder?`<span class="b">${esc(folder)}</span>`:''}</span>
+      <span class="x" data-close="${t.id}" title="关掉">${icon('close',11)}</span>
+    </button>`;
+  }).join('');
+  p.querySelectorAll('.tprow').forEach(el=>{
+    el.onclick=e=>{
+      if(e.target.closest('[data-close]')) return;
+      closeTabPick(); showTab(el.dataset.id);
+    };
+  });
+  p.querySelectorAll('[data-close]').forEach(b=>b.onclick=e=>{
+    e.stopPropagation(); closeTab(b.dataset.close);
+  });
+  p.classList.add('on');
+  more.classList.add('open');
+  more.setAttribute('aria-expanded','true');
+  const r=more.getBoundingClientRect();
+  p.style.visibility='hidden'; p.style.display='block';
+  const w=p.offsetWidth, h=p.offsetHeight;
+  p.style.display=''; p.style.visibility='';
+  let left=Math.min(r.right-w, innerWidth-w-8);
+  if(left<8) left=8;
+  let top=r.bottom+6;
+  if(top+h>innerHeight-8) top=Math.max(8, r.top-h-6);
+  p.style.left=left+'px';
+  p.style.top=top+'px';
+}
+
+function tabMenu(e, id){
+  const t=TABS.find(x=>x.id===id); if(!t) return;
+  const i=TABS.findIndex(x=>x.id===id);
+  popMenu(e, [
+    {id:'close', label:'关闭'},
+    {id:'others', label:'关闭其他', enabled:TABS.length>1},
+    {id:'right', label:'关闭右侧', enabled:i>=0 && i<TABS.length-1},
+    {sep:true},
+    {id:'reveal', label:'在访达中显示'},
+    {id:'copyurl', label:'拷贝路径'},
+  ], mid=>{
+    if(mid==='close') closeTab(id);
+    else if(mid==='others') closeOtherTabs(id);
+    else if(mid==='right') closeTabsToRight(id);
+    else if(mid==='reveal') revealPath(t.path);
+    else if(mid==='copyurl') clipPath(t.path);
+  });
+}
+function closeOtherTabs(keepId){
+  TABS.filter(t=>t.id!==keepId).map(t=>t.id).reverse()
+    .some(id=>closeTab(id)===false);
+}
+function closeTabsToRight(id){
+  const i=TABS.findIndex(t=>t.id===id); if(i<0) return;
+  TABS.slice(i+1).map(t=>t.id).reverse()
+    .some(id=>closeTab(id)===false);
+}
+function cycleTab(dir){
+  if(TABS.length<2) return;
+  const i=TABS.findIndex(t=>t.id===curTab);
+  const j=((i<0?0:i)+dir+TABS.length)%TABS.length;
+  showTab(TABS[j].id);
+}
+function syncTabDirty(){
+  $$('#tabbar .tab').forEach(el=>{
+    const t=TABS.find(x=>x.id===el.dataset.id);
+    el.classList.toggle('dirty', !!(t && dirty(t)));
   });
 }
 
@@ -1336,15 +1675,16 @@ function showTab(id){
 }
 
 function closeTab(id){
-  const i=TABS.findIndex(t=>t.id===id); if(i<0) return;
+  const i=TABS.findIndex(t=>t.id===id); if(i<0) return true;
   const t=TABS[i];
   if(t.editing) flushSave(t);                       // 关标签强制落盘
-  if(dirty(t) && !ask(`要关掉「${t.title||''}」吗？`,'改动还没保存，关掉就丢了。','不保存并关闭','取消',true)) return;
+  if(dirty(t) && !ask(`要关掉「${t.title||''}」吗？`,'改动还没保存，关掉就丢了。','不保存并关闭','取消',true)) return false;
   const p=paneOf(t); if(p) p.remove();
   if(t.blobs) t.blobs.forEach(u=>{ try{ URL.revokeObjectURL(u); }catch(e){} });
   TABS.splice(i,1);
-  if(!TABS.length){ curTab=null; drawTabs(); leaveReader(); return; }
+  if(!TABS.length){ curTab=null; drawTabs(); leaveReader(); return true; }
   showTab(curTab===id ? TABS[Math.min(i,TABS.length-1)].id : curTab);
+  return true;
 }
 
 function newPane(t){
@@ -1372,21 +1712,21 @@ function newPane(t){
   md0.addEventListener('dblclick', e=>{
     if(t.editing || !canEditPath(t.path) || t.ext) return;
     const blk=e.target.closest('.md>*');
-    if(!blk || blk.parentElement!==md0) return;
+    if(!blk || blk.parentElement!==md0 || blk.dataset.chrome) return;
     e.preventDefault();
     startEdit({block:[...md0.children].indexOf(blk), at:offsetAtPoint(blk, e)});
   });
   // ⌘E 要把光标放到「鼠标正停着的那一块」，所以边读边记
   md0.addEventListener('mouseover', e=>{
     const b=e.target.closest && e.target.closest('.md>*');
-    if(b && b.parentElement===md0) t.hover=b;
+    if(b && b.parentElement===md0 && !b.dataset.chrome) t.hover=b;
   });
   // 正文本身就是编辑区，打字直接落在这上面。这里只挂几件浏览器不管的事。
   md0.addEventListener('keydown', e=>{ if(t.editing && !p.classList.contains('src')) edKey(t, e); });
   md0.addEventListener('input', e=>{
     if(!t.editing || p.classList.contains('src')) return;
     syncPh(t);
-    if(!COMPOSING) tryMdShortcut(t);
+    if(!COMPOSING){ tryMdShortcut(t); maybeSlash(t); }
   });
   md0.addEventListener('paste', e=>{ if(t.editing && !p.classList.contains('src')) onPaste(t, e); });
   md0.addEventListener('click', e=>{
@@ -1503,7 +1843,6 @@ async function openDoc(it, opt){
 
   const t={id:'t'+(++tabSeq), path:it.路径, title:it.标题||it.路径, type:'md'};
   TABS.push(t); newPane(t);
-  if(TABS.length>MAXTAB) closeTab(TABS[0].id);
   enterReader(); showTab(t.id);
   await loadMd(t);
   if(opt.jump) flashHit(t, opt.jump);
@@ -1608,6 +1947,23 @@ function renderMd(el, src, base){
   wireImg(el);
 }
 
+/* 标题下那一行路径只是显示层，不进台账、不进存盘。 */
+function decorateChrome(md, path){
+  if(!md) return;
+  md.querySelectorAll('.doc-meta').forEach(el=>el.remove());
+  if(!path) return;
+  const parts=String(path).replace(/\.md$/i,'').split('/').filter(Boolean);
+  if(parts.length<2) return;
+  const pretty=parts.join(' / ');
+  const meta=document.createElement('p');
+  meta.className='doc-meta';
+  meta.dataset.chrome='1';
+  meta.contentEditable='false';
+  meta.innerHTML=`<span class="path">${esc(pretty)}</span>`;
+  const h1=[...md.children].find(el=>el.tagName==='H1');
+  if(h1) h1.after(meta); else md.prepend(meta);
+}
+
 async function loadMd(t){
   const p=paneOf(t); if(!p) return;
   const md=p.querySelector('.md');
@@ -1615,6 +1971,7 @@ async function loadMd(t){
     const r=await fetch(url(t.path)); if(!r.ok) throw 0;
     t.raw=await r.text();
     renderMd(md, t.raw, dirOf(t.path));
+    decorateChrome(md, t.path);
     decorateHistory(md);
   }catch(err){
     md.textContent='';
@@ -1643,7 +2000,6 @@ async function openExtPath(abs){
   const t={id:'t'+(++tabSeq), path:abs, abs:abs, extId:r.id, ext:true,
            title:r.名称||abs.split('/').pop(), type:'md', noEdit:true, blobs:[]};
   TABS.push(t); newPane(t);
-  if(TABS.length>MAXTAB) closeTab(TABS[0].id);
   enterReader(); showTab(t.id);
   await loadExt(t);
 }
@@ -1768,6 +2124,7 @@ function setLists(on){
      会被原样搬回首页，居中布局装不下，搜索框就顶进标题栏。 */
   render();
   syncNative();
+  requestAnimationFrame(layoutTabs);
 }
 function toggleLists(){
   if(!LISTS && document.body.classList.contains('nodoc')){ setLists(true); return; }
@@ -1812,7 +2169,7 @@ function serializeBody(t){
   const p=paneOf(t); if(!p || !t.reg) return t.work;
   const md=p.querySelector('.md'), reg=t.reg, ent=[];
   [...md.children].forEach(el=>{
-    if(el.nodeType!==1 || el.tagName==='TEXTAREA') return;
+    if(el.nodeType!==1 || el.tagName==='TEXTAREA' || el.dataset.chrome) return;
     const bid=el.dataset.bid;
     const keep = bid!==undefined && reg.blocks[+bid] && !el.dataset.dirty;
     const src = keep ? reg.blocks[+bid].src : blkMd(el).split('\n');
@@ -1995,6 +2352,7 @@ function paintWork(t){
   const md=p.querySelector('.md');
   undecorateHistory(md);
   renderMd(md, t.editing ? t.work : t.raw, dirOf(t.path));
+  decorateChrome(md, t.ext ? null : t.path);
   if(!t.editing) decorateHistory(md);
   applyPref();
   p.scrollTop=top;
@@ -2009,7 +2367,7 @@ function watchEdits(t){
   const md=paneOf(t).querySelector('.md');
   const top=n=>{
     while(n && n!==md && n.parentNode && n.parentNode!==md) n=n.parentNode;
-    return (n && n!==md && n.parentNode===md && n.nodeType===1) ? n : null;
+    return (n && n!==md && n.parentNode===md && n.nodeType===1 && !n.dataset.chrome) ? n : null;
   };
   const hit=[];
   const mark=n=>{ const b=top(n); if(b){ b.dataset.dirty='1'; hit.push(b); } };
@@ -2051,6 +2409,7 @@ function prepEdit(t){
   let lock=0;
   [...md.children].forEach(el=>{
     if(el.nodeType!==1) return;
+    if(el.dataset.chrome){ el.contentEditable='false'; return; }
     if(safeBlock(el, base)){
       el.removeAttribute('data-lock'); el.removeAttribute('contenteditable');
     }else{
@@ -2106,7 +2465,7 @@ function isBlankBlock(el){
 function syncPh(t){
   const p=t&&paneOf(t); if(!p || !t.editing || p.classList.contains('src')) return;
   const md=p.querySelector('.md'); if(!md) return;
-  const kids=[...md.children].filter(el=>el.nodeType===1 && el.tagName!=='TEXTAREA');
+  const kids=[...md.children].filter(el=>el.nodeType===1 && el.tagName!=='TEXTAREA' && !el.dataset.chrome);
   kids.forEach(el=>el.removeAttribute('data-ph'));
   const h1=kids[0] && kids[0].tagName==='H1' ? kids[0] : null;
   if(h1 && isBlankBlock(h1)) h1.setAttribute('data-ph','1');
@@ -2144,7 +2503,7 @@ function curBlock(t){
   let n=s.getRangeAt(0).startContainer;
   if(!md.contains(n)) return null;
   while(n && n.parentNode && n.parentNode!==md) n=n.parentNode;
-  return (n && n.parentNode===md && n.nodeType===1) ? n : null;
+  return (n && n.parentNode===md && n.nodeType===1 && !n.dataset.chrome) ? n : null;
 }
 
 /* 进编辑之后光标到底在不在正文里。v27「打不了字」的病根就是这一条没成立：
@@ -2520,6 +2879,7 @@ document.addEventListener('compositionend', ()=>{
     syncPh(t);
     if(t.id===curTab) syncTabTitle(t);
     tryMdShortcut(t);
+    maybeSlash(t);
   });
 });
 
@@ -2547,6 +2907,12 @@ function tryMdShortcut(t){
 
 function edKey(t, e){
   if(e.isComposing || e.keyCode===229) return;
+  if(slashOn()){
+    if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); hideSlash(); return; }
+    if(e.key==='ArrowDown'){ e.preventDefault(); e.stopPropagation(); slashI=Math.min(SLASH.length-1, slashI+1); paintSlash(); return; }
+    if(e.key==='ArrowUp'){ e.preventDefault(); e.stopPropagation(); slashI=Math.max(0, slashI-1); paintSlash(); return; }
+    if(e.key==='Enter' || e.key==='Tab'){ e.preventDefault(); e.stopPropagation(); applySlash(); return; }
+  }
   const blk=curBlock(t);
   const cmd=e.metaKey;
 
@@ -2797,6 +3163,7 @@ function canEditPath(rel){
 function syncBar(){
   syncStatusLine();
   syncNative();
+  syncTabDirty();
 }
 
 /* 把「开着哪一份、改了没有」告诉壳。壳据此设窗口标题、代理图标、
@@ -2842,10 +3209,13 @@ async function startEdit(opt){
     const md=p.querySelector('.md');
     const h1=[...md.children].find(el=>el.tagName==='H1' && !el.hasAttribute('data-lock'));
     unwatch(t);
-    if(![...md.children].some(el=>el.tagName==='P')){
+    if(![...md.children].some(el=>el.tagName==='P' && !el.dataset.chrome)){
       const np=document.createElement('p');
       ensureBr(np);
-      if(h1) h1.after(np); else md.appendChild(np);
+      const meta=md.querySelector('.doc-meta');
+      if(meta) meta.after(np);
+      else if(h1) h1.after(np);
+      else md.appendChild(np);
     }
     t.touched=false;
     watchEdits(t);
@@ -2919,6 +3289,7 @@ function autoKick(t){
   if(!t || !t.editing) return;
   t.pendingBad=null;
   if(t.id===curTab) syncStatusLine();
+  syncTabDirty();
   clearTimeout(t.autoT);
   t.autoT=setTimeout(()=>{ t.autoT=null; saveEdit(false, {tab:t, auto:true}); }, AUTOSAVE_MS);
 }
@@ -3089,6 +3460,7 @@ let TREE=null;
 let fDir=null, fSub=null;       // 选中的大类文件夹 ／ 它下面的子文件夹
 let fNotes=false;               // 随手记那一屏
 let fRecent=true;               // 首页＝最近改动
+let fKind='all';                // 最近／搜索：全部 ／ 只 md ／ 只 html
 let kw='';
 let PAGE=80;                    // 往下滚动续加，不加按钮
 
@@ -3132,19 +3504,27 @@ async function loadTree(){
   catch(e){ /* 服务没起：列表是空的，状态点会变灰 */ }
 }
 
-/* 类型键撤了（v17），但「最近」这一屏仍然只列 md：库里的 html 如果混进最近，每次都要挑一遍。
-   文件夹视图和搜索结果 md、html 同列，html 行带 globe 键，点开交系统浏览器。 */
+/* 类型筛：全部 / Markdown / HTML。最近、文件夹、搜索共用；随手记全是 md，控件藏起来。
+   html 点开仍交系统浏览器，不在门户里渲染。 */
+function kindOf(i){ return (i && i.类型) || 'md'; }
+function kindOk(i){
+  const k=kindOf(i);
+  if(fKind==='md') return k==='md';
+  if(fKind==='html') return k==='html';
+  return k==='md' || k==='html';
+}
 function passes(i){
   if(fNotes) return String(i.路径||'').startsWith(NOTE_DIR+'/');
+  if(!kindOk(i)) return false;
   if(String(i.路径||'').startsWith(NOTE_DIR+'/') && !fDir) return false;  // 随手记有自己那一格
-  if(fDir===null) return (i.类型||'md')==='md';                            // 最近：只 md
+  if(fDir===null) return true;                                           // 最近：md 和 html 都进
   if(i._d0!==fDir) return false;
   if(fSub && i._d1!==fSub) return false;
   return true;
 }
 
 function saveFilters(){
-  ST.f={dir:fDir, sub:fSub, recent:fRecent, notes:fNotes};
+  ST.f={dir:fDir, sub:fSub, recent:fRecent, notes:fNotes, kind:fKind};
   saveST();
 }
 function loadFilters(){
@@ -3152,6 +3532,25 @@ function loadFilters(){
   fDir=f.dir??null; fSub=f.sub??null;
   fRecent=f.recent===undefined?true:!!f.recent;
   fNotes=!!f.notes;
+  fKind=(f.kind==='md'||f.kind==='html')?f.kind:'all';
+}
+function setKind(k){
+  if(k!=='md' && k!=='html') k='all';
+  if(fKind===k) return;
+  fKind=k; PAGE=80;
+  syncKindSeg(); render();
+  const sc=$(listHost()); if(sc) sc.scrollTop=0;
+}
+function syncKindSeg(){
+  const hide=fNotes && !kw;
+  $$('.kindseg').forEach(box=>{
+    box.hidden=hide;
+    box.querySelectorAll('[data-kind]').forEach(b=>{
+      const on=b.dataset.kind===fKind;
+      b.classList.toggle('on', on);
+      b.setAttribute('aria-pressed', on?'true':'false');
+    });
+  });
 }
 
 /* ── 边栏：随手记 ｜ 最近 ｜ 文件夹 ｜ 设置 ──
@@ -3238,6 +3637,7 @@ function ftKick(){
 function hit(i){
   const ts=terms();
   if(!ts.length) return passes(i);
+  if(!kindOk(i)) return false;             // 搜索也跟类型筛走：只看 html 时别把 md 搜回来
   const h=hayOf(i);
   return ts.every(t=>h.includes(t)) || FT.map.has(i.路径);
 }
@@ -3328,22 +3728,40 @@ const acts = (i, idx) =>
   + `</span>`;
 
 /* 一行。窄栏 / 列表栏 / 搜索结果三种形状，走同一套选中、键盘、拖动、右键。 */
+function excerptOf(i){
+  const pv=(i && (i.预览 || NOTEPV.get(i.路径))) || '';
+  if(pv) return String(pv).replace(/\s+/g,' ').trim();
+  const p=String((i&&i.路径)||'');
+  return p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '';
+}
+
 function rowHtml(i, idx, ts, seq, kind){
   const base=`role="option" data-idx="${idx}" data-seq="${seq}" draggable="true" aria-selected="false"`;
+  const tag = kindOf(i)==='html' ? `<span class="kindtag">HTML</span>` : '';
   if(kind==='res'){
     const x=snipOf(i,ts);
     return `<div class="res" ${base}>`
-      + `<div class="rt">${hl(cleanTitle(i),ts)}</div>`
+      + `<div class="rt"><span class="t">${hl(cleanTitle(i),ts)}</span>${tag}</div>`
       + `<div class="rp">${esc(i.路径)}</div>`
       + (x?`<div class="rx">${x}</div>`:'')
       + acts(i, idx)
       + `</div>`;
   }
   const wide = kind==='rrow';
-  return `<div class="${wide?'rrow':'lrow'}" ${base}>`
-    + `<span class="t">${esc(cleanTitle(i))}</span>`
+  if(wide){
+    return `<div class="rrow" ${base}>`
+      + `<span class="t">${esc(cleanTitle(i))}</span>`
+      + tag
+      + acts(i, idx)
+      + `<span class="m num">${esc(whenLabel(i.修改时间, true))}</span>`
+      + `</div>`;
+  }
+  const ex=excerptOf(i);
+  return `<div class="lrow" ${base}>`
+    + `<span class="top"><span class="t">${esc(cleanTitle(i))}</span>${tag}`
     + acts(i, idx)
-    + `<span class="m num">${esc(whenLabel(i.修改时间, wide))}</span>`
+    + `<span class="m num">${esc(whenLabel(i.修改时间, false))}</span></span>`
+    + (ex?`<span class="ex">${esc(ex)}</span>`:'')
     + `</div>`;
 }
 
@@ -3359,6 +3777,7 @@ function render(){
   const ts=terms(), searching=ts.length>0;
   document.body.classList.toggle('searching', searching);
   if(searching) ftKick();
+  syncKindSeg();
   buildNav();
   mountOut(listHost());
   const inHub = listHost()==='#hubbody';
@@ -3374,7 +3793,8 @@ function render(){
   if(searching) hint.textContent='命中 '+list.length+' 份';
 
   if(!list.length && (searching || !inHub)){
-    $('#out').innerHTML='';
+    const empty = (searching || fNotes) ? '' : (fKind==='html' ? '没有 HTML 文件' : fKind==='md' ? '没有 Markdown 文件' : '');
+    $('#out').innerHTML = empty ? `<div class="kindempty">${empty}</div>` : '';
     selSeq=-1; saveFilters(); pushState(); return;
   }
 
@@ -3397,9 +3817,11 @@ function render(){
       listNow.push(last);
       selSeq=-1; selSet.clear();
       const seq=0, idx=items.indexOf(last);
+      const ex=excerptOf(last);
       h=`<div class="home-last" role="option" data-idx="${idx}" data-seq="${seq}" draggable="true" aria-selected="false">`
         + `<span class="last-title">${esc(cleanTitle(last))}</span>`
         + `<span class="last-time">${icon('clock',15)}<span class="num">${esc(whenLabel(last.修改时间,true))}</span></span>`
+        + (ex?`<span class="last-ex">${esc(ex)}</span>`:'')
         + `</div>`;
     }
   }else if(fNotes || fSub){
@@ -3554,6 +3976,7 @@ function docMenu(e, t){
     ...(t.ext ? [] : [{id:'newwin', label:'在新窗口打开'}]),
     {id:'copyurl',label:'拷贝路径'},
     {id:'reveal', label:'在访达中显示'},
+    {id:'type', label:'排版'},
     ...(t.ext ? [] : [{id:'share', label:'分享'}]),
   ], id=>{
     if(id==='edit') startEdit();
@@ -3565,6 +3988,7 @@ function docMenu(e, t){
       copyText('file://'+s).then(ok=>flash(ok?'路径已拷贝':'拷不了'));
     }
     else if(id==='reveal') revealPath(t.path);
+    else if(id==='type') openType();
     else if(id==='share') post({type:'share', path:LIBROOT+'/'+t.path});
   });
 }
@@ -3639,8 +4063,16 @@ $('#qclear2').onclick=()=>clearQ(true);
 });
 
 /* ── ⌘K 直达 ────────────────────────────
-   认标题与文件名，按「前缀 / 包含 ＋ 最近改动」排序。↑↓ 选，回车开，Esc 关。 */
+   上面是动作，下面是笔记。认标题与文件名，按「前缀 / 包含 ＋ 最近改动」排序。 */
 let ckList=[], ckSel=0;
+const CK_ACTS=[
+  {id:'new', title:'新建随手记', kbd:'⌘N', go(){ newNote(); }},
+  {id:'lists', title:'显示列表', kbd:'⌃⌘S', go(){ toggleLists(); }},
+  {id:'edit', title:'进入编辑', kbd:'⌘E', go(){ AMN.enterEdit(); }},
+  {id:'type', title:'排版', kbd:'', go(){ openType(); }},
+  {id:'finder', title:'在访达中显示', kbd:'⇧⌘R', go(){ AMN.reveal(); }},
+  {id:'home', title:'回到首页', kbd:'Esc', go(){ tryLeaveReader(); }},
+];
 function openQuick(){
   $('#cmdkWrap').classList.add('on');
   const el=$('#ck'); el.value=''; ckSel=0; ckRender();
@@ -3648,7 +4080,7 @@ function openQuick(){
 }
 function closeQuick(){ $('#cmdkWrap').classList.remove('on'); }
 const quickOn = () => $('#cmdkWrap').classList.contains('on');
-function ckMatch(q){
+function ckNotes(q){
   q=String(q||'').trim().toLowerCase();
   const stem=p=>p.split('/').pop().replace(/\.(md|html)$/i,'');
   const pool=items.slice();
@@ -3665,9 +4097,22 @@ function ckMatch(q){
     .sort((a,b)=> b.s-a.s || (b.i.修改时间||0)-(a.i.修改时间||0))
     .slice(0,12).map(x=>x.i);
 }
+function ckItems(q){
+  q=String(q||'').trim().toLowerCase();
+  const acts=CK_ACTS.filter(a=>!q || a.title.toLowerCase().includes(q))
+    .map(a=>({kind:'act', a}));
+  const notes=ckNotes(q).map(i=>({kind:'note', i}));
+  return acts.concat(notes);
+}
+function runCk(it){
+  closeQuick();
+  if(!it) return;
+  if(it.kind==='act'){ it.a.go(); return; }
+  openDoc(it.i);
+}
 function ckRender(){
   const q=$('#ck').value;
-  ckList=ckMatch(q);
+  ckList=ckItems(q);
   if(ckSel>=ckList.length) ckSel=Math.max(0, ckList.length-1);
   const ts=String(q||'').trim().toLowerCase().split(/\s+/).filter(Boolean);
   const mark=s=>{
@@ -3680,12 +4125,30 @@ function ckRender(){
     });
     return out;
   };
-  $('#ckList').innerHTML=ckList.map((i,n)=>
-    `<div class="krow${n===ckSel?' on':''}" data-n="${n}">`
-    + `<span class="t">${mark(cleanTitle(i))}</span>`
-    + `<span class="p">${esc(stripNo(i._d0||''))}</span></div>`).join('');
+  const acts=ckList.filter(x=>x.kind==='act');
+  const notes=ckList.filter(x=>x.kind==='note');
+  let html='';
+  if(acts.length){
+    html+=`<div class="ksec">动作</div>`;
+    acts.forEach(it=>{
+      const n=ckList.indexOf(it);
+      html+=`<div class="krow${n===ckSel?' on':''}" data-n="${n}">`
+        + `<span class="t">${esc(it.a.title)}</span>`
+        + `<span class="p">${esc(it.a.kbd||'')}</span></div>`;
+    });
+  }
+  if(notes.length){
+    html+=`<div class="ksec">笔记</div>`;
+    notes.forEach(it=>{
+      const n=ckList.indexOf(it);
+      html+=`<div class="krow${n===ckSel?' on':''}" data-n="${n}">`
+        + `<span class="t">${mark(cleanTitle(it.i))}</span>`
+        + `<span class="p">${esc(stripNo(it.i._d0||''))}</span></div>`;
+    });
+  }
+  $('#ckList').innerHTML=html;
   $$('#ckList .krow').forEach(el=>{
-    el.onclick=()=>{ const i=ckList[+el.dataset.n]; closeQuick(); if(i) openDoc(i); };
+    el.onclick=()=>runCk(ckList[+el.dataset.n]);
   });
 }
 $('#ck').oninput=()=>{ ckSel=0; ckRender(); };
@@ -3693,10 +4156,88 @@ $('#ck').onkeydown=e=>{
   if(e.isComposing || e.keyCode===229) return;
   if(e.key==='ArrowDown'){ e.preventDefault(); ckSel=Math.min(ckList.length-1, ckSel+1); ckRender(); }
   else if(e.key==='ArrowUp'){ e.preventDefault(); ckSel=Math.max(0, ckSel-1); ckRender(); }
-  else if(e.key==='Enter'){ e.preventDefault(); const i=ckList[ckSel]; closeQuick(); if(i) openDoc(i); }
+  else if(e.key==='Enter'){ e.preventDefault(); runCk(ckList[ckSel]); }
   else if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); closeQuick(); }
 };
 $('#cmdkScrim').onclick=closeQuick;
+
+/* ── 排版浮层 ─────────────────────────── */
+function openType(){
+  $('#typeWrap').classList.add('on');
+  document.body.classList.add('type-on');
+  syncPrefControls();
+}
+function closeType(){
+  $('#typeWrap').classList.remove('on');
+  document.body.classList.remove('type-on');
+}
+const typeOn = () => $('#typeWrap').classList.contains('on');
+$('#typeScrim').onclick=closeType;
+$$('#typeFont button').forEach(b=>b.onclick=()=>setPref('font', b.dataset.v));
+['typeFs','typeLh','typeW'].forEach((id,i)=>{
+  const el=$('#'+id); if(!el) return;
+  const key=['fs','lh','w'][i];
+  el.oninput=e=>setPref(key, +e.target.value);
+});
+
+/* ── 斜杠插入 ─────────────────────────── */
+const SLASH=[
+  {id:'h1', title:'标题一', k:'#'},
+  {id:'h2', title:'标题二', k:'##'},
+  {id:'h3', title:'标题三', k:'###'},
+  {id:'quote', title:'引用', k:'>'},
+  {id:'task', title:'待办', k:'[]'},
+  {id:'ul', title:'列表', k:'-'},
+  {id:'pre', title:'代码块', k:'```'},
+  {id:'hr', title:'分割线', k:'---'},
+];
+let slashI=0, slashBlk=null;
+function slashOn(){ return $('#slash').classList.contains('on'); }
+function hideSlash(){
+  $('#slash').classList.remove('on');
+  slashBlk=null;
+}
+function paintSlash(){
+  $('#slash').innerHTML='<div class="sh">插入</div>'+SLASH.map((s,i)=>
+    `<button type="button" class="${i===slashI?'on':''}" data-id="${s.id}"><span>${s.title}</span><span class="k">${s.k}</span></button>`
+  ).join('');
+  $$('#slash button').forEach((b,i)=>{
+    b.onmousedown=e=>e.preventDefault();
+    b.onmouseenter=()=>{ slashI=i; paintSlash(); };
+    b.onclick=()=>applySlash(b.dataset.id);
+  });
+}
+function maybeSlash(t){
+  if(!t || !t.editing || COMPOSING) return hideSlash();
+  const blk=curBlock(t);
+  if(!blk || !/^(P|DIV)$/.test(blk.tagName) || blk.hasAttribute('data-lock')) return hideSlash();
+  const s=getSelection();
+  if(!s || !s.rangeCount || !s.isCollapsed) return hideSlash();
+  const r=s.getRangeAt(0);
+  const pre=r.cloneRange();
+  pre.selectNodeContents(blk); pre.setEnd(r.endContainer, r.endOffset);
+  if(tidyTxt(pre.toString())!=='/') return hideSlash();
+  slashBlk=blk; slashI=0;
+  const box=$('#slash');
+  const rc=r.getBoundingClientRect();
+  box.classList.add('on');
+  paintSlash();
+  const w=240, h=Math.min(320, box.offsetHeight||240);
+  let x=rc.left, y=rc.bottom+8;
+  if(x+w>innerWidth-8) x=innerWidth-w-8;
+  if(y+h>innerHeight-8) y=Math.max(8, rc.top-h-8);
+  box.style.left=Math.max(8,x)+'px';
+  box.style.top=y+'px';
+}
+function applySlash(id){
+  const t=active();
+  const blk=slashBlk || (t && curBlock(t));
+  hideSlash();
+  if(!t || !t.editing || !blk || !blk.isConnected) return;
+  retype(t, blk, id||SLASH[slashI].id, '');
+  t.touched=true;
+  autoKick(t);
+}
 
 /* ── 新建随手记 ─────────────────────────
    落在随手记目录。⌘N 全局可用；编辑中先自动保存再新建。
@@ -3705,6 +4246,7 @@ $('#cmdkScrim').onclick=closeQuick;
 function syncNotePv(){
   NOTEPV.clear();
   ((TREE&&TREE.随手记)||[]).forEach(n=>{ if(n.预览) NOTEPV.set(n.路径, n.预览); });
+  items.forEach(i=>{ const pv=NOTEPV.get(i.路径); if(pv) i.预览=pv; });
 }
 const UNTITLED = '无标题';
 const UNTITLED_FN = /^无标题(?:_\d+)?_20\d{6}\.md$/i;
@@ -3900,7 +4442,7 @@ function renderCfg(){
     </div>
   </section>`;
 
-  $$('.seg button').forEach(b=>b.onclick=()=>setPref(b.parentElement.dataset.k, b.dataset.v));
+  $$('#viewCfg .seg button').forEach(b=>b.onclick=()=>setPref(b.parentElement.dataset.k, b.dataset.v));
   ['fs','lh','w'].forEach(k=>{ const el=$('#'+k); if(el) el.oninput=e=>setPref(k, +e.target.value); });
   $('#rstPref').onclick=()=>{ RESETTABLE.forEach(k=>PREF[k]=DEF_PREF[k]); savePref(); applyPref(); };
   $('#cfgSave').onclick=saveCfg;
@@ -3958,7 +4500,7 @@ function pushState(){
         视图: document.body.classList.contains('nodoc') ? '列表' : '阅读',
         当前文件: (t && !t.ext) ? t.path : '',
         打开标签: TABS.filter(x=>!x.ext).map(x=>x.path),
-        筛选: {文件夹:fDir||'', 子文件夹:fSub||'', 搜索:kw,
+        筛选: {文件夹:fDir||'', 子文件夹:fSub||'', 搜索:kw, 类型:fKind,
                范围: kw?'搜索':(fNotes?'随手记':(fDir?'文件夹':'最近'))},
       })}).catch(()=>{});
   }, 400);
@@ -4031,13 +4573,22 @@ addEventListener('pointerdown', e=>{
 $('#listbtn').onclick=toggleLists;
 $('#navNotes').onclick=()=>goHome(true);
 $('#navRecent').onclick=()=>goHome(false);
+$$('.kindseg [data-kind]').forEach(b=>b.onclick=()=>setKind(b.dataset.kind));
 $('#navCfg').onclick=openCfg;
 $('#cfgClose').onclick=closeCfg;
 $('#cfgWrap').onclick=e=>{ if(e.target.id==='cfgWrap') closeCfg(); };
 $('#qlclose').onclick=closeQL;
 $('#qlopen').onclick=()=>{ const i=qlItem; closeQL(); if(i) openDoc(i); };
 $('#qlwrap').onclick=e=>{ if(e.target.id==='qlwrap') closeQL(); };
-addEventListener('pointerdown', e=>{ if(!e.target.closest('#ctx')) closeCtx(); }, true);
+addEventListener('pointerdown', e=>{
+  if(!e.target.closest('#ctx')) closeCtx();
+  if(!e.target.closest('#tabpick') && !e.target.closest('#tabmore')) closeTabPick();
+}, true);
+addEventListener('resize', ()=>{ layoutTabs(); if(tabPickOn()) openTabPick(); });
+if(window.ResizeObserver){
+  const pane=$('#docpane');
+  if(pane) new ResizeObserver(()=>layoutTabs()).observe(pane);
+}
 addEventListener('blur', closeCtx);
 /* 空白处右键：不弹自己的菜单，交回系统 */
 document.addEventListener('contextmenu', e=>{ if(!e.target.closest('[data-seq],#dirList [data-d],.pane')) closeCtx(); });
@@ -4076,6 +4627,9 @@ window.AMN = {
   print(){ try{ window.print(); }catch(e){} },
   escape(){
     if($('#ctx').classList.contains('on')){ closeCtx(); return; }
+    if(tabPickOn()){ closeTabPick(); return; }
+    if(slashOn()){ hideSlash(); return; }
+    if(typeOn()){ closeType(); return; }
     const wp=$('#wlpick'); if(wp && wp.classList.contains('on')){ wp.classList.remove('on'); return; }
     const fb=$('#fmt'); if(fb && fb.classList.contains('on')){ hideFmt(); return; }
     if(quickOn()){ closeQuick(); return; }
@@ -4138,6 +4692,13 @@ addEventListener('keydown', e=>{
   if(e.metaKey && e.key.toLowerCase()==='w' && inReader && curTab){
     e.preventDefault(); closeTab(curTab); return;
   }
+  // ⌃Tab / ⌃⇧Tab 在打开的标签里循环。⌘W 仍关当前这份。
+  if(e.ctrlKey && !e.metaKey && !e.altKey && e.key==='Tab' && inReader && TABS.length>=2){
+    e.preventDefault(); cycleTab(e.shiftKey ? -1 : 1); return;
+  }
+  if(e.ctrlKey && !e.metaKey && (e.key==='PageDown' || e.key==='PageUp') && inReader && TABS.length>=2){
+    e.preventDefault(); cycleTab(e.key==='PageDown' ? 1 : -1); return;
+  }
   if(SHELL) return;                       // 下面几条壳里走菜单转发
   if(e.metaKey && e.altKey && e.key.toLowerCase()==='k'){ e.preventDefault(); focusSearch(); return; }
   if(e.metaKey && e.key.toLowerCase()==='k'){ e.preventDefault(); AMN.quickOpen(); return; }
@@ -4173,6 +4734,7 @@ if(EMBED){
   t.raw=EMBED.正文;
   const md=paneOf(t).querySelector('.md');
   renderMd(md, EMBED.正文, dirOf(EMBED.路径));
+  decorateChrome(md, EMBED.路径);
   decorateHistory(md);
   enterReader(); showTab(t.id);
 }else{
