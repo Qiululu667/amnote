@@ -19,22 +19,22 @@
 //
 // ─── 九条设计约束，改代码前先看 ─────────────────────────────────────────
 //
-// 1. ⌘W / ⌘S / ⌘K / ⌘E 现在进菜单了（20260822 收 ⌘W ⌘S，20260829 加 ⌘K ⌘E；
-//    旧规矩作废但要知道它为什么存在过）。
+// 1. ⌘W / ⌘S / ⌘K / ⌘E / ⌘T / ⌘N / ⌘L 现在进菜单了（20260822 收 ⌘W ⌘S，
+//    20260829 加 ⌘K ⌘E；浏览器壳这一轮把 ⌘T ⌘N ⌘L 也收进来）。
 //    旧规矩是「这几个键一律不许出现在原生菜单里」：NSMenu 的 performKeyEquivalent 早于
 //    WKWebView 收到事件，菜单一旦占了这个键，门户自己 addEventListener 绑的同名快捷键
 //    就永久失灵，表现是按了没反应。
 //    新做法把这条正面解决掉：菜单项的 target 指向 AppDelegate，action 方法里
 //    evaluateJavaScript 调门户挂在 window.AMN 上的同名函数
-//    （closeTab / save / quickOpen / enterEdit / toggleLists / rescan）。
+//    （closeTab / save / quickOpen / enterEdit / newTab / newWindow / focusOmnibox）。
 //    菜单抢到键之后调的是同一个函数，结果一致；快捷键在菜单里查得到，辅助功能也读得到。
-//    代价是门户必须导出 window.AMN 那一套接口（契约见 02_规范 的门户与壳接口文档）。
-//    门户没导出时，AMN.state() 拿不到值，这些菜单项一律保持灰态——按不动，但不会出错。
-//    ⌘W 现在按上下文工作：有文稿时关当前标签；首页没有文稿时关主窗口，服务继续常驻。
-//    ⇧⌘W 仍是显式「关闭窗口」，走 performClose:。
-//    **20260829 起 ⌘K 是「快速直达」浮层（AMN.quickOpen）**，门户里原来那条
-//    「⌘K 跳到搜索框」让位挪到 ⌥⌘K（AMN.focusSearch）；⌘E 是「进入编辑」（AMN.enterEdit）。
-//    这三个名字属于改版契约第 1 节，前端那边同名实现，改一边就得改另一边。
+//    代价是门户必须导出 window.AMN 那一套接口。门户没导出时，AMN.state() 拿不到值，
+//    这些菜单项一律保持灰态——按不动，但不会出错。
+//    ⌘W：主窗和完整浏览器辅窗关当前标签；仅剩起始页时关窗口。独立阅读窗没有标签，
+//    直接 performClose。⇧⌘W 仍是显式「关闭窗口」。
+//    **⌘K 是「快速直达」浮层（AMN.quickOpen）**，⌥⌘K 仍是 AMN.focusSearch；
+//    ⌘L 是地址栏（AMN.focusOmnibox）。⌘T 新建标签（AMN.newTab），⌘N 新建完整窗口
+//    （AMN.newWindow），不再占用「新建随手记」。这些名字跟前端同名，改一边就得改另一边。
 // 2. Edit 菜单必须有。WKWebView 里的 ⌘C/⌘V/⌘A/⌘Z 是靠菜单项的 selector 生效的，
 //    菜单里没有这些项，门户的 MD 编辑器就没法复制粘贴。
 // 3. JS 的 alert / confirm / prompt 必须由 WKUIDelegate 接住，window.open 和
@@ -54,14 +54,9 @@
 //    代价：关窗口＝卸门户，未保存的改动会丢，所以 windowShouldClose: 要跟 ⌘Q 一样拦一道。
 //    （Agent 的「打开这份」队列 2026-08-25 撤了——交付只给路径，不推窗口。
 //    双击 md 和 amnote:// 进来的那条还在，走 queueOpen:，它自己会把窗口开回来。）
-// 5. 工具栏就三件：列表切换 ｜ 弹性空白 ｜ 新建随手记（20260830 图标改版）。
-//    「新建随手记」任何状态下都要点得着，所以它常驻、不做启用态校验。
-//    返回 / 分享 / 编辑 三颗撤了：返回归 Esc 链，编辑归 ⌘E，分享挪进文件菜单。
-//    **工具栏标识当前是 AMNoteMain5**：autosavesConfiguration 会把上一版的
-//    Size Mode=Regular 存下来，图像画小了也会被系统放大，看起来像没改。
-//    换标识才能让 Small 尺寸和自绘 16pt 图标真正生效。
-//    **20260830 起两颗图标不再用 SF Symbol**：sidebar.left / plus 偏方，
-//    改成自绘圆角描边（列表＝圆角矩形＋竖线，新建＝圆端十字），template 着色。
+// 5. 原生 NSToolbar 不再挂上窗口。标签、地址栏、书签栏都画在网页顶上那 52px 里，
+//    再挂一排原生按钮会跟网页顶栏抢位置，交通灯也会被顶下去。buildToolbar 还留着
+//    （自定义搜索框那条线没拆），只是 buildWindow 不再把它赋给 _win.toolbar。
 // 6. 起服务前先验 Python 能不能跑（20260829 加）。只判「文件存在且可执行」不够：
 //    没装 Xcode 命令行工具的机器上 /usr/bin/python3 是个占位壳子——存在、可执行、
 //    一跑就弹系统那句「要装命令行工具吗」然后非零退出。表现是 AM·Note 点开一直转，
@@ -69,8 +64,8 @@
 //    所以 fork 之前先拿 `-c pass` 把三个候选挨个跑一遍（各 3 秒超时），
 //    一个都不通就直接告诉用户去 xcode-select --install。
 // 7. 视觉无边框（20260829 加）。窗口仍保留系统圆角、阴影、拖动、
-//    缩放和交通灯；只收掉视觉噪声：内容铺到标题栏背后、标题栏不画分界线、工具按钮
-//    默认只露 SF Symbol，不常驻圆形描边。网页在 shell 模式给系统标题栏预留 52px，
+//    缩放和交通灯；只收掉视觉噪声：内容铺到标题栏背后、标题栏不画分界线、
+//    标题字符串藏起来以免压在标签上。网页在 shell 模式给交通灯预留 52px，
 //    这两个数是一对；改标题栏高度时要同步看 `body.shell #app/#hub`。**网页主题和原生
 //    标题栏也必须同步**：门户发 `{type:'theme', value:'auto|light|dark'}`，壳给窗口设置
 //    Aqua / DarkAqua / 跟随系统。漏掉这条会让白色标题和白色按钮落在浅色网页上，近乎消失。
@@ -106,12 +101,11 @@ static const NSTimeInterval kShowTimeout = 12.0;
 
 static const CGFloat kWinW = 1320, kWinH = 880;
 
-/// 门户在 860px 以下会把左栏整个隐掉，待办和设置就够不着了（README「还没做的」第四条）。
-/// 这里把最小宽度卡在 900，从源头上不让用户拖到那个区间。
-static const CGFloat kMinW = 900, kMinH = 620;
+/// 列表不再是默认布局，最小宽度从 900 收到 720，小屏也能开出一栏正文。
+static const CGFloat kMinW = 720, kMinH = 620;
 
 /// 独立文稿窗口（`/portal?solo=1&doc=…`）。它只有正文一栏，没有边栏也没有列表，
-/// 所以 kMinW 那个 900 的下限不适用——按一栏正文的最小可读宽度卡。
+/// 所以 kMinW 那个下限不适用——按一栏正文的最小可读宽度卡。
 static const CGFloat kSoloW = 1020, kSoloH = 940;
 static const CGFloat kSoloMinW = 480, kSoloMinH = 400;
 
@@ -400,19 +394,52 @@ static NSImage *sym(NSString *name, NSString *desc) {
     return nil;
 }
 
+/// 菜单栏那一颗：应用图标里的白云，抠成 18pt template，颜色跟菜单栏走。
+/// 图由 make_icon.py 从母版抽出，打进 Resources/menubar-cloud(@2x).png。
+/// 缺文件时退到 SF cloud.fill，再没有就让调用方改成文字。
+static NSImage *menubarCloudIcon(void) {
+    NSString *res = [NSBundle mainBundle].resourcePath;
+    NSFileManager *fm = [NSFileManager defaultManager];
+    NSString *p2 = [res stringByAppendingPathComponent:@"menubar-cloud@2x.png"];
+    NSString *p1 = [res stringByAppendingPathComponent:@"menubar-cloud.png"];
+    NSImage *img = nil;
+    if ([fm fileExistsAtPath:p2])
+        img = [[NSImage alloc] initWithContentsOfFile:p2];
+    else if ([fm fileExistsAtPath:p1])
+        img = [[NSImage alloc] initWithContentsOfFile:p1];
+    if (img) {
+        img.size = NSMakeSize(18.0, 18.0);
+        img.template = YES;
+        return img;
+    }
+    NSImage *sf = sym(@"cloud.fill", @"AM·Note");
+    if (sf) sf.template = YES;
+    return sf;
+}
+
 /// 门户最近一次告诉壳的主题。全屏会重建标题栏，必须拿这个值再刷一遍底色。
 static NSString *gAppliedTheme = @"auto";
 
-/// 浅色用纯白，深色用网页 --win。全屏标题栏默认是系统白，网页若是 #f8f8f8
-/// 就会在顶上留一条「上面偏白、下面偏灰」的过渡带。
-static NSColor *surfaceColorForTheme(NSString *theme, NSWindow *window) {
+static BOOL themeIsDark(NSString *theme, NSWindow *window) {
     NSString *match = [window.effectiveAppearance bestMatchFromAppearancesWithNames:
                        @[ NSAppearanceNameAqua, NSAppearanceNameDarkAqua ]];
-    BOOL dark = [theme isEqualToString:@"dark"] ||
-                (![theme isEqualToString:@"light"] && [match isEqualToString:NSAppearanceNameDarkAqua]);
-    return dark
+    return [theme isEqualToString:@"dark"] ||
+           (![theme isEqualToString:@"light"] && [match isEqualToString:NSAppearanceNameDarkAqua]);
+}
+
+/// 网页正文 / WebView 垫色，对应 template.html 的 --win。
+static NSColor *surfaceColorForTheme(NSString *theme, NSWindow *window) {
+    return themeIsDark(theme, window)
         ? [NSColor colorWithSRGBRed:25.0/255.0 green:25.0/255.0 blue:27.0/255.0 alpha:1.0]
         : [NSColor colorWithSRGBRed:1.0 green:1.0 blue:1.0 alpha:1.0];
+}
+
+/// 标题栏 / 交通灯背后那一层，对应 template.html 的 --chrome。
+/// 标签条是灰的，这里必须跟着灰，不然红绿灯周围会露出一块白。
+static NSColor *chromeColorForTheme(NSString *theme, NSWindow *window) {
+    return themeIsDark(theme, window)
+        ? [NSColor colorWithSRGBRed:16.0/255.0 green:16.0/255.0 blue:18.0/255.0 alpha:1.0]
+        : [NSColor colorWithSRGBRed:230.0/255.0 green:231.0/255.0 blue:234.0/255.0 alpha:1.0];
 }
 
 /// 把标题栏里那层 vibrancy 收掉，露出 window.backgroundColor。
@@ -528,11 +555,12 @@ static void applyThemeToWindow(NSWindow *window, NSString *theme) {
     }
 
     NSColor *surface = surfaceColorForTheme(gAppliedTheme, window);
-    window.backgroundColor = surface;
+    NSColor *chrome = chromeColorForTheme(gAppliedTheme, window);
+    window.backgroundColor = chrome;
     window.contentView.wantsLayer = YES;
     window.contentView.layer.backgroundColor = surface.CGColor;
     paintWebSurfaces(window, surface);
-    paintTitlebarSurface(window, surface);
+    paintTitlebarSurface(window, chrome);
 }
 
 /// AppKit 进入或退出全屏时会重新组织标题栏视图，原来设过的分隔线状态可能被系统重置。
@@ -546,6 +574,10 @@ static void applySeamlessChrome(NSWindow *window) {
     if ((mask & NSWindowStyleMaskTitled) && !(mask & NSWindowStyleMaskFullSizeContentView)) {
         window.styleMask = mask | NSWindowStyleMaskFullSizeContentView;
     }
+    // 完整浏览器窗的标签画在标题栏那一行。标题字符串一旦画出来
+    // 会压在标签中间；独立阅读窗没有那条标签带，identifier 把它豁免掉。
+    if (![window.identifier isEqualToString:@"amn.solo"])
+        window.titleVisibility = NSWindowTitleHidden;
     applyThemeToWindow(window, gAppliedTheme);
 }
 
@@ -846,8 +878,9 @@ static void applySeamlessChrome(NSWindow *window) {
     BOOL                       _updCancel;       // 关进度窗之后，后台解压结果必须丢掉
     BOOL                       _installingUpdate;
 
-    /// 独立文稿窗口。**两份都要存**：ARC 下 releasedWhenClosed=NO 的窗口
-    /// 没人强引用的话，close 之后就直接没了，windowWillClose: 里再去拿就是空的。
+    /// 独立文稿窗 ＋ 完整浏览器辅窗。**两份都要存**：ARC 下 releasedWhenClosed=NO
+    /// 的窗口没人强引用的话，close 之后就直接没了，windowWillClose: 里再去拿就是空的。
+    /// 两类窗靠 window.identifier 分（amn.solo / amn.browser）：⌘W 和 Esc 语义不同。
     NSMutableArray<WKWebView *> *_soloWebs;
     NSMutableArray<NSWindow *>  *_soloWins;
 }
@@ -1053,7 +1086,7 @@ static void applySeamlessChrome(NSWindow *window) {
     _win.title = @"AM·Note";
     _win.representedURL = nil;
     _win.documentEdited = NO;
-    [_toolbar validateVisibleItems];
+    if (_toolbar) [_toolbar validateVisibleItems];
 }
 
 - (void)startTimers {
@@ -1125,13 +1158,15 @@ static void applySeamlessChrome(NSWindow *window) {
                                                   NSWindowStyleMaskResizable)
                                          backing:NSBackingStoreBuffered
                                            defer:NO];
-    _win.title = @"AM·Note";
+    _win.title = @"AM·Note";              // Mission Control / 辅助功能仍读得到
+    _win.identifier = @"amn.main";
+    _win.titleVisibility = NSWindowTitleHidden;  // 不占标签那一行
     _win.titlebarAppearsTransparent = YES;
     _win.titlebarSeparatorStyle = NSTitlebarSeparatorStyleNone;
     _win.movableByWindowBackground = YES;
     _win.hasShadow = YES;
     _win.minSize = NSMakeSize(kMinW, kMinH);
-    // 关了不释放。窗口对象要留着，重开时只是把它 order 回来，位置和工具栏都不用重建。
+    // 关了不释放。窗口对象要留着，重开时只是把它 order 回来。
     _win.releasedWhenClosed = NO;
     _win.delegate = self;                 // windowShouldClose: / windowWillClose:
     _win.tabbingMode = NSWindowTabbingModeDisallowed;
@@ -1141,7 +1176,6 @@ static void applySeamlessChrome(NSWindow *window) {
     content.wantsLayer = YES;
     _win.contentView = content;
 
-    [self buildToolbar];
     applySeamlessChrome(_win);
     [self buildFindBar];
 
@@ -1250,6 +1284,11 @@ static void applySeamlessChrome(NSWindow *window) {
                    dispatch_get_main_queue(), ^{ applySeamlessChrome(window); });
 }
 
+/// 菜单校验读的是上一扇窗的缓存。切到辅窗立刻按 ⌘W，会把别人的 isStart 用在这里。
+- (void)windowDidBecomeKey:(NSNotification *)n {
+    if (n.object == _win || [_soloWins containsObject:n.object]) [self refreshState];
+}
+
 // MARK: 状态栏图标
 //
 // 服务常驻之后，没窗口的时候这里是唯一入口。菜单项一律不给快捷键：
@@ -1258,10 +1297,9 @@ static void applySeamlessChrome(NSWindow *window) {
 - (void)buildStatusItem {
     _statusItem = [NSStatusBar.systemStatusBar statusItemWithLength:NSSquareStatusItemLength];
     NSStatusBarButton *b = _statusItem.button;
-    NSImage *img = sym(@"note.text", @"AM·Note");
+    NSImage *img = menubarCloudIcon();
     if (img) {
-        [img setTemplate:YES];        // 跟着菜单栏深浅走
-        b.image = img;
+        b.image = img;                // template，跟着菜单栏深浅走
     } else {
         b.title = @"AM";
     }
@@ -1295,8 +1333,8 @@ static void applySeamlessChrome(NSWindow *window) {
 // MARK: N-1 工具栏
 
 - (void)buildToolbar {
-    // 标识跟着默认布局一起换代（设计约束 5）。沿用旧标识的话，
-    // autosavesConfiguration 会把上一版存下来的按钮组合原样恢复，新默认布局根本露不出来。
+    // 不再赋给 _win.toolbar：网页自己画顶栏，原生工具栏会把交通灯顶出那 52px。
+    // 方法留着，搜索框那条 AMN.search 的线没拆，自定义面板要拖回来还编译得过。
     _toolbar = [[NSToolbar alloc] initWithIdentifier:@"AMNoteMain5"];
     _toolbar.delegate = self;
     _toolbar.displayMode = NSToolbarDisplayModeIconOnly;
@@ -1304,8 +1342,6 @@ static void applySeamlessChrome(NSWindow *window) {
     _toolbar.autosavesConfiguration = YES;
     _toolbar.showsBaselineSeparator = NO;
     _toolbar.sizeMode = NSToolbarSizeModeSmall;
-    _win.toolbar = _toolbar;
-    if (@available(macOS 11.0, *)) { _win.toolbarStyle = NSWindowToolbarStyleUnified; }
 }
 
 /// 设计约束 5：默认就这三件。搜索框不在默认里，但留在「允许」里——
@@ -1523,10 +1559,34 @@ static void applySeamlessChrome(NSWindow *window) {
 
 // MARK: 壳 → 门户
 
+/// 菜单和快捷键打到「当前这块网页」上。辅窗在前台时还走 _web，
+/// 就会在看不见的主窗里新建标签、关错页。
+- (WKWebView *)activeWeb {
+    NSWindow *key = NSApp.keyWindow;
+    if (!key || key == _win) return _web;
+    NSUInteger i = [_soloWins indexOfObject:key];
+    if (i != NSNotFound && i < _soloWebs.count) return _soloWebs[i];
+    return _web;
+}
+
+/// 独立阅读窗：没有标签带，⌘W / Esc 都是关窗口。完整浏览器辅窗不是。
+- (BOOL)isSoloWindow:(NSWindow *)win {
+    if (!win || win == _win) return NO;
+    if ([win.identifier isEqualToString:@"amn.solo"]) return YES;
+    if ([win.identifier isEqualToString:@"amn.browser"]) return NO;
+    NSUInteger i = [_soloWins indexOfObject:win];
+    if (i == NSNotFound) return NO;
+    WKWebView *web = i < _soloWebs.count ? _soloWebs[i] : nil;
+    if ([self isAuxURL:web.URL]) return NO;
+    return YES;
+}
+
 /// 所有 AMN.* 调用统一走这里。三层防御：网页没起来不发；window.AMN 不存在不发；
 /// 函数不存在不发。老门户装进新壳里只会是「按了没反应」，不会报错。
 - (void)amn:(NSString *)fn args:(NSArray *)args {
-    if (!_web || !_loadedOnce || !fn.length) return;
+    WKWebView *web = [self activeWeb];
+    if (!web || !fn.length) return;
+    if (web == _web && !_loadedOnce) return;
     NSString *argStr = @"";
     if (args.count) {
         NSData *d = [NSJSONSerialization dataWithJSONObject:args options:0 error:nil];
@@ -1535,14 +1595,16 @@ static void applySeamlessChrome(NSWindow *window) {
     }
     NSString *js = [NSString stringWithFormat:
         @"try{if(window.AMN&&typeof AMN.%@==='function')AMN.%@(%@)}catch(e){}", fn, fn, argStr];
-    [_web evaluateJavaScript:js completionHandler:nil];
+    [web evaluateJavaScript:js completionHandler:nil];
 }
 
 // MARK: 菜单校验用的状态缓存
 
 - (void)refreshState {
-    if (!_web || !_loadedOnce) return;
-    [_web evaluateJavaScript:
+    WKWebView *web = [self activeWeb];
+    if (!web) return;
+    if (web == _web && !_loadedOnce) return;
+    [web evaluateJavaScript:
         @"(function(){try{if(window.AMN&&typeof AMN.state==='function')return AMN.state()}catch(e){}return ''})()"
            completionHandler:^(id r, NSError *e) {
         NSDictionary *d = nil;
@@ -1561,15 +1623,19 @@ static void applySeamlessChrome(NSWindow *window) {
 
 - (BOOL)stateFlag:(NSString *)key {
     if (!_stateOK) {
-        // state() 拿不到时一律当假，只有「有没有文档」例外——doc 消息来过就是知道的
-        return [key isEqualToString:@"hasDoc"] ? (_docURL != nil) : NO;
+        // state() 拿不到时一律当假，只有两条例外：
+        // hasDoc 可以看 doc 消息；书签栏默认开着，缺字段时勾号不该先灭掉。
+        if ([key isEqualToString:@"hasDoc"]) return _docURL != nil;
+        if ([key isEqualToString:@"bookmarks"]) return YES;
+        return NO;
     }
     id v = _state[key];
+    if (v == nil && [key isEqualToString:@"bookmarks"]) return YES;
     return [v respondsToSelector:@selector(boolValue)] ? [v boolValue] : NO;
 }
 
 - (void)syncFromState {
-    [_toolbar validateVisibleItems];
+    if (_toolbar) [_toolbar validateVisibleItems];
 }
 
 - (void)applicationDidBecomeActive:(NSNotification *)n { [self refreshState]; }
@@ -1867,7 +1933,9 @@ static void applySeamlessChrome(NSWindow *window) {
     // ── 文件（X-13）──
     NSMenuItem *fileItem = [NSMenuItem new];
     NSMenu *file = [[NSMenu alloc] initWithTitle:@"文件"];
-    [[file addItemWithTitle:@"新建随手记" action:@selector(mNew:) keyEquivalent:@"n"] setTarget:self];
+    [[file addItemWithTitle:@"新建窗口" action:@selector(mNew:) keyEquivalent:@"n"] setTarget:self];
+    [[file addItemWithTitle:@"新建标签页" action:@selector(mNewTab:) keyEquivalent:@"t"] setTarget:self];
+    [[file addItemWithTitle:@"新建随手记" action:@selector(mNewNote:) keyEquivalent:@""] setTarget:self];
     [file addItem:NSMenuItem.separatorItem];
     NSMenuItem *popw = [file addItemWithTitle:@"在新窗口打开"
                                        action:@selector(mPopoutWindow:) keyEquivalent:@"o"];
@@ -1917,6 +1985,7 @@ static void applySeamlessChrome(NSWindow *window) {
                                          action:@selector(mFocusSearch:) keyEquivalent:@"k"];
     focusQ.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagOption;
     focusQ.target = self;
+    [[edit addItemWithTitle:@"聚焦地址栏" action:@selector(mFocusOmnibox:) keyEquivalent:@"l"] setTarget:self];
     [edit addItem:NSMenuItem.separatorItem];
     [[edit addItemWithTitle:@"在本页查找" action:@selector(showFind:) keyEquivalent:@"f"] setTarget:self];
     editItem.submenu = edit;
@@ -1925,6 +1994,13 @@ static void applySeamlessChrome(NSWindow *window) {
     // ── 显示 ──
     NSMenuItem *viewItem = [NSMenuItem new];
     NSMenu *view = [[NSMenu alloc] initWithTitle:@"显示"];
+    [[view addItemWithTitle:@"后退" action:@selector(mBack:) keyEquivalent:@"["] setTarget:self];
+    [[view addItemWithTitle:@"前进" action:@selector(mForward:) keyEquivalent:@"]"] setTarget:self];
+    [view addItem:NSMenuItem.separatorItem];
+    NSMenuItem *bm = [view addItemWithTitle:@"显示书签栏"
+                                     action:@selector(mToggleBookmarks:) keyEquivalent:@"b"];
+    bm.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
+    bm.target = self;
     // 改名「显示列表」：新版切的是「纯正文 ↔ 边栏＋列表＋正文」整块，不只是最左那一栏。
     NSMenuItem *sb = [view addItemWithTitle:@"显示列表"
                                      action:@selector(mLists:) keyEquivalent:@"s"];
@@ -1996,9 +2072,14 @@ static void applySeamlessChrome(NSWindow *window) {
     SEL a = item.action;
     if (a == @selector(mSave:))     return [self stateFlag:@"editing"] || [self stateFlag:@"dirty"];
     if (a == @selector(mCloseTab:)) {
-        BOOL inReader = [self stateFlag:@"inReader"];
-        item.title = inReader ? @"关闭标签" : @"关闭窗口";
-        return (NSApp.keyWindow != nil);
+        NSWindow *key = NSApp.keyWindow;
+        BOOL closeWin = NO;
+        if ([self isSoloWindow:key] ||
+            (key && key != _win && ![_soloWins containsObject:key])) closeWin = YES;
+        else if (!_stateOK) closeWin = ![self stateFlag:@"inReader"];
+        else closeWin = [self stateFlag:@"isStart"];
+        item.title = closeWin ? @"关闭窗口" : @"关闭标签";
+        return (key != nil);
     }
     // 独立窗口在前台时灰掉：它自己就是一个独立窗口，再开一个还是同一份
     if (a == @selector(mPopoutWindow:))
@@ -2017,10 +2098,19 @@ static void applySeamlessChrome(NSWindow *window) {
         item.state = on ? NSControlStateValueOn : NSControlStateValueOff;
         return _stateOK;
     }
+    if (a == @selector(mToggleBookmarks:)) {
+        item.state = [self stateFlag:@"bookmarks"] ? NSControlStateValueOn : NSControlStateValueOff;
+        return _stateOK;
+    }
+    if (a == @selector(mBack:))     return [self stateFlag:@"canBack"];
+    if (a == @selector(mForward:))  return [self stateFlag:@"canForward"];
     if (a == @selector(mCopyPath:)) return [self stateFlag:@"hasDoc"];
-    if (a == @selector(mNew:) || a == @selector(mSettings:) ||
+    if (a == @selector(mNew:) || a == @selector(mNewTab:) ||
+        a == @selector(mNewNote:) ||
+        a == @selector(mSettings:) ||
         a == @selector(mNotes:) || a == @selector(mRecent:) ||
-        a == @selector(mQuickOpen:) || a == @selector(mFocusSearch:)) {
+        a == @selector(mQuickOpen:) || a == @selector(mFocusSearch:) ||
+        a == @selector(mFocusOmnibox:)) {
         return _stateOK;
     }
     if (a == @selector(mPrint:) || a == @selector(reloadPortal:) ||
@@ -2040,7 +2130,9 @@ static void applySeamlessChrome(NSWindow *window) {
 
 // MARK: 菜单动作 · 转给门户
 
-- (void)mNew:(id)s       { [self amn:@"newNote" args:nil]; }
+- (void)mNew:(id)s       { [self amn:@"newWindow" args:nil]; }
+- (void)mNewTab:(id)s    { [self amn:@"newTab" args:nil]; }
+- (void)mNewNote:(id)s   { [self amn:@"newNote" args:nil]; }
 
 /// 把主窗口里开着的那一份放进一个独立窗口。门户自己 window.open，
 /// 绕回上面 createWebViewWithConfiguration: 那一支。
@@ -2057,11 +2149,21 @@ static void applySeamlessChrome(NSWindow *window) {
 - (void)mSave:(id)s      { [self amn:@"save" args:nil]; }
 - (void)mCloseTab:(id)s {
     NSWindow *key = NSApp.keyWindow;
-    // 独立阅读窗口没有门户标签语义，⌘W 按系统习惯直接关它。
-    if (key && key != _win) { [key performClose:nil]; return; }
-    // 主窗口有文稿时仍只关标签；回到沉浸首页后，同一组键关闭窗口但不退出服务。
-    if ([self stateFlag:@"inReader"]) [self amn:@"closeTab" args:nil];
-    else [_win performClose:nil];
+    // 独立阅读窗没有标签；更新进度这类附属窗也不是浏览器。两者都直接关。
+    if (key && key != _win &&
+        ([self isSoloWindow:key] || ![_soloWins containsObject:key])) {
+        [key performClose:nil];
+        return;
+    }
+    // 主窗和完整浏览器辅窗：仅剩起始页时关窗口，否则只关当前标签。
+    // 门户没导出 AMN 时沿用旧判据（有没有文稿），免得 ⌘W 在首页变成按了没反应。
+    if (!_stateOK) {
+        if ([self stateFlag:@"inReader"]) [self amn:@"closeTab" args:nil];
+        else [(key ?: _win) performClose:nil];
+        return;
+    }
+    if ([self stateFlag:@"isStart"]) [(key ?: _win) performClose:nil];
+    else [self amn:@"closeTab" args:nil];
 }
 - (void)mSettings:(id)s  { [self amn:@"settings" args:nil]; }
 - (void)mLists:(id)s     { [self amn:@"toggleLists" args:nil]; }
@@ -2071,6 +2173,10 @@ static void applySeamlessChrome(NSWindow *window) {
 /// ⌘K。老门户没有 quickOpen 这个函数，amn: 那三层防御会让它静默不响应，不会报错。
 - (void)mQuickOpen:(id)s  { [self amn:@"quickOpen" args:nil]; }
 - (void)mFocusSearch:(id)s { [self amn:@"focusSearch" args:nil]; }
+- (void)mFocusOmnibox:(id)s { [self amn:@"focusOmnibox" args:nil]; }
+- (void)mToggleBookmarks:(id)s { [self amn:@"toggleBookmarks" args:nil]; }
+- (void)mBack:(id)s      { [self amn:@"back" args:nil]; }
+- (void)mForward:(id)s   { [self amn:@"forward" args:nil]; }
 - (void)mEnterEdit:(id)s  { [self amn:@"enterEdit" args:nil]; }
 /// 分享。门户没导出 AMN 时壳自己也能做——路径在 doc 消息里已经拿到了。
 - (void)mShare:(id)s     { [self sharePath:nil]; }
@@ -2154,10 +2260,11 @@ static void applySeamlessChrome(NSWindow *window) {
     NSAlert *a = [NSAlert new];
     a.messageText = @"快捷键";
     a.informativeText =
-        @"⌘N 新建随手记\n⌥⌘C 拷贝路径\n⇧⌘R 在访达中显示\n⌥⌘O 在新窗口打开\n"
-         "⌘E 进入编辑\n⌘S 存储\n⌘W 关闭标签／首页关窗口\n⇧⌘W 关闭窗口\n⌘P 打印\n"
+        @"⌘T 新建标签页（开始页）\n⌘N 新建窗口\n⌘L 聚焦地址栏\n⌘⇧B 显示/隐藏书签栏\n"
+         "⌘[ / ⌘] 后退 / 前进\n⌥⌘C 拷贝路径\n⇧⌘R 在访达中显示\n⌥⌘O 把这份放到独立阅读窗\n"
+         "⌘E 进入编辑\n⌘S 存储\n⌘W 关闭标签／仅剩起始页时关窗口\n⇧⌘W 关闭窗口\n⌘P 打印\n"
          "⌃Tab 切换标签\n"
-         "⌘K 快速直达\n⌥⌘K 跳到搜索框\n⌃⌘S 显示列表\n⌥⌘I 显示检查器\n"
+         "⌘K 快速直达\n⌥⌘K 聚焦地址栏\n⌃⌘S 显示列表\n⌥⌘I 显示检查器\n"
          "⌘F 在本页查找\n⌘R 重新载入\n"
          "⌃⌘F 进入全屏\nEsc 关浮层 / 退出编辑";
     [a addButtonWithTitle:@"好"];
@@ -2755,17 +2862,38 @@ static BOOL isLocalURL(NSURL *u) {
     return [s isEqualToString:@"about"] || [s isEqualToString:@"blob"] || [s isEqualToString:@"data"];
 }
 
+/// 主框只许停在门户自己的地址上。库里的 .html 一旦顶栏载入，就变成
+/// 「页面里的页面」，壳的快捷键和 AMN 通道都会对不上。
+static BOOL isShellMainURL(NSURL *u) {
+    if (!u) return NO;
+    NSString *s = u.scheme;
+    if ([s isEqualToString:@"about"] || [s isEqualToString:@"blob"] || [s isEqualToString:@"data"]) return YES;
+    NSString *path = u.path ?: @"";
+    if ([path isEqualToString:@"/portal"] || [path isEqualToString:@"/portal/"]) return YES;
+    if ([path hasPrefix:@"/__"]) return YES;
+    return NO;
+}
+
 - (void)webView:(WKWebView *)w
     decidePolicyForNavigationAction:(WKNavigationAction *)act
                     decisionHandler:(void (^)(WKNavigationActionPolicy))done {
     NSURL *u = act.request.URL;
-    if (!u || isLocalURL(u)) { done(WKNavigationActionPolicyAllow); return; }
-    // 库外的链接不在门户里开，交给系统默认浏览器
-    [NSWorkspace.sharedWorkspace openURL:u];
+    if (!u) { done(WKNavigationActionPolicyAllow); return; }
+    if (!isLocalURL(u)) {
+        // 库外的链接不在门户里开，交给系统默认浏览器
+        [NSWorkspace.sharedWorkspace openURL:u];
+        done(WKNavigationActionPolicyCancel);
+        return;
+    }
+    // iframe 里的库文件（HTML 阅读器）必须放行；顶栏导航到同一份则拦掉。
+    BOOL mainFrame = !act.targetFrame || act.targetFrame.isMainFrame;
+    if (!mainFrame) { done(WKNavigationActionPolicyAllow); return; }
+    if (isShellMainURL(u)) { done(WKNavigationActionPolicyAllow); return; }
     done(WKNavigationActionPolicyCancel);
 }
 
 - (void)webView:(WKWebView *)w didFinishNavigation:(WKNavigation *)nav {
+    if (w != _web) return;          // 辅窗 / 独立窗的完成不能冒充主门户就绪
     _loadedOnce = YES;
     [self showWindowIfNeeded];      // N-8：内容就绪了才把窗口放出来
     [self refreshState];
@@ -2780,12 +2908,12 @@ static BOOL isBenignNavError(NSError *e) {
 }
 
 - (void)webView:(WKWebView *)w didFailNavigation:(WKNavigation *)nav withError:(NSError *)e {
-    if (isBenignNavError(e) || _loadedOnce) return;
+    if (w != _web || isBenignNavError(e) || _loadedOnce) return;
     [self failReason:@"门户加载失败" detail:e.localizedDescription];
 }
 
 - (void)webView:(WKWebView *)w didFailProvisionalNavigation:(WKNavigation *)nav withError:(NSError *)e {
-    if (isBenignNavError(e) || _loadedOnce) return;
+    if (w != _web || isBenignNavError(e) || _loadedOnce) return;
     [self failReason:@"连不上门户服务"
               detail:[NSString stringWithFormat:@"%@\n\n端口 %ld\n\n%@",
                       e.localizedDescription, (long)_svc.port, [_svc tailStderr]]];
@@ -2796,10 +2924,9 @@ static BOOL isBenignNavError(NSError *e) {
 // target="_blank" 和 window.open 交给系统浏览器。门户「在浏览器里打开」按钮、
 // MD 正文里的外链，走的都是这条。不实现的话它们全是死链。
 //
-// **例外是自家门户的 `?solo=1`**（v19）：那是「把这一份放进一个独立窗口看」，
-// 目的地就是 AM·Note 自己，甩给 Safari 等于换了个 app。所以认出这种地址就地建一个
-// NSWindow，其余一律照旧出门。老版壳没有这一支，同一个按钮在那边会开到浏览器里去
-// ——功能还在，只是窗口不是原生的，不用探能力也不会坏。
+// **例外是自家门户**：`?solo=1` 是独立阅读窗（一份正文、没有浏览器顶栏）；
+// `?win=1` 是完整浏览器辅窗（跟主窗同一套网页顶栏）。目的地都是 AM·Note 自己，
+// 甩给 Safari 等于换了个 app。差一条就当外链，交回浏览器。
 
 - (WKWebView *)webView:(WKWebView *)w
     createWebViewWithConfiguration:(WKWebViewConfiguration *)cfg
@@ -2807,20 +2934,38 @@ static BOOL isBenignNavError(NSError *e) {
                     windowFeatures:(WKWindowFeatures *)feat {
     NSURL *u = act.request.URL;
     if ([self isSoloURL:u]) return [self makeSoloWebWithConfiguration:cfg features:feat];
+    if ([self isAuxURL:u])  return [self makeBrowserWebWithConfiguration:cfg features:feat];
     if (u) [NSWorkspace.sharedWorkspace openURL:u];
     return nil;
 }
 
-/// 是不是「自家门户的独立文稿窗口」。三条都对才算：本机 http、端口是这次起的那个服务、
-/// 查询串里有 solo=1。差一条就当外链，交回浏览器。
-- (BOOL)isSoloURL:(NSURL *)u {
+/// 自家这次起的那个门户服务：本机 http、端口对得上。solo / aux 都先过这一关。
+- (BOOL)isOurPortalURL:(NSURL *)u {
     if (!u || _svc.port <= 0) return NO;
     if (![u.scheme isEqualToString:@"http"]) return NO;
     if (!([u.host isEqualToString:@"127.0.0.1"] || [u.host isEqualToString:@"localhost"])) return NO;
     if (u.port.integerValue != _svc.port) return NO;
+    return YES;
+}
+
+/// 是不是「自家门户的独立文稿窗口」。查询串里有 solo=1。
+- (BOOL)isSoloURL:(NSURL *)u {
+    if (![self isOurPortalURL:u]) return NO;
     NSURLComponents *c = [NSURLComponents componentsWithURL:u resolvingAgainstBaseURL:NO];
     for (NSURLQueryItem *q in c.queryItems)
         if ([q.name isEqualToString:@"solo"] && [q.value isEqualToString:@"1"]) return YES;
+    return NO;
+}
+
+/// 完整浏览器辅窗。路径必须是 /portal，查询串 win=1——不能跟 solo 混，
+/// 否则一份正文会被开成带标签栏的空浏览器。
+- (BOOL)isAuxURL:(NSURL *)u {
+    if (![self isOurPortalURL:u]) return NO;
+    NSString *path = u.path ?: @"";
+    if (!([path isEqualToString:@"/portal"] || [path isEqualToString:@"/portal/"])) return NO;
+    NSURLComponents *c = [NSURLComponents componentsWithURL:u resolvingAgainstBaseURL:NO];
+    for (NSURLQueryItem *q in c.queryItems)
+        if ([q.name isEqualToString:@"win"] && [q.value isEqualToString:@"1"]) return YES;
     return NO;
 }
 
@@ -2842,6 +2987,7 @@ static BOOL isBenignNavError(NSError *e) {
                                                   backing:NSBackingStoreBuffered
                                                     defer:NO];
     win.title = @"AM·Note";
+    win.identifier = @"amn.solo";          // ⌘W / Esc 靠这个跟浏览器辅窗分开
     win.minSize = NSMakeSize(kSoloMinW, kSoloMinH);
     win.releasedWhenClosed = NO;          // 关掉的清理走 windowWillClose:
     win.delegate = self;
@@ -2877,8 +3023,65 @@ static BOOL isBenignNavError(NSError *e) {
     return web;
 }
 
-/// 独立窗口发来的消息。主窗口那套（ready / unread / search / 工具栏校验）一概不走——
-/// 那些讲的是主窗口的状态，让独立窗口去改会把主窗口的标题和收件队列搅乱。
+/// 再建一个完整浏览器窗口。跟主窗同一套样式（透明标题栏、标题隐藏、没有原生工具栏），
+/// 网页自己画标签和地址栏。configuration 必须用 WebKit 传进来的那份，也不能自己 loadRequest。
+- (WKWebView *)makeBrowserWebWithConfiguration:(WKWebViewConfiguration *)cfg
+                                      features:(WKWindowFeatures *)feat {
+    CGFloat ww = feat.width  ? feat.width.doubleValue  : kWinW;
+    CGFloat hh = feat.height ? feat.height.doubleValue : kWinH;
+    ww = MAX(kMinW, MIN(ww, 2400));
+    hh = MAX(kMinH, MIN(hh, 1800));
+
+    NSWindow *win = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, ww, hh)
+                                                styleMask:(NSWindowStyleMaskTitled |
+                                                           NSWindowStyleMaskFullSizeContentView |
+                                                           NSWindowStyleMaskClosable |
+                                                           NSWindowStyleMaskMiniaturizable |
+                                                           NSWindowStyleMaskResizable)
+                                                  backing:NSBackingStoreBuffered
+                                                    defer:NO];
+    win.title = @"AM·Note";
+    win.identifier = @"amn.browser";
+    win.titleVisibility = NSWindowTitleHidden;
+    win.titlebarAppearsTransparent = YES;
+    win.titlebarSeparatorStyle = NSTitlebarSeparatorStyleNone;
+    win.movableByWindowBackground = YES;
+    win.minSize = NSMakeSize(kMinW, kMinH);
+    win.releasedWhenClosed = NO;
+    win.delegate = self;
+    win.tabbingMode = NSWindowTabbingModeDisallowed;
+    NSView *content = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, ww, hh)];
+    content.wantsLayer = YES;
+    win.contentView = content;
+    applySeamlessChrome(win);
+
+    NSPoint from = _win ? NSMakePoint(NSMinX(_win.frame) + 34, NSMaxY(_win.frame) - 34)
+                        : NSZeroPoint;
+    if (NSEqualPoints(from, NSZeroPoint)) [win center]; else [win cascadeTopLeftFromPoint:from];
+
+    @try { [cfg.userContentController addScriptMessageHandler:self name:@"amn"]; }
+    @catch (NSException *e) { }
+
+    PortalWebView *web = [[PortalWebView alloc] initWithFrame:content.bounds configuration:cfg];
+    web.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    web.navigationDelegate = self;
+    web.UIDelegate = self;
+    web.allowsBackForwardNavigationGestures = NO;
+    if (@available(macOS 13.3, *)) { web.inspectable = YES; }
+    __weak typeof(self) weakSelf = self;
+    // 跟主窗一样：Esc 交给网页自己的浮层 / 编辑链，不能把整窗关掉。
+    web.onEscape = ^{ [weakSelf amn:@"escape" args:nil]; };
+
+    [content addSubview:web];
+    [_soloWebs addObject:web];
+    [_soloWins addObject:win];
+    [win makeKeyAndOrderFront:nil];
+    [NSApp activateIgnoringOtherApps:YES];
+    return web;
+}
+
+/// 独立窗和浏览器辅窗发来的消息。ready 故意不走——那条会把主窗口排的「打开这份」
+/// 冲给发件页，辅窗收了就等于把主窗口的收件吃掉。theme / doc / dirty 仍按发件窗更新。
 - (void)soloMessage:(NSDictionary *)m from:(WKWebView *)web {
     NSString *type = [m[@"type"] isKindOfClass:NSString.class] ? m[@"type"] : nil;
     NSWindow *win = web.window;

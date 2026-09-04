@@ -294,7 +294,7 @@ def walk_files():
                        and not any(tok in d for tok in skip_dir)]
         for fn in filenames:
             ext = os.path.splitext(fn)[1].lower()
-            is_doc = fn.endswith((".md", ".html"))
+            is_doc = ext in (".md", ".html", ".htm")
             if not is_doc and ext not in ATT_EXT:
                 continue
             if fn.startswith("~$"):
@@ -310,8 +310,8 @@ def walk_files():
                 st = os.stat(full)
             except OSError:
                 continue
-            kind = ("md" if fn.endswith(".md") else
-                    "html" if fn.endswith(".html") else ATT_EXT[ext])
+            kind = ("md" if ext == ".md" else
+                    "html" if ext in (".html", ".htm") else ATT_EXT[ext])
             out[rel_u] = (round(st.st_mtime, 2), st.st_size, kind)
     return out
 
@@ -791,7 +791,7 @@ def _norm_target(src_rel, u):
     if not u or re.match(r"^[a-z][a-z0-9+.\-]*:", u, re.I) or u.startswith(("#", "//")):
         return None
     u = u.split("#")[0].split("?")[0]
-    if not u.lower().endswith((".md", ".html")):
+    if not u.lower().endswith((".md", ".html", ".htm")):
         return None
     try:
         u = re.sub(r"%[0-9A-Fa-f]{2}",

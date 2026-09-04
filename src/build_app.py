@@ -188,12 +188,13 @@ def export_icons(dest_dir):
 
 # ───────────────────────── 后台服务脚本（LaunchAgent 调用）─────────────────────────
 NATIVE_SRC = "app_shell.m"
+# 5.2.0 = 浏览器壳界面：地址栏搜库、书签栏是顶层文件夹、新标签是随手记。
 # 5.1.1 = 云朵便签图标（20260904）。母版 src/icon-master-1024.png。
 # 5.1.0 = GitHub Releases 检查更新：菜单「检查更新…」，可下载 zip 替换当前 .app
 # （20260903）。有 digest 核 sha256，解开后核对 bundle id。
 # 5.0.0 = 开源首发。
 # 版本号是唯一能在「关于 AM·Note」里看出来跑的是新壳还是旧壳的地方，改了壳就要动它。
-NATIVE_VERSION = ("5.1.1", "22")
+NATIVE_VERSION = ("5.2.0", "23")
 MIN_MACOS = "12.0"
 
 
@@ -223,6 +224,12 @@ RESOURCE_FILES = (
     "icon-512.png",
 )
 
+# 菜单栏小云由 make_icon.py 从母版抠出。抠失败时壳退到 SF cloud.fill，不挡打包。
+OPTIONAL_RESOURCE_FILES = (
+    "menubar-cloud.png",
+    "menubar-cloud@2x.png",
+)
+
 
 def copy_resources(res_dir):
     """把 Python 服务、模板和说明打进 Contents/Resources/，app 才能放到任意位置。"""
@@ -233,6 +240,10 @@ def copy_resources(res_dir):
             missing.append(src)
             continue
         shutil.copy2(src, os.path.join(res_dir, name))
+    for name in OPTIONAL_RESOURCE_FILES:
+        src = os.path.join(HERE, name)
+        if os.path.exists(src):
+            shutil.copy2(src, os.path.join(res_dir, name))
     readme = os.path.join(HERE, "..", "README.md")
     if os.path.exists(readme):
         shutil.copy2(readme, os.path.join(res_dir, "README.md"))

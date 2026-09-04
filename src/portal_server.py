@@ -200,7 +200,7 @@ def fingerprint():
     newest = 0.0
     c = cfg()
     skip = tuple(c["跳过目录关键词"]) + tuple(c["噪声目录"])
-    exts = (".md", ".html") + tuple(fulltext.ATT_EXT)
+    exts = (".md", ".html", ".htm") + tuple(fulltext.ATT_EXT)
     for dp, dn, fns in os.walk(ROOT):
         dn[:] = [d for d in dn
                  if d != ".amnote" and not any(t in d for t in skip)]
@@ -232,8 +232,8 @@ def cached_fingerprint(max_age=2.0):
 # ── 标题与预览 ────────────────────────────────────
 #
 # v20 起标题不再从标签块里读（标签层整层退役，库里 900 多份 md 的标签块一个字
-# 不动，只是门户不再读它）。推导顺序：md 取正文第一个 `# ` 标题 → 取不到、
-# 或者是 html，退回文件名主干。
+# 不动，只是门户不再读它）。推导顺序：md 取正文第一个 `# ` 标题；html 取抽取
+# 正文的第一行（_extract_html 把 <title> 放在最前）；都取不到再退回文件名主干。
 
 TAG_HEAD_RE = re.compile(r"^\s*---.*?\n---\s*", re.S)
 
@@ -280,9 +280,34 @@ def disambiguate(title: str, rel: str, generic) -> str:
     return title
 
 
+def html_title(head: str) -> str:
+    """html 抽取正文把 <title> 放在第一行。太长就当正文，不当标题。"""
+    if not head:
+        return ""
+    line = head.split("\n", 1)[0].strip()
+    if not line or len(line) > 80:
+        return ""
+    return line
+
+
 def title_of(rel: str, head: str, kind: str, generic) -> str:
-    t = first_heading(head) if kind == "md" else ""
+    if kind == "md":
+        t = first_heading(head)
+    elif kind == "html":
+        t = html_title(head)
+    else:
+        t = ""
     return disambiguate(t or clean_title(os.path.basename(rel)), rel, generic)
+
+
+def list_preview(head: str, kind: str) -> str:
+    """列表和本地搜索用的短摘录。html 已经是抽过的纯文本。"""
+    s = head or ""
+    if kind == "md":
+        s = TAG_HEAD_RE.sub("", s, count=1)
+        s = re.sub(r"^#+\s*", "", s, flags=re.M)
+        s = re.sub(r"!\[[^\]]*\]\([^)]*\)", " ", s)
+    return re.sub(r"\s+", " ", s).strip()[:240]
 
 
 def preview(raw: str, n=200) -> str:
@@ -312,7 +337,7 @@ def _view_full(rel: str):
         return None, "路径越出库根"
     if not os.path.isfile(full):
         return None, "文件不在了"
-    if not full.lower().endswith((".md", ".html") + tuple(fulltext.ATT_EXT)):
+    if not full.lower().endswith((".md", ".html", ".htm") + tuple(fulltext.ATT_EXT)):
         return None, "这个格式门户不认"
     return full, ""
 
@@ -333,7 +358,8 @@ def reveal(req: dict):
 
 
 def open_external(req: dict):
-    """交给系统默认程序打开。html / pdf / xlsx 从 v20 起都走这条，门户里不再内嵌。
+    """交给系统默认程序打开。pdf / xlsx 走这条；html 默认在标签里读，
+    「在浏览器里打开」才落到这里。
 
     走「系统默认」而不是写死 Chrome：这台机器上 https 和 public.html 两个默认
     处理程序都是 com.google.chrome（20260825 实测），效果一样，以后换浏览器
@@ -823,7 +849,8 @@ def tree_view():
     另一张表上，两批合起来才是「文件夹里有什么可读的」。索引没有这道门槛，
     收的就是全部，少一层账。
 
-    只给 md 和 html。「附件」那个键留着但恒为空数组：pdf / xlsx / csv 的文字
+    只给 md 和 html。每条带 路径 / 标题 / 类型 / 改于 / 预览。
+    「附件」那个键留着但恒为空数组：pdf / xlsx / csv 的文字
     照旧进索引搜得到，只是不在门户里列、也不在门户里渲染。
 
     目录树只把「装着文件的目录」列出来，空壳目录和被跳过的目录自动消失。
@@ -846,7 +873,8 @@ def tree_view():
 
     generic = tuple(cfg().get("通用标题") or ())
     docs = [{"路径": rel, "标题": title_of(rel, head or "", kind, generic),
-             "类型": kind, "改于": round(mt or 0, 1)}
+             "类型": kind, "改于": round(mt or 0, 1),
+             "预览": list_preview(head or "", kind)}
             for rel, kind, mt, head in rows]
     docs.sort(key=lambda x: -x["改于"])
 
@@ -957,7 +985,7 @@ def meta_view(query):
     if err:
         return {"ok": False, "错误": err}
     low = full.lower()
-    kind = ("md" if low.endswith(".md") else "html" if low.endswith(".html")
+    kind = ("md" if low.endswith(".md") else "html" if low.endswith((".html", ".htm"))
             else fulltext.ATT_EXT.get(os.path.splitext(low)[1], ""))
     head = ""
     if kind == "md":
@@ -1253,6 +1281,7 @@ class Handler(SimpleHTTPRequestHandler):
     def do_GET(self):
         self._cache_sent = False
         self._head_only = False
+        self._ctype = ""
         if not self._gate():
             return
         if not self._route():
@@ -1261,6 +1290,7 @@ class Handler(SimpleHTTPRequestHandler):
     def do_HEAD(self):
         self._cache_sent = False
         self._head_only = True
+        self._ctype = ""
         if not self._gate():
             return
         if not self._route():
@@ -1269,6 +1299,7 @@ class Handler(SimpleHTTPRequestHandler):
     def do_POST(self):
         self._cache_sent = False
         self._head_only = False
+        self._ctype = ""
         if not self._gate():
             return
         route = self.path.split("?")[0]
@@ -1312,10 +1343,31 @@ class Handler(SimpleHTTPRequestHandler):
             kick_sync()
         self._json(json.dumps(out, ensure_ascii=False))
 
+    def send_header(self, keyword, value):
+        # end_headers 按 Content-Type 决定要不要沙箱，先记下来
+        if keyword.lower() == "content-type":
+            self._ctype = str(value)
+        super().send_header(keyword, value)
+
+    def _is_vault_html(self) -> bool:
+        """库内 html 才套沙箱。
+
+        iframe 已经 sandbox=""；顶层打开（地址栏改成 /某页.html）没有
+        iframe 那层，必须靠响应头再挡一次——脚本一旦跑起来就跟门户同源，
+        能读到页面里的 token。/portal 自己要跑 JS，不套。
+        """
+        route = self.path.split("?")[0]
+        if route in ("/portal", "/portal/"):
+            return False
+        return (getattr(self, "_ctype", "") or "").lower().startswith("text/html")
+
     def end_headers(self):
         if not getattr(self, "_cache_sent", False) \
-                and self.path.endswith((".md", ".html", ".json")):
+                and self.path.endswith((".md", ".html", ".htm", ".json")):
             self.send_header("Cache-Control", "no-store")
+        if self._is_vault_html():
+            self.send_header("Content-Security-Policy", "sandbox")
+            self.send_header("X-Content-Type-Options", "nosniff")
         super().end_headers()
 
 

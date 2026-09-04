@@ -3,17 +3,19 @@
 """AM·Note 应用图标。以 src/icon-master-1024.png 为唯一母版。
 
 用法:
-    python3 make_icon.py            产出 icns / _iconset / PWA png（都在 src/）
+    python3 make_icon.py            产出 icns / _iconset / PWA png / 菜单栏小云（都在 src/）
     python3 make_icon.py --preview  只检查母版，并写出几档预览 png
 
 不重画图形。构建走这条路，不会退回旧的索引卡画法。
 缩放优先用 PIL Lanczos；没有 PIL 时退到 macOS 自带的 sips。
+菜单栏那颗白云必须抠母版，没有 PIL 就跳过（壳里会退到 SF cloud.fill）。
 """
 
 import os
 import shutil
 import subprocess
 import sys
+from collections import deque
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 MASTER = os.path.join(HERE, 'icon-master-1024.png')
@@ -40,6 +42,12 @@ ICONSET = [
 PWA = [
     ('icon-192.png', 192),
     ('icon-512.png', 512),
+]
+
+# 菜单栏 template：黑云 + 透明底，壳里 setTemplate 后颜色跟菜单栏走。
+MENUBAR = [
+    ('menubar-cloud.png', 18),
+    ('menubar-cloud@2x.png', 36),
 ]
 
 
@@ -121,6 +129,86 @@ def rounded_mask(size, r_frac=0.22, n=3.0, ss=4):
             v = int(c * inv * 255 + 0.5)
             buf[y * size + x] = 255 if v > 255 else v
     return Image.frombytes('L', (size, size), bytes(buf))
+
+
+def _is_cloud_paper(r, g, b, a):
+    """母版中央那朵便签云：乳白纸面（含折角阴影），不含蓝天和笑脸挖空。"""
+    if a < 40:
+        return False
+    lum = 0.3 * r + 0.59 * g + 0.11 * b
+    if lum > 175 and r > 180 and g > 170:
+        return True
+    if lum > 140 and r > 150 and g > 140 and r + g > b + 40:
+        return True
+    return False
+
+
+def cloud_template():
+    """从 1024 母版抠出正方 template（黑云、透明底、笑脸是洞）。
+
+    从中心洪水填充，只拿那一朵，天上的碎云不会跟进来。
+    返回 RGBA Image；没有 PIL 或抠不到足够大的连通块时返回 None。
+    """
+    if Image is None:
+        return None
+    im = Image.open(MASTER).convert('RGBA')
+    w, h = im.size
+    pix = im.load()
+    sx, sy = w // 2, h // 2
+    if not _is_cloud_paper(*pix[sx, sy]):
+        return None
+
+    seen = bytearray(w * h)
+    buf = bytearray(w * h)
+    q = deque([(sx, sy)])
+    seen[sy * w + sx] = 1
+    n = 0
+    x0, y0, x1, y1 = sx, sy, sx, sy
+    while q:
+        x, y = q.popleft()
+        if not _is_cloud_paper(*pix[x, y]):
+            continue
+        buf[y * w + x] = 255
+        n += 1
+        if x < x0: x0 = x
+        if y < y0: y0 = y
+        if x > x1: x1 = x
+        if y > y1: y1 = y
+        for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+            nx, ny = x + dx, y + dy
+            if 0 <= nx < w and 0 <= ny < h:
+                i = ny * w + nx
+                if not seen[i]:
+                    seen[i] = 1
+                    q.append((nx, ny))
+
+    # 连通块太小说明母版不是这朵云（或阈值失效），别写出一块脏斑。
+    if n < (w * h) * 0.08:
+        return None
+
+    mask = Image.frombytes('L', (w, h), bytes(buf))
+    cloud = mask.crop((x0, y0, x1 + 1, y1 + 1))
+    bw, bh = cloud.size
+    side = max(bw, bh)
+    margin = int(round(side * 0.08))
+    S = side + 2 * margin
+    canvas = Image.new('L', (S, S), 0)
+    canvas.paste(cloud, ((S - bw) // 2, (S - bh) // 2))
+    z = Image.new('L', (S, S), 0)
+    return Image.merge('RGBA', (z, z, z, canvas))
+
+
+def write_menubar():
+    """菜单栏 18pt template 及其 @2x。返回写出的路径；抠失败则空列表。"""
+    tmpl = cloud_template()
+    if tmpl is None:
+        return []
+    written = []
+    for name, size in MENUBAR:
+        dest = os.path.join(HERE, name)
+        tmpl.resize((size, size), Image.Resampling.LANCZOS).save(dest, 'PNG')
+        written.append(dest)
+    return written
 
 
 def resize(src, dest, size):
@@ -205,6 +293,13 @@ def main(argv):
             resize(MASTER, p, size)
             cache[size] = p
         note(p)
+    print('写菜单栏小云')
+    mb = write_menubar()
+    if mb:
+        for p in mb:
+            note(p)
+    else:
+        print('  （没抠出云：需要 PIL，且母版须是中央那朵便签云）')
     print('\n共 %d 个产出文件。' % len(made))
     return 0
 

@@ -2,7 +2,7 @@
 <html lang="zh-CN">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>AM·Note</title>
 <meta name="theme-color" content="#ffffff">
 <!-- 口令：服务出页时把下面这串占位替换成真 token。前端读它，读到的还是占位＝旧服务，走降级。 -->
@@ -74,6 +74,22 @@
   --sbw:224px;    /* 边栏宽，可拖，存 localStorage */
   --lcw:320px;    /* 列表栏宽，可拖 */
   --docw:640px;   /* 正文栏宽，跟 PREF.w 走 */
+
+  /* 书签栏小黄夹：浅色深色都用同一对，夹在灰底上才认得出来。 */
+  --folder:#e9b949;
+  --folder2:#f4d27a;
+
+  /* 标签条底色，跟工具条/正文的 --win 分开：当前标签才能「陷进」工具条。
+     必须和 app_shell.m 里 chromeColorForTheme 同步。 */
+  --chrome:#e6e7ea;
+  --tab-r:12px;
+  --tab-left:12px;
+
+  /* 浏览器壳高度：标签条＋工具条＋书签栏。nobm / solo / shell 在 body 上改分项。 */
+  --tabstrip-h:38px;
+  --toolbar-h:46px;
+  --bmbar-h:36px;
+  --chrome-h:calc(var(--tabstrip-h) + var(--toolbar-h) + var(--bmbar-h));
 }
 @supports (color:AccentColor){ :root{ --accent:AccentColor } }
 @supports (color:-apple-system-control-accent){ :root{ --accent:-apple-system-control-accent } }
@@ -83,7 +99,7 @@
 
 /* ── 样张色板（深）── */
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --canvas:#a9b8c0; --win:#19191b; --side:#202023; --list:#1c1c1f;
+  --canvas:#a9b8c0; --win:#19191b; --side:#202023; --chrome:#101012; --list:#1c1c1f;
   --hover:#2d2d31; --sel:#333338;
   --t1:#f4f4f5; --t2:#b4b4b9; --t3:#85858b; --t4:#66666c; --recent:#a0a0a5; --accent:#8eb9ea;
   --pill:#27272b; --field:#27272b; --field2:#27272b; --segon:#3a3a40; --pop:#27272b;
@@ -96,7 +112,7 @@
   --scrim:rgba(0,0,0,.38);
 }}
 :root[data-theme="dark"]{
-  --canvas:#a9b8c0; --win:#19191b; --side:#202023; --list:#1c1c1f;
+  --canvas:#a9b8c0; --win:#19191b; --side:#202023; --chrome:#101012; --list:#1c1c1f;
   --hover:#2d2d31; --sel:#333338;
   --t1:#f4f4f5; --t2:#b4b4b9; --t3:#85858b; --t4:#66666c; --recent:#a0a0a5; --accent:#8eb9ea;
   --pill:#27272b; --field:#27272b; --field2:#27272b; --segon:#3a3a40; --pop:#27272b;
@@ -119,7 +135,15 @@ html,body{margin:0;padding:0;height:100%;overflow:hidden;background:var(--win)}
 body{background:var(--win);color:var(--t1);
   font:13px/1.5 var(--ui);
   font-synthesis:none;
-  -webkit-font-smoothing:antialiased}
+  -webkit-font-smoothing:antialiased;
+  --tabstrip-h:38px; --toolbar-h:46px; --bmbar-h:36px;
+  --chrome-h:calc(var(--tabstrip-h) + var(--toolbar-h) + var(--bmbar-h))}
+/* 标签跟红绿灯同一行，左侧让出交通灯（约 78px）。多出来的标签由 layoutTabs
+   整颗藏进 ▾，不再被左边距裁成半个。 */
+body.shell{--tabstrip-h:38px; --tab-left:80px}
+body.nobm{--bmbar-h:0px}
+body.solo{--tabstrip-h:0px; --toolbar-h:0px; --bmbar-h:0px}
+body.shell.solo{--tabstrip-h:52px; --toolbar-h:0px; --bmbar-h:0px}
 button{font:inherit;color:inherit;border:0;background:none;padding:0;margin:0;cursor:pointer;-webkit-appearance:none}
 input,textarea,select{font:inherit;color:inherit}
 a{color:inherit}
@@ -142,13 +166,393 @@ body:not(.lists-on) #side,
 body:not(.lists-on) #listpane,
 body:not(.lists-on) .split{display:none}
 
-/* 原生壳改成全尺寸透明标题栏后，网页底色铺到窗口圆角里。
-   正文骨架从标题栏下方开始，顶部 52px 只留给系统交通灯、标题和两颗工具键。 */
-body.shell #app,body.shell #hub{padding-top:52px}
+/* 原生壳是全尺寸透明标题栏：标签条跟红绿灯同一行，工具条和书签栏再往下。
+   内容从 --chrome-h 开始。 */
+#app,#hub{padding-top:var(--chrome-h)}
 
 #hub{display:none;height:100%;overflow-y:auto;background:var(--win)}
 body.nodoc:not(.lists-on) #hub{display:block}
 body.nodoc:not(.lists-on) #app{display:none}
+
+/* ═══ 浏览器壳：标签条 / 工具条 / 书签栏 ═══
+   标签条跟红绿灯同一行。空处可拖窗口。
+   标签、加号、按钮、地址栏、书签一律 no-drag，不然点不着。
+   当前标签用凹角「耳朵」陷进工具条，未选中标签之间用短竖线隔开。 */
+#chrome{position:fixed;top:0;left:0;right:0;z-index:20;background:var(--chrome);
+  display:flex;flex-direction:column}
+body.solo #chrome{display:none!important}
+#tabstrip{
+  height:var(--tabstrip-h);flex:none;position:relative;
+  background:var(--chrome);
+  display:flex;align-items:flex-end;
+  width:100%;box-sizing:border-box;
+  padding:4px 8px 0 var(--tab-left);gap:0;
+  user-select:none;-webkit-user-select:none;
+  -webkit-app-region:drag;
+  overflow:hidden;
+}
+/* 标签＋加号是一组：加号贴在最后一个标签后面。栏本身可以收缩，
+   多出来的标签由 layoutTabs 整颗藏进 ▾，不要被 overflow 切成半个。 */
+#tabcluster{
+  display:flex;align-items:flex-end;gap:0;
+  flex:0 1 auto;min-width:0;max-width:calc(100% - 44px);
+}
+#tabstrip .tabbar{
+  position:relative;top:auto;left:auto;right:auto;z-index:auto;
+  display:flex;align-items:stretch;gap:0;
+  padding:0;overflow:visible;background:transparent;
+  flex:1 1 auto;min-width:0;max-width:none;height:auto;
+}
+#tabstrip .tabbar.on{display:flex}
+#tabstrip .tab{
+  --_r:var(--tab-r);
+  position:relative;z-index:1;
+  min-width:120px;max-width:240px;flex:1 1 188px;
+  height:34px;margin:0 calc(var(--_r) * -1);
+  padding:0 28px 0 calc(12px + var(--_r));
+  border-radius:0;background:transparent;box-shadow:none;font-weight:400;
+  overflow:visible;transition:none;
+}
+#tabstrip .tab:first-child{margin-left:0}
+#tabstrip .tab:hover{z-index:2;background:transparent}
+#tabstrip .tab.on{
+  z-index:3;flex:1 1 188px;min-width:120px;max-width:240px;padding-right:28px;
+  background:var(--win);color:var(--t1);font-weight:500;box-shadow:none;
+  border-radius:var(--_r) var(--_r) 0 0;
+}
+/* 当前标签左右凹角：径向渐变切出 1/4 圆，填工具条同色，看起来陷进去。 */
+#tabstrip .tab.on::before,
+#tabstrip .tab.on::after{
+  content:"";position:absolute;bottom:0;width:var(--_r);height:var(--_r);
+  pointer-events:none;
+}
+#tabstrip .tab.on::before{
+  left:calc(-1 * var(--_r));
+  background:radial-gradient(circle at 0 0, transparent var(--_r), var(--win) calc(var(--_r) + .4px));
+}
+#tabstrip .tab.on::after{
+  right:calc(-1 * var(--_r));
+  background:radial-gradient(circle at 100% 0, transparent var(--_r), var(--win) calc(var(--_r) + .4px));
+}
+/* 未选中悬停：缩进的圆角块，不连工具条。 */
+#tabstrip .tab:not(.on):hover::before{
+  content:"";position:absolute;inset:3px 8px;border-radius:8px;
+  background:color-mix(in srgb, var(--win) 58%, transparent);
+  pointer-events:none;z-index:-1;
+}
+/* 未选中之间的短竖线；贴着当前项或悬停项时收掉。 */
+#tabstrip .tab:not(.on)::after{
+  content:"";position:absolute;right:0;top:50%;
+  width:1px;height:14px;margin-top:-7px;
+  background:color-mix(in srgb, var(--t1) 28%, transparent);
+  pointer-events:none;
+}
+#tabstrip .tab:not(.on):hover::after,
+#tabstrip .tab:not(.on):has(+ .tab.on)::after,
+#tabstrip .tab:not(.on):has(+ .tab:hover)::after,
+#tabstrip .tab:not(.on):has(+ .tabmore)::after,
+#tabstrip .tab:not(.on):has(+ .tab[hidden])::after,
+#tabstrip .tab:last-of-type:not(.on)::after{opacity:0}
+#tabstrip .tab .fav{
+  width:16px;height:16px;flex:none;display:flex;align-items:center;justify-content:center;
+  color:var(--t3);opacity:.9;
+}
+#tabstrip .tab.on .fav{color:var(--t2);opacity:1}
+#tabstrip .tab .fav svg{width:14px;height:14px}
+#tabstrip .tab .fav,#tabstrip .tab .tt,#tabstrip .tab .ddot{position:relative;z-index:1}
+#tabstrip .tab .tx{
+  width:16px;height:16px;position:absolute;right:10px;top:9px;z-index:2;
+  display:none;
+}
+#tabstrip .tab.on .tx,
+#tabstrip .tab:hover .tx{display:flex}
+#tabstrip .tab:hover:not(.on) .tx{background:transparent}
+#tabstrip .tabmore{
+  height:28px;align-self:center;margin:0 2px 3px;z-index:4;
+  -webkit-app-region:no-drag;
+}
+#tabplus{
+  width:28px;height:28px;border-radius:8px;flex:none;align-self:flex-end;
+  margin:0 0 3px var(--tab-r);color:var(--t2);position:relative;z-index:5;
+  display:flex;align-items:center;justify-content:center;
+  -webkit-app-region:no-drag;
+}
+#tabplus:hover{background:color-mix(in srgb, var(--win) 58%, transparent);color:var(--t1)}
+#tabplus svg{width:15px;height:15px;stroke-width:1.6}
+#tabflex{
+  flex:1 1 auto;min-width:8px;align-self:stretch;
+  -webkit-app-region:drag;
+}
+#appmark{
+  width:32px;height:32px;border-radius:9px;flex:none;
+  align-self:center;margin:0 6px 1px 8px;
+  display:flex;align-items:center;justify-content:center;
+  position:relative;z-index:6;
+  -webkit-app-region:no-drag;
+  transition:background-color .15s ease,transform .15s ease;
+}
+#appmark img{
+  width:24px;height:24px;border-radius:6px;display:block;
+  box-shadow:0 1px 2px rgba(0,0,0,.18);
+  -webkit-user-drag:none;pointer-events:none;
+}
+#appmark:hover{background:color-mix(in srgb, var(--win) 62%, transparent)}
+#appmark:hover img{transform:scale(1.06)}
+#appmark:active{transform:scale(.96)}
+#tabstrip .tab,
+#tabstrip .tabmore,
+#appmark{-webkit-app-region:no-drag}
+
+#toolbar{
+  height:var(--toolbar-h);flex:none;background:var(--win);
+  display:flex;align-items:center;gap:4px;padding:0 10px 0 8px;
+  position:relative;-webkit-app-region:no-drag;
+}
+.navb{
+  width:30px;height:30px;border-radius:8px;color:var(--t2);flex:none;
+  display:flex;align-items:center;justify-content:center;
+}
+.navb:hover{background:var(--hover);color:var(--t1)}
+.navb[disabled]{opacity:.32;pointer-events:none}
+.navb.on{background:var(--field);color:var(--t1)}
+.navb svg{width:16px;height:16px;stroke-width:1.6}
+
+.omnibox.pulse{animation:omniPulse .8s ease}
+@keyframes omniPulse{
+  0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 45%, transparent)}
+  100%{box-shadow:0 0 0 8px transparent}
+}
+.omnibox{
+  flex:1;min-width:0;height:34px;margin:0 6px;
+  border-radius:17px;background:var(--pill);
+  display:flex;align-items:center;gap:10px;padding:0 12px 0 14px;
+  position:relative;
+  transition:background-color .15s ease,box-shadow .15s ease;
+}
+.omnibox:hover{background:color-mix(in srgb,var(--pill) 86%, var(--t1) 5%)}
+.omnibox.focus{
+  background:var(--win);
+  box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 35%, transparent), var(--selshadow);
+}
+.ob-icon{width:16px;height:16px;flex:none;color:var(--t3);display:flex}
+.ob-icon svg{width:16px;height:16px}
+.ob-field{flex:1;min-width:0;position:relative;height:100%;display:flex;align-items:center}
+.omnibox input{
+  flex:1;min-width:0;border:0;background:none;outline:none;
+  font-size:13px;line-height:1;color:var(--t1);-webkit-appearance:none;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.omnibox:not(.focus) input{color:transparent;caret-color:transparent}
+.omnibox input::placeholder{color:var(--t3)}
+.omnibox.focus input::placeholder{color:var(--t3)}
+.omnibox:not(.focus) input::placeholder{color:transparent}
+.omnibox input::-webkit-search-cancel-button{display:none}
+.ob-path{
+  position:absolute;inset:0;display:flex;align-items:center;
+  overflow:hidden;pointer-events:none;font-size:13px;line-height:1;color:var(--t1);
+}
+.omnibox.focus .ob-path{display:none}
+.ob-path > span{
+  display:block;max-width:100%;overflow:hidden;white-space:nowrap;
+  direction:ltr;text-align:left;
+}
+.ob-chip{
+  flex:none;font-size:10px;font-weight:600;letter-spacing:.04em;
+  color:var(--t3);padding:2px 6px;border-radius:6px;background:var(--field);
+}
+.loadbar{position:absolute;left:0;right:0;bottom:0;height:2px;overflow:hidden;pointer-events:none}
+.loadbar.on::after{
+  content:"";display:block;height:100%;width:38%;background:var(--accent);
+  animation:loadbar .55s ease-out;
+}
+@keyframes loadbar{from{transform:translateX(-120%)}to{transform:translateX(280%)}}
+
+#bmbar{
+  height:var(--bmbar-h);flex:none;background:var(--win);
+  display:flex;align-items:center;gap:2px;padding:0 10px 4px;
+  overflow-x:auto;overflow-y:hidden;
+  box-shadow:inset 0 -1px 0 var(--rule-row);
+  -webkit-app-region:no-drag;
+}
+body.nobm #bmbar{display:none}
+.bm{
+  height:26px;padding:0 8px;border-radius:6px;
+  display:inline-flex;align-items:center;gap:6px;
+  color:var(--t2);font-size:12px;white-space:nowrap;flex:none;
+}
+.bm:hover,.bm.open{background:var(--hover);color:var(--t1)}
+.bm .fi{width:16px;height:16px;flex:none;display:block}
+.bm .lbl{max-width:140px;overflow:hidden;text-overflow:ellipsis}
+
+.htmlframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:var(--win);display:none}
+.pagebox{position:absolute;inset:0;overflow:auto;display:none;background:var(--win)}
+.pane.html,.pane.pg{padding:0!important;overflow:hidden}
+.pane.html .htmlframe{display:block}
+.pane.html .md,.pane.html .ed,.pane.html .pagebox{display:none!important}
+.pane.pg .pagebox{display:block}
+.pane.pg .md,.pane.pg .ed,.pane.pg .htmlframe{display:none!important}
+.pane:not(.html) .htmlframe{display:none}
+.pane:not(.pg) .pagebox{display:none}
+
+.folderpg{max-width:720px;margin:0 auto;padding:40px 28px 80px}
+.folderpg h1{font-size:28px;font-weight:620;margin:0 0 6px;display:flex;align-items:center;gap:10px}
+.folderpg h1 .fi{width:28px;height:28px}
+.folderpg .sub{color:var(--t4);font-size:13px;margin:0 0 22px}
+.frow{
+  width:100%;min-height:52px;padding:10px 12px;border-radius:12px;
+  display:flex;align-items:center;gap:12px;text-align:left;
+}
+.frow:hover{background:var(--hover)}
+.frow .ico{width:32px;height:32px;border-radius:8px;background:var(--field);
+  display:flex;align-items:center;justify-content:center;flex:none;color:var(--t2)}
+.frow .ico svg{width:16px;height:16px}
+.frow .t{font-size:14px;font-weight:500;color:var(--t1)}
+.frow .p{font-size:12px;color:var(--t4);margin-top:2px}
+.frow .m{margin-left:auto;font-size:12px;color:var(--t4);flex:none}
+
+.serp{max-width:680px;margin:0 auto;padding:36px 28px 80px}
+.serp-q{font-size:13px;color:var(--t4);margin:0 0 18px}
+.srow{display:block;width:100%;padding:12px 10px;border-radius:12px;margin:0 0 6px;text-align:left}
+.srow:hover{background:var(--hover)}
+.srow .u{font-size:12px;color:var(--t3);margin:0 0 3px}
+.srow .t{font-size:18px;font-weight:500;color:var(--accent);line-height:1.3;display:flex;align-items:center;gap:8px;min-width:0}
+.srow .t svg{flex:none;color:var(--t3)}
+.srow .t span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.srow .kind{font-size:10px;font-weight:600;letter-spacing:.04em;color:var(--t4);padding:2px 6px;border-radius:5px;background:var(--field);flex:none}
+.srow .x{font-size:13px;color:var(--t2);margin-top:4px;line-height:1.55}
+.vacant{padding:80px 28px;text-align:center;color:var(--t3)}
+.vacant h2{margin:0 0 8px;font-size:18px;font-weight:600;color:var(--t2)}
+.vacant p{margin:0;font-size:13px;line-height:1.6}
+kbd{
+  font:11px/1 var(--ui);
+  color:var(--t4);
+  background:color-mix(in srgb, var(--t1) 7%, transparent);
+  padding:3px 6px;border-radius:5px;font-weight:500;
+}
+.start{
+  min-height:100%;
+  display:flex;flex-direction:column;align-items:center;
+  padding:40px 40px 72px;
+}
+.start.empty{justify-content:center;padding:28px}
+.start-col{width:min(1040px,100%)}
+.start-lead{
+  margin:0 2px 22px;
+  font-size:13px;color:var(--t3);letter-spacing:-.005em;line-height:1.6;
+}
+.start-actions{
+  display:flex;align-items:center;gap:6px;
+  margin:0 0 22px;
+}
+.start-cta{
+  height:34px;padding:0 12px;border-radius:10px;
+  display:inline-flex;align-items:center;gap:7px;
+  color:var(--t2);font-size:13px;font-weight:500;
+  transition:background-color .15s ease,color .15s ease,transform .12s ease;
+}
+.start-cta svg{width:15px;height:15px;stroke-width:1.7}
+.start-cta kbd{margin-left:4px}
+.start-cta:hover{background:var(--hover);color:var(--t1)}
+.start-cta:active{transform:scale(.98)}
+.start-cta.new{color:var(--t1);background:var(--field)}
+.start-cta.new:hover{background:color-mix(in srgb,var(--field) 70%, var(--t1) 6%)}
+.start.empty .start-mark{
+  width:64px;height:64px;border-radius:16px;margin:0 auto 18px;display:block;
+  box-shadow:0 10px 28px rgba(50,121,199,.22);
+}
+.start.empty .start-title{
+  text-align:center;font-size:22px;font-weight:600;margin:0 0 6px;color:var(--t1);
+}
+.start.empty .start-lead{text-align:center;margin:0 0 22px}
+.start.empty .start-actions{justify-content:center;margin-bottom:0}
+.start-sec{
+  display:flex;align-items:center;gap:10px;
+  margin:0 2px 12px;
+}
+.start-sec h2{margin:0;font-size:12px;font-weight:560;color:var(--t4);letter-spacing:.02em}
+.start-sec .start-actions{margin:0}
+.rgrid{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:10px;
+}
+.rtile{
+  min-width:0;min-height:108px;padding:14px 15px 13px;border-radius:14px;
+  display:flex;flex-direction:column;gap:5px;
+  text-align:left;background:var(--pill);
+  transition:background-color .15s ease,transform .12s ease;
+}
+.rtile:hover{background:var(--hover)}
+.rtile:active{transform:scale(.988)}
+.rtile .top{display:flex;align-items:center;gap:8px;margin-bottom:2px}
+.rtile .ico{
+  width:26px;height:26px;border-radius:7px;flex:none;
+  background:var(--win);color:var(--t2);
+  display:flex;align-items:center;justify-content:center;
+  box-shadow:0 1px 2px rgba(0,0,0,.04);
+}
+:root[data-theme="dark"] .rtile .ico{box-shadow:none;background:var(--field)}
+.rtile .ico svg{width:14px;height:14px}
+.rtile .kind{
+  font-size:10px;font-weight:600;letter-spacing:.04em;color:var(--t4);
+  padding:2px 6px;border-radius:5px;background:var(--win);
+}
+.rtile .t{
+  font-size:15px;font-weight:560;letter-spacing:-.012em;line-height:1.3;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.rtile .x{
+  font-size:12px;color:var(--t3);line-height:1.45;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.rtile .m{
+  margin-top:auto;padding-top:8px;font-size:11px;color:var(--t4);
+  display:flex;align-items:center;gap:10px;
+}
+.rtile .m .path{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rtile .m .num{margin-left:auto;flex:none}
+@media (max-width:1100px){
+  .rgrid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .start{padding:36px 28px 64px}
+}
+@media (max-width:800px){
+  .rgrid{grid-template-columns:minmax(0,1fr)}
+  .start{padding:28px 18px 64px}
+}
+
+.drop{
+  position:fixed;z-index:40;min-width:240px;max-width:320px;max-height:min(52vh,420px);
+  overflow:auto;padding:6px;background:var(--pop);border-radius:12px;box-shadow:var(--popbig);
+  display:none;
+}
+.drop.on{display:block}
+.drop button{
+  display:flex;align-items:center;gap:10px;width:100%;
+  min-height:34px;padding:6px 10px;border-radius:8px;font-size:13px;text-align:left;
+}
+.drop button:hover,.drop button.on{background:var(--hover)}
+.drop .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.drop .p{font-size:11px;color:var(--t4);flex:none}
+.drop .sep{height:1px;background:var(--rule-row);margin:5px 8px}
+.drop .lab{font-size:11px;font-weight:560;color:var(--t4);padding:6px 10px 4px}
+
+.obdrop{
+  position:fixed;z-index:50;padding:6px;background:var(--pop);
+  border-radius:14px;box-shadow:var(--popbig);overflow:auto;max-height:min(56vh,460px);
+  display:none;
+}
+.obdrop.on{display:block}
+.obrow{
+  display:flex;align-items:center;gap:10px;width:100%;
+  min-height:38px;padding:6px 10px;border-radius:9px;font-size:13px;text-align:left;
+}
+.obrow:hover,.obrow.on{background:var(--hover)}
+.obrow .ico{width:22px;height:22px;border-radius:6px;background:var(--field);
+  display:flex;align-items:center;justify-content:center;flex:none;color:var(--t3)}
+.obrow .ico svg{width:13px;height:13px}
+.obrow .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:470}
+.obrow .p{font-size:11px;color:var(--t4);flex:none;max-width:42%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.obdrop .lab{font-size:11px;font-weight:560;color:var(--t4);padding:8px 10px 4px}
 
 /* 分隔条：不画线，只留一条看不见的拖动区 */
 .split{position:relative;z-index:5;width:0;cursor:col-resize}
@@ -183,7 +587,7 @@ body.searching .searchpill .clear{display:flex}
 body.nodoc:not(.lists-on):not(.searching) #hub{
   display:grid;place-items:center;overflow:hidden;padding:28px;
 }
-body.shell.nodoc:not(.lists-on):not(.searching) #hub{padding:52px 28px}
+body.shell.nodoc:not(.lists-on):not(.searching) #hub{padding:var(--chrome-h) 28px 28px}
 body.nodoc:not(.lists-on):not(.searching) #hub .col{
   width:min(640px,calc(100vw - 48px));margin:0;padding:0;
   transform:translateY(-1.5vh);
@@ -361,6 +765,7 @@ body.nodoc.lists-on .editstatus{display:none!important}
   color:var(--t2);transition:background-color .15s ease,color .15s ease;
 }
 body.shell .listbtn{display:none}     /* 壳里工具栏上已经有一颗 */
+body:not(.solo) .listbtn{display:none} /* 浏览器壳常驻后，列表改走 ⌃⌘S */
 body.solo .listbtn{display:none}
 .listbtn:hover{background:var(--hover);color:var(--t1)}
 body.lists-on .listbtn{background:var(--sel);box-shadow:var(--selshadow);color:var(--t1)}
@@ -371,13 +776,12 @@ body.lists-on .listbtn{background:var(--sel);box-shadow:var(--selshadow);color:v
   overflow:hidden;text-overflow:ellipsis}
 .editstatus.act{cursor:pointer;color:var(--t2)}
 
-/* 标签栏：两份以上才出。当前项是圆角色块，不画下边框。
-   撞车标题保住尾巴；装不下的进 ▾，不横滑。闲置的 × 只在悬停时露。 */
+/* 标签栏底料：撞车标题保住尾巴；装不下的进 ▾，不横滑。闲置的 × 只在悬停时露。
+   外形（凹角、竖线）由 #tabstrip .tab 覆盖。 */
 .tabbar{position:absolute;top:0;left:0;right:0;z-index:5;
   display:none;align-items:center;gap:4px;padding:44px 16px 6px;overflow:hidden;
   background:var(--win)}
 .tabbar.on{display:flex}
-body.tabs-on .pane{padding-top:88px}
 .tab{position:relative;display:flex;align-items:center;gap:6px;height:26px;
   padding:0 8px 0 10px;border-radius:7px;font-size:12px;color:var(--t2);cursor:default;
   white-space:nowrap;overflow:hidden;min-width:72px;max-width:220px;
@@ -576,7 +980,7 @@ body.toc-pin .tick .lab{opacity:1}
 
 #cmdkWrap{position:fixed;inset:0;z-index:120;display:none}
 #cmdkWrap.on{display:block}
-.cmdk{position:absolute;z-index:121;left:50%;transform:translateX(-50%);top:118px;width:560px;
+.cmdk{position:absolute;z-index:121;left:50%;transform:translateX(-50%);top:calc(var(--chrome-h) + 28px);width:560px;
   max-width:calc(100vw - 40px);
   background:var(--pop);border-radius:12px;box-shadow:var(--popbig);padding-bottom:8px;overflow:hidden}
 .cmdk .q{padding:16px 20px 13px}
@@ -588,6 +992,7 @@ body.toc-pin .tick .lab{opacity:1}
   display:flex;align-items:center;gap:14px;transition:background-color .15s ease;box-sizing:border-box}
 .krow .t{font-size:13px;color:var(--t1);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .krow .t b{font-weight:600}
+.krow .kindtag{margin-left:8px}
 .krow .p{font-size:11px;color:var(--t3);flex:none;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .krow:hover{background:var(--hover)}
 .krow.on{background:var(--sel);box-shadow:var(--selshadow)}
@@ -614,7 +1019,7 @@ body.toc-pin .tick .lab{opacity:1}
 #typeWrap.on{display:block}
 #typeWrap .scrim{position:absolute;inset:0;background:transparent;pointer-events:auto}
 .typepane{
-  position:absolute;top:64px;right:20px;width:280px;pointer-events:auto;
+  position:absolute;top:calc(var(--chrome-h) + 12px);right:20px;width:280px;pointer-events:auto;
   background:var(--pop);border-radius:14px;box-shadow:var(--popbig);padding:16px 16px 18px;
 }
 .typepane h3{margin:0 0 12px;font-size:13px;font-weight:600}
@@ -691,18 +1096,19 @@ body.type-on .toc{display:none!important}
   height:33px;padding:0 14px;font-size:12px;color:var(--t2);background:var(--field)}
 .bnr.on{display:flex}
 .bnr .btn{height:22px;padding:0 10px;font-size:11px;background:var(--pop)}
-body.bnr-on #app,body.bnr-on #hub{padding-top:33px}
+body.bnr-on #app,body.bnr-on #hub{padding-top:calc(var(--chrome-h) + 33px)}
+body.bnr-on #chrome{top:33px}
 
 /* ═══ 窄窗口 ═══════════════════════════════ */
 @media(max-width:900px){
   body.lists-on #app{grid-template-columns:0 0 var(--lcw) 0 1fr}
-  body.lists-on #side{position:fixed;left:0;top:0;bottom:0;width:var(--sbw);z-index:60;
+  body.lists-on #side{position:fixed;left:0;top:var(--chrome-h);bottom:0;width:var(--sbw);z-index:60;
     box-shadow:var(--popbig);display:none}
   body.lists-on.sideover #side{display:flex}
 }
 @media(max-width:720px){
   body.lists-on #app{grid-template-columns:0 0 0 0 1fr}
-  body.lists-on #listpane{position:fixed;left:0;top:0;bottom:0;width:var(--lcw);z-index:55;
+  body.lists-on #listpane{position:fixed;left:0;top:var(--chrome-h);bottom:0;width:var(--lcw);z-index:55;
     box-shadow:var(--popbig)}
   .toc{display:none}
   .pane{padding:46px 24px 120px}
@@ -714,14 +1120,16 @@ body.bnr-on #app,body.bnr-on #hub{padding-top:33px}
 body.solo #side,body.solo #listpane,body.solo .split,body.solo #hub{display:none!important}
 body.solo #app{display:grid!important;grid-template-columns:0 0 0 0 1fr}
 body.solo .tabbar{display:none!important}
+body.solo #chrome{display:none!important}
 
 /* ═══ 打印：只出正文 ═══════════════════════
    ⌘P 走壳的 NSPrintOperation，打的是整个 WebView，所以界面得在这里收干净。 */
 @media print{
   html,body{height:auto;overflow:visible;background:#fff;color:#000}
   #side,#listpane,.split,#hub,.tabbar,.toc,.listbtn,.editstatus,
+  #chrome,#obdrop,#bmdrop,
   #banners,#ctx,#fmt,#wlpick,#tabpick,#cmdkWrap,#qlwrap,#cfgWrap,#slash,#typeWrap{display:none!important}
-  #app{display:block!important}
+  #app,#hub{display:block!important;padding-top:0!important}
   #docpane{position:static;overflow:visible}
   #panes{position:static}
   .pane{position:static;display:none;overflow:visible;padding:0}
@@ -731,7 +1139,48 @@ body.solo .tabbar{display:none!important}
 }
 </style>
 </head>
-<body class="nodoc">
+<body>
+
+<div id="chrome">
+  <div id="tabstrip">
+    <div id="tabcluster">
+      <div class="tabbar" id="tabbar"></div>
+      <button type="button" id="tabplus" title="新标签页 ⌘T" aria-label="新标签页">
+        <svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>
+      </button>
+    </div>
+    <div id="tabflex" aria-hidden="true"></div>
+    <button type="button" id="appmark" title="AM·Note · 回到开始页" aria-label="回到开始页">
+      <img src="/icon-192.png" width="24" height="24" alt="">
+    </button>
+  </div>
+  <div id="toolbar">
+    <button type="button" class="navb" id="navBack" title="后退 ⌘[" aria-label="后退" disabled>
+      <i data-ic="chevron-left" data-sz="16"></i>
+    </button>
+    <button type="button" class="navb" id="navFwd" title="前进 ⌘]" aria-label="前进" disabled>
+      <i data-ic="chevron-right" data-sz="16"></i>
+    </button>
+    <button type="button" class="navb" id="navReload" title="刷新" aria-label="刷新">
+      <i data-ic="refresh" data-sz="16"></i>
+    </button>
+    <div class="omnibox" id="omnibox">
+      <span class="ob-icon" id="obicon"><i data-ic="search" data-sz="16"></i></span>
+      <span class="ob-field">
+        <span class="ob-path" id="obpath" hidden><span></span></span>
+        <input id="omni" type="text" placeholder="搜索本地文件" spellcheck="false" autocomplete="off" aria-label="搜索本地文件" aria-autocomplete="list">
+      </span>
+      <span class="ob-chip" id="obchip" hidden></span>
+    </div>
+    <button type="button" class="navb" id="navBm" title="书签栏 ⌘⇧B" aria-label="书签栏">
+      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M6 5.5h12v15l-6-3.2L6 20.5z"/></svg>
+    </button>
+    <div class="loadbar" id="loadbar"></div>
+  </div>
+  <div id="bmbar"></div>
+</div>
+<div id="obdrop" class="obdrop" role="listbox"></div>
+<div id="bmdrop" class="drop"></div>
 
 <div id="banners">
   <div class="bnr" id="upgrade">
@@ -781,7 +1230,6 @@ body.solo .tabbar{display:none!important}
   <div id="docpane">
     <button class="listbtn" id="listbtn" title="显示列表　⌃⌘S" aria-label="显示列表"><i data-ic="sidebar"></i></button>
     <div class="editstatus" id="edMsg"></div>
-    <div class="tabbar" id="tabbar"></div>
     <div id="panes"></div>
     <div class="toc hide" id="toc"></div>
     <div class="quiet-empty" aria-hidden="true">
@@ -814,7 +1262,7 @@ body.solo .tabbar{display:none!important}
 <div id="cmdkWrap">
   <div class="scrim" id="cmdkScrim"></div>
   <div class="cmdk">
-    <div class="q"><input id="ck" type="text" autocomplete="off" spellcheck="false" placeholder="找笔记，或做一个动作…" aria-label="找笔记或做动作"></div>
+    <div class="q"><input id="ck" type="text" autocomplete="off" spellcheck="false" placeholder="找文件，或做一个动作…" aria-label="找文件或做动作"></div>
     <div class="rows" id="ckList"></div>
   </div>
 </div>
@@ -901,6 +1349,14 @@ function paintIcons(root){
     const n=el.dataset.ic; el.outerHTML=icon(n, +el.dataset.sz||16);
   });
 }
+/* 书签栏用的实心小黄夹。描边图标在浅底上发灰，看不出「这是文件夹」。 */
+function folderMark(sz){
+  const s=sz||16;
+  return `<svg class="fi" width="${s}" height="${s}" viewBox="0 0 24 24" aria-hidden="true">`
+    + `<path fill="var(--folder)" stroke="none" d="M3 7.2A2.2 2.2 0 0 1 5.2 5h4.3l1.5 1.9h7.8A2.2 2.2 0 0 1 21 9.1v8.2A2.2 2.2 0 0 1 18.8 19.5H5.2A2.2 2.2 0 0 1 3 17.3z"/>`
+    + `<path fill="var(--folder2)" stroke="none" d="M3 10h18v7.3A2.2 2.2 0 0 1 18.8 19.5H5.2A2.2 2.2 0 0 1 3 17.3z"/>`
+    + `</svg>`;
+}
 
 /* ═══ 原生壳桥 ═══════════════════════════
    壳不在（浏览器里打开）时全部静默降级。 */
@@ -948,7 +1404,7 @@ function bnr(id, on){
    Mac 的约定是重开就回到离开时的样子。存储键名沿用 tp-state，不改。
    lists（列表与边栏收放）只在当次会话内保持，不进 localStorage：
    打开文档默认纯正文，重开回纯正文。 */
-const DEF_ST={sbw:224, lcw:320, side:true, toc:false};
+const DEF_ST={sbw:224, lcw:320, side:true, toc:false, bookmarks:true, recents:[]};
 let ST=Object.assign({}, DEF_ST, (()=>{ try{ return JSON.parse(localStorage.getItem('tp-state')||'{}') }catch(e){ return {} } })());
 let stSaveT=null;
 function saveST(){ clearTimeout(stSaveT); stSaveT=setTimeout(()=>{
@@ -957,6 +1413,8 @@ function saveST(){ clearTimeout(stSaveT); stSaveT=setTimeout(()=>{
 function applyST(){
   document.documentElement.style.setProperty('--sbw', ST.sbw+'px');
   document.documentElement.style.setProperty('--lcw', ST.lcw+'px');
+  if(ST.bookmarks===undefined) ST.bookmarks=true;
+  document.body.classList.toggle('nobm', ST.bookmarks===false);
 }
 /* 库根绝对路径。从 /__status 拿——分享、拖出去的 file:// URI、
    报给壳的当前文件路径都要它。拿不到就是空串，那几件事静默不做。 */
@@ -1013,7 +1471,8 @@ function resolveRef(u, base, isImg){
 }
 
 /* ── 交给系统 ────────────────────────────
-   html 一律去浏览器（她的默认是 Chrome），pdf / Excel / Word 去各自的默认程序。 */
+   html 在标签里用沙箱 iframe 打开；pdf / Excel / Word 仍去各自的默认程序。
+   「在浏览器里打开」那颗地球按钮才走这条。 */
 async function openExternal(rel){
   if(!rel || !IS_HTTP) return;
   try{
@@ -1433,12 +1892,429 @@ function safeBlock(el, base){
 }
 
 /* ── 标签页 ─────────────────────────────
-   MD 都在门户里开，不弹新窗口。每个标签一个 pane，自己滚自己的，切回来还在原来的位置。
-   两份以上才出标签栏。标题撞车时保住尾巴；装不下的进 ▾，不横滑、不偷偷踢掉最老的。 */
+   每个标签一份 pane ＋一份浏览栈。标签条始终在（solo 除外），一份也出。
+   标题撞车时保住尾巴；装不下的进 ▾，不横滑、不偷偷踢掉最老的。 */
 let TABS = [], curTab = null, tabSeq = 0;
 
 const paneOf = t => document.getElementById('pane-'+t.id);
 const active = () => TABS.find(t=>t.id===curTab) || null;
+
+/* 每个标签一份浏览栈。kind 决定 pane 里画什么；idx 是前进后退的指针。
+   第一次打开文件时栈里只有一项——从开始页点进去用 replace，避免多一截空历史。 */
+function kindOfTab(t){
+  if(!t) return 'start';
+  if(t.kind) return t.kind;
+  if(t.ext) return 'md';
+  if((t.type||'')==='html' || /\.html?$/i.test(t.path||'')) return 'html';
+  if(t.path) return 'md';
+  return 'start';
+}
+function titleOfEntry(e){
+  if(!e) return '开始';
+  if(e.kind==='start') return '开始';
+  if(e.kind==='search') return e.q || e.title || '搜索';
+  if(e.kind==='folder') return e.folder || e.title || '文件夹';
+  return e.title || (e.path||'').split('/').pop() || '无标题';
+}
+function makeEntry(kind, extra){
+  return Object.assign({kind:kind||'start', path:'', title:'', q:'', folder:''}, extra||{});
+}
+function ensureStack(t){
+  if(!t) return null;
+  if(!t.stack || !t.stack.length){
+    t.stack=[makeEntry(kindOfTab(t), {path:t.path||'', title:t.title||'', q:t.q||'', folder:t.folder||''})];
+    t.idx=0;
+  }
+  if(t.idx==null || t.idx<0) t.idx=0;
+  if(t.idx>=t.stack.length) t.idx=t.stack.length-1;
+  return t.stack[t.idx];
+}
+function applyEntry(t, e){
+  if(!t || !e) return;
+  t.kind=e.kind;
+  t.path=e.path||'';
+  t.title=e.title || titleOfEntry(e);
+  t.q=e.q||'';
+  t.folder=e.folder||'';
+  t.type = e.kind==='html' ? 'html' : 'md';
+}
+function makeTab(entry){
+  const e=entry||makeEntry('start', {title:'开始'});
+  const t={
+    id:'t'+(++tabSeq),
+    path:e.path||'',
+    title:e.title || titleOfEntry(e),
+    type:e.kind==='html'?'html':'md',
+    kind:e.kind||'start',
+    q:e.q||'',
+    folder:e.folder||'',
+    stack:[makeEntry(e.kind, e)],
+    idx:0
+  };
+  return t;
+}
+function canBack(t){ t=t||active(); return !!(t && t.stack && t.idx>0); }
+function canForward(t){ t=t||active(); return !!(t && t.stack && t.idx<t.stack.length-1); }
+function isStartTab(t){ return kindOfTab(t)==='start'; }
+function inReaderNow(){
+  if(SOLO) return TABS.length>0;
+  return TABS.some(t=>kindOfTab(t)!=='start') || TABS.length>1;
+}
+function hasDocNow(t){
+  t=t||active();
+  const k=kindOfTab(t);
+  return !!(t && (k==='md'||k==='html') && t.path);
+}
+function touchRecent(it){
+  const p=it && (it.路径||it.path); if(!p) return;
+  const rec=Array.isArray(ST.recents)?ST.recents.slice():[];
+  ST.recents=[{路径:p, 标题:it.标题||it.title||p, 类型:it.类型||it.type||'md'},
+    ...rec.filter(x=>x && x.路径!==p)].slice(0,12);
+  ST.lastPath=p; saveST();
+}
+function currentPath(t){
+  t=t||active();
+  const e=t && ensureStack(t);
+  if(!e) return '';
+  if(e.kind==='search') return e.q||'';
+  if(e.kind==='folder') return (e.folder||'')+'/';
+  if(e.kind==='start') return '';
+  return e.path||t.path||'';
+}
+function setPaneMode(t){
+  const p=t && paneOf(t); if(!p) return;
+  const k=kindOfTab(t);
+  const html=k==='html', pg=k==='start'||k==='search'||k==='folder';
+  p.classList.toggle('html', html);
+  p.classList.toggle('pg', pg);
+  const ifr=p.querySelector('.htmlframe');
+  const box=p.querySelector('.pagebox');
+  if(ifr){
+    ifr.hidden=!html;
+    if(!html){ try{ ifr.removeAttribute('src'); ifr.src='about:blank'; }catch(e){} }
+  }
+  if(box) box.hidden=!pg;
+}
+function flashLoad(){
+  const el=$('#loadbar'); if(!el) return;
+  el.classList.remove('on');
+  void el.offsetWidth;
+  el.classList.add('on');
+  clearTimeout(flashLoad._t);
+  flashLoad._t=setTimeout(()=>el.classList.remove('on'), 560);
+}
+
+async function navigate(entry, opt){
+  opt=opt||{};
+  entry=makeEntry(entry.kind, entry);
+  let t=opt.tab || active();
+  if(!t || opt.newTab){
+    t=makeTab(entry);
+    TABS.push(t); newPane(t);
+    enterReader(); showTab(t.id);
+    await loadEntry(t);
+    return t;
+  }
+  if(t.editing){ flushSave(t); endEdit(t); }
+  ensureStack(t);
+  const replace=!!opt.replace || kindOfTab(t)==='start';
+  if(replace) t.stack[t.idx]=entry;
+  else{
+    t.stack=t.stack.slice(0, t.idx+1);
+    t.stack.push(entry);
+    t.idx=t.stack.length-1;
+  }
+  applyEntry(t, entry);
+  drawTabs();
+  await loadEntry(t);
+  return t;
+}
+async function goHist(dir){
+  const t=active(); if(!t) return;
+  ensureStack(t);
+  const n=(t.idx||0)+dir;
+  if(n<0 || n>=t.stack.length) return;
+  if(t.editing){ flushSave(t); endEdit(t); }
+  t.idx=n;
+  applyEntry(t, t.stack[n]);
+  drawTabs();
+  await loadEntry(t);
+}
+async function loadEntry(t){
+  if(!t) return;
+  const e=ensureStack(t);
+  applyEntry(t, e);
+  setPaneMode(t);
+  flashLoad();
+  const k=kindOfTab(t);
+  if(k==='md'){
+    if(t.ext) await loadExt(t);
+    else await loadMd(t);
+  }else if(k==='html'){
+    loadHtml(t);
+  }else{
+    paintPage(t);
+  }
+  if(t.id===curTab){
+    buildToc(); syncProg(); syncBar(); syncChrome();
+  }
+}
+function loadHtml(t){
+  const p=paneOf(t); if(!p) return;
+  let ifr=p.querySelector('.htmlframe');
+  if(!ifr){
+    ifr=document.createElement('iframe');
+    ifr.className='htmlframe';
+    ifr.setAttribute('sandbox','');
+    p.appendChild(ifr);
+  }
+  ifr.setAttribute('sandbox','');
+  ifr.title=t.title||'';
+  const u=url(t.path);
+  ifr.src='about:blank';
+  setTimeout(()=>{ ifr.setAttribute('sandbox',''); ifr.src=u; }, 0);
+}
+function paintPage(t){
+  const p=paneOf(t); if(!p) return;
+  const box=p.querySelector('.pagebox'); if(!box) return;
+  const k=kindOfTab(t);
+  if(k==='search') paintSerp(t, box);
+  else if(k==='folder') paintFolder(t, box);
+  else paintStart(box);
+}
+function recentForStart(){
+  const seen=new Set(), out=[];
+  const push=it=>{
+    const p=it && (it.路径||it.path);
+    if(!p || seen.has(p)) return;
+    seen.add(p);
+    out.push(it.路径 ? it : {路径:p, 标题:it.标题||it.title||p.split('/').pop(), 类型:it.类型||it.type||'md', 修改时间:it.修改时间||0});
+  };
+  (ST.recents||[]).forEach(r=>{
+    if(!r||!r.路径) return;
+    push(items.find(i=>i.路径===r.路径) || r);
+  });
+  if(out.length<6){
+    items.slice().sort(byRecent).forEach(i=>{ if(out.length<6) push(i); });
+  }
+  return out.slice(0,6);
+}
+function paintStart(box){
+  if(!box) return;
+  const files=recentForStart();
+  const empty=!files.length;
+  const plusIco=`<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>`;
+  const actions=`<div class="start-actions">
+      <button type="button" class="start-cta" data-act="focusomni">${icon('search',15)} 搜索本地文件 <kbd>⌘L</kbd></button>
+      <button type="button" class="start-cta new" data-act="newnote">${plusIco} 新建随手记</button>
+    </div>`;
+  if(empty){
+    box.innerHTML=`<div class="start empty"><div class="start-col">
+      <img class="start-mark" src="/icon-192.png" alt="">
+      <h1 class="start-title">这个文件夹还是空的</h1>
+      <p class="start-lead">在地址栏搜索，或先写一张随手记。<br>把 md / html 放进这个文件夹，就会出现在开始页。</p>
+      ${actions}
+    </div></div>`;
+    return;
+  }
+  const tiles=files.map(i=>{
+    const html=kindOf(i)==='html';
+    const ex=String((i.预览 || (NOTEPV&&NOTEPV.get(i.路径)) || '')).replace(/\s+/g,' ').trim();
+    const when=i.修改时间 ? whenLabel(i.修改时间, true) : '';
+    return `<button type="button" class="rtile" data-open="${esc(i.路径)}" data-kind="${esc(kindOf(i))}">
+      <div class="top">
+        <span class="ico">${icon(html?'globe':'doc-text',14)}</span>
+        ${html?'<span class="kind">HTML</span>':''}
+      </div>
+      <div class="t">${esc(cleanTitle(i))}</div>
+      ${ex?`<div class="x">${esc(String(ex).slice(0,80))}</div>`:''}
+      <div class="m"><span class="path">${esc(i.路径)}</span>${when?`<span class="num">${esc(when)}</span>`:''}</div>
+    </button>`;
+  }).join('');
+  box.innerHTML=`<div class="start"><div class="start-col">
+    <div class="start-sec">
+      <h2>最近打开</h2>
+      ${actions}
+    </div>
+    <div class="rgrid">${tiles}</div>
+  </div></div>`;
+}
+function paintSerp(t, box){
+  box=box||(paneOf(t)&&paneOf(t).querySelector('.pagebox'));
+  if(!box) return;
+  const q=String((t && (t.q||ensureStack(t).q))||'').trim();
+  const ts=q.toLowerCase().split(/\s+/).filter(Boolean);
+  if(q && kw!==q){ setKw(q); ftKick(); }
+  const folders=(TREE&&TREE.目录||[]).filter(d=>{
+    if(!ts.length) return false;
+    const hay=(d.名称+' '+(d.显示名||'')).toLowerCase();
+    return ts.every(x=>hay.includes(x));
+  });
+  const list=docsMatching(q);
+  if(!list.length && !folders.length){
+    box.innerHTML=`<div class="serp"><p class="serp-q">在库中搜索</p>
+      <div class="vacant"><h2>没有找到「${esc(q)}」</h2><p>换个词，或点书签栏里的文件夹看看。</p></div></div>`;
+    return;
+  }
+  box.innerHTML=`<div class="serp">
+    <p class="serp-q">找到 ${list.length+folders.length} 条 · ${esc(q)}</p>
+    ${folders.map(d=>`<button type="button" class="srow" data-folder="${esc(d.名称)}">
+      <div class="u">${esc(d.名称)}/</div>
+      <div class="t">${icon('folder',16)}<span>${esc(d.显示名||d.名称)}</span></div>
+      <div class="x">根目录下的子文件夹</div>
+    </button>`).join('')}
+    ${list.map(i=>{
+      const html=kindOf(i)==='html';
+      const sn=snipOf(i, ts) || esc((excerptOf(i)||'').slice(0,88));
+      return `<button type="button" class="srow" data-open="${esc(i.路径)}" data-kind="${esc(kindOf(i))}">
+        <div class="u">${esc(i.路径)}</div>
+        <div class="t">${icon(html?'globe':'doc-text',16)}<span>${hl(cleanTitle(i), ts)}</span>${html?'<span class="kind">HTML</span>':''}</div>
+        ${sn?`<div class="x">${sn}</div>`:''}
+      </button>`;
+    }).join('')}
+  </div>`;
+}
+function filesInFolder(folder){
+  if(!folder) return items.filter(i=>String(i.路径||'').indexOf('/')<0);
+  const prefix=String(folder)+'/';
+  return items.filter(i=>{
+    const p=String(i.路径||'');
+    if(!p.startsWith(prefix)) return false;
+    return p.slice(prefix.length).indexOf('/')<0;
+  });
+}
+function subfoldersOf(folder){
+  const dirs=(TREE&&TREE.目录)||[];
+  if(!folder) return dirs.map(d=>({名称:d.名称, 显示名:d.显示名||d.名称, 份数:d.份数||0}));
+  if(folder.indexOf('/')<0){
+    const d=dirs.find(x=>x.名称===folder);
+    return ((d&&d.子目录)||[]).map(s=>({名称:s.名称, 显示名:s.名称, 份数:s.份数||0, path:folder+'/'+s.名称}));
+  }
+  const prefix=folder+'/';
+  const names=new Map();
+  items.forEach(i=>{
+    const p=String(i.路径||'');
+    if(!p.startsWith(prefix)) return;
+    const rest=p.slice(prefix.length);
+    const s=rest.indexOf('/');
+    if(s>0){
+      const n=rest.slice(0,s);
+      names.set(n, (names.get(n)||0)+1);
+    }
+  });
+  return [...names.keys()].sort().map(n=>({名称:n, 显示名:n, 份数:names.get(n), path:folder+'/'+n}));
+}
+function paintFolder(t, box){
+  box=box||(paneOf(t)&&paneOf(t).querySelector('.pagebox'));
+  if(!box) return;
+  const folder=t.folder || (ensureStack(t).folder) || '';
+  const files=filesInFolder(folder);
+  const subs=subfoldersOf(folder);
+  const name=folder.split('/').filter(Boolean).pop() || folder || '库';
+  box.innerHTML=`<div class="folderpg">
+    <h1>${folderMark(28)} ${esc(name)}</h1>
+    <p class="sub">${files.length} 个文件${subs.length?` · ${subs.length} 个子文件夹`:''}${folder?` · ${esc(folder)}`:''}</p>
+    ${subs.map(s=>`<button type="button" class="frow" data-folder="${esc(s.path|| (folder?folder+'/'+s.名称:s.名称))}">
+      <span class="ico">${folderMark(16)}</span>
+      <span><div class="t">${esc(s.显示名||s.名称)}</div><div class="p">${esc(s.path||s.名称)}/</div></span>
+      <span class="m">${s.份数||''}</span>
+    </button>`).join('')}
+    ${files.map(i=>`<button type="button" class="frow" data-open="${esc(i.路径)}" data-kind="${esc(kindOf(i))}">
+      <span class="ico">${icon(kindOf(i)==='html'?'globe':'doc-text',16)}</span>
+      <span><div class="t">${esc(cleanTitle(i))}</div><div class="p">${esc(i.路径)}</div></span>
+      <span class="m">${kindOf(i)==='html'?'HTML':'MD'}</span>
+    </button>`).join('') || (subs.length?'':`<div class="vacant"><h2>空文件夹</h2><p>还没有文件。</p></div>`)}
+  </div>`;
+}
+function openStartTab(){
+  if(SOLO) return;
+  const t=makeTab(makeEntry('start', {title:'开始'}));
+  TABS.push(t); newPane(t);
+  enterReader(); showTab(t.id);
+  loadEntry(t);
+  return t;
+}
+function newTab(){
+  openStartTab();
+}
+function goAppHome(){
+  const t=active();
+  if(isStartTab(t)){ focusOmnibox({pulse:true}); return; }
+  navigate(makeEntry('start', {title:'开始'}));
+}
+
+function omniIconFor(kind){
+  if(kind==='search') return icon('search',13);
+  if(kind==='folder') return icon('folder',13);
+  if(kind==='html') return icon('globe',13);
+  if(kind==='note') return icon('pencil',13);
+  return icon('doc-text',13);
+}
+function syncChrome(){
+  if(SOLO) return;
+  const t=active();
+  const back=$('#navBack'), fwd=$('#navFwd'), bm=$('#navBm');
+  if(back) back.toggleAttribute('disabled', !canBack(t));
+  if(fwd) fwd.toggleAttribute('disabled', !canForward(t));
+  if(bm) bm.classList.toggle('on', ST.bookmarks!==false);
+  const omni=$('#omni'), chip=$('#obchip'), ico=$('#obicon');
+  const path=currentPath(t);
+  if(omni && document.activeElement!==omni){
+    omni.value=path;
+  }
+  const k=kindOfTab(t);
+  if(chip){
+    if(k==='html'){ chip.hidden=false; chip.textContent='HTML'; }
+    else if(k==='md' && t && !t.ext && String(t.path||'').startsWith(NOTE_DIR+'/')){ chip.hidden=false; chip.textContent='笔记'; }
+    else if(k==='md'){ chip.hidden=false; chip.textContent='MD'; }
+    else { chip.hidden=true; }
+  }
+  if(ico) ico.innerHTML=omniIconFor(k==='start'?'search':k);
+  paintIdlePath(path, document.activeElement===omni);
+  requestAnimationFrame(()=>paintIdlePath(path, document.activeElement===$('#omni')));
+}
+function pathTextWidth(s){
+  let probe=pathTextWidth._el;
+  if(!probe){
+    probe=document.createElement('span');
+    probe.setAttribute('aria-hidden','true');
+    probe.style.cssText='position:absolute;left:-9999px;top:0;white-space:nowrap;visibility:hidden;pointer-events:none';
+    document.body.appendChild(probe);
+    pathTextWidth._el=probe;
+  }
+  const src=$('#obpath')||document.body;
+  const cs=getComputedStyle(src);
+  probe.style.fontSize=cs.fontSize;
+  probe.style.fontFamily=cs.fontFamily;
+  probe.style.fontWeight=cs.fontWeight;
+  probe.style.fontStyle=cs.fontStyle;
+  probe.style.letterSpacing=cs.letterSpacing;
+  probe.textContent=s;
+  return probe.offsetWidth;
+}
+function paintIdlePath(path, focused){
+  const idle=$('#obpath'); if(!idle) return;
+  const inner=idle.querySelector('span'); if(!inner) return;
+  idle.hidden=!!focused || !path;
+  if(idle.hidden){ inner.textContent=''; return; }
+  const room=idle.clientWidth;
+  const fits=s=> !room || pathTextWidth(s)<=room+1;
+  if(fits(path)){ inner.textContent=path; return; }
+  const parts=String(path).split('/').filter(Boolean);
+  for(let n=Math.max(1, parts.length-1); n>=1; n--){
+    const s='…/'+parts.slice(-n).join('/');
+    if(fits(s)){ inner.textContent=s; return; }
+  }
+  const name=parts[parts.length-1]||path;
+  let lo=1, hi=name.length, best='…'+name;
+  while(lo<=hi){
+    const mid=(lo+hi)>>1;
+    const s='…'+name.slice(-mid);
+    if(fits(s)){ best=s; lo=mid+1; }
+    else hi=mid-1;
+  }
+  inner.textContent=best;
+}
 
 function tabFolder(t){
   const p=String((t && (t.ext ? (t.abs||t.path) : t.path)) || '');
@@ -1467,6 +2343,13 @@ function lastSep(s){
 }
 /* 标签上写什么：题名彼此独立就整段省略；撞车（长前缀相同）就切开，尾巴永远在。
    完全同名再补所在文件夹。 */
+function tabIcon(t){
+  const k=kindOfTab(t);
+  if(k==='html') return 'globe';
+  if(k==='folder') return 'folder';
+  if(k==='search' || k==='start') return 'search';
+  return 'doc-text';
+}
 function tabLabel(t, all){
   const title=String((t && t.title) || '').trim() || '无标题';
   const others=(all||[]).filter(x=>x && x!==t)
@@ -1499,8 +2382,9 @@ function tabLabel(t, all){
 
 function drawTabs(){
   const bar=$('#tabbar');
+  if(!bar) return;
   closeTabPick();
-  const on = TABS.length>=2 && !SOLO;
+  const on = !SOLO;
   bar.classList.toggle('on', on);
   bar.classList.remove('has-more');
   document.body.classList.toggle('tabs-on', on);
@@ -1512,6 +2396,7 @@ function drawTabs(){
       : `<span class="tt plain">${esc(lab.text)}</span>`;
     const tip=esc(t.title||'')+(t.path?' — '+esc(t.path):'');
     return `<div class="tab${t.id===curTab?' on':''}${dirty(t)?' dirty':''}" data-id="${t.id}" title="${tip}" role="tab" aria-selected="${t.id===curTab?'true':'false'}">
+       <span class="fav" aria-hidden="true">${icon(tabIcon(t),14)}</span>
        ${tt}<i class="ddot" title="未保存"></i>
        <button type="button" class="tx" data-close="${t.id}" title="关掉">${icon('close',11)}</button>
      </div>`;
@@ -1545,13 +2430,19 @@ function layoutTabs(){
 
   const fits=()=>{
     const vis=tabs.filter(el=>!el.hidden);
-    const last=vis[vis.length-1];
-    if(!last) return true;
+    if(!vis.length) return true;
     const br=bar.getBoundingClientRect();
-    const lr=last.getBoundingClientRect();
     const padR=parseFloat(getComputedStyle(bar).paddingRight)||0;
     const moreW=bar.classList.contains('has-more') ? more.offsetWidth+4 : 0;
-    return lr.right <= br.right-padR-moreW+1;
+    const limit=br.right-padR-moreW+1;
+    return vis.every(el=>{
+      const r=el.getBoundingClientRect();
+      // 负边距让标签叠在一起，右边会探出栏外一截（给凹角用），不算溢出。
+      const hang=Math.min(0, parseFloat(getComputedStyle(el).marginRight)||0);
+      if(r.right+hang>limit) return false;
+      if(vis.length===1) return true;
+      return r.width>=79;
+    });
   };
   if(fits()){ if(tabPickOn()) closeTabPick(); return; }
 
@@ -1670,7 +2561,7 @@ function showTab(id){
   $$('#panes .md').forEach(m=>m.removeAttribute('id'));
   const md=paneOf(t) && paneOf(t).querySelector('.md');
   if(md) md.id='doc';
-  drawTabs(); buildToc(); syncProg(); syncBar();
+  drawTabs(); buildToc(); syncProg(); syncBar(); syncChrome();
   pushState();
 }
 
@@ -1682,7 +2573,12 @@ function closeTab(id){
   const p=paneOf(t); if(p) p.remove();
   if(t.blobs) t.blobs.forEach(u=>{ try{ URL.revokeObjectURL(u); }catch(e){} });
   TABS.splice(i,1);
-  if(!TABS.length){ curTab=null; drawTabs(); leaveReader(); return true; }
+  if(!TABS.length){
+    curTab=null;
+    if(SOLO){ drawTabs(); leaveReader(); return true; }
+    openStartTab();
+    return true;
+  }
   showTab(curTab===id ? TABS[Math.min(i,TABS.length-1)].id : curTab);
   return true;
 }
@@ -1693,10 +2589,30 @@ function newPane(t){
   p.className='pane';
   // 渲染稿和源码框都留在 pane 里，靠 .edit 切换谁露出来
   p.innerHTML='<div class="md f-sans"></div>'
-    + '<textarea class="ed" spellcheck="false" autocomplete="off"></textarea>';
+    + '<textarea class="ed" spellcheck="false" autocomplete="off"></textarea>'
+    + '<iframe class="htmlframe" sandbox hidden title=""></iframe>'
+    + '<div class="pagebox" hidden></div>';
   p.addEventListener('scroll', ()=>{ if(t.id===curTab) syncProg(); }, {passive:true});
+  const box0=p.querySelector('.pagebox');
+  box0.addEventListener('click', e=>{
+    const act=e.target.closest('[data-act]');
+    if(act){
+      if(act.dataset.act==='focusomni'){ focusOmnibox({pulse:true}); return; }
+      if(act.dataset.act==='newnote'){ newNote(); return; }
+    }
+    const row=e.target.closest('[data-open]');
+    if(row){
+      const rel=row.dataset.open;
+      const it=items.find(i=>i.路径===rel) || {路径:rel, 标题:rel.split('/').pop(), 类型:row.dataset.kind||'md'};
+      openDoc(it, {newTab:e.metaKey||e.ctrlKey, jump:kindOfTab(t)==='search'?terms():undefined});
+      return;
+    }
+    const fol=e.target.closest('[data-folder]');
+    if(fol) navigate(makeEntry('folder', {folder:fol.dataset.folder, title:fol.dataset.folder.split('/').pop(), path:fol.dataset.folder+'/'}),
+      {newTab:e.metaKey||e.ctrlKey});
+  });
   const md0=p.querySelector('.md');
-  // 阅读态点链接：指向库内 md / html 的在门户里开新标签；
+  // 阅读态点链接：库内 md / html 在当前标签打开（⌘ 点开新标签）。
   // [[题名]] 按标题 / 文件名解析，多个候选弹一列挑。编辑态不拦——点击是在放光标。
   md0.addEventListener('click', e=>{
     if(t.editing) return;
@@ -1705,7 +2621,7 @@ function newPane(t){
     const a=e.target.closest('a'); if(!a || !md0.contains(a)) return;
     if(a.dataset.wl!==undefined){ e.preventDefault(); openWiki(a.dataset.wl, e); return; }
     const rel=libRel(a.dataset.u||'', dirOf(t.path));
-    if(rel){ e.preventDefault(); openByPath(rel); }
+    if(rel){ e.preventDefault(); openByPath(rel, {newTab:e.metaKey||e.ctrlKey}); }
   });
   /* 双击进编辑：阅读态双击正文任意块 → 进编辑，光标落在双击的那个位置。
      先把「第几块、块内第几个字符」记下来，进编辑要重画一次，按这两个数找回来。 */
@@ -1830,38 +2746,40 @@ function leaveReader(){
   render(); pushState();
 }
 
-/* md 在门户里读，其余一律交给系统默认程序——html 就是 Chrome。 */
+/* md 走阅读器；html 进当前标签的沙箱 iframe。别的类型仍交系统。 */
 async function openDoc(it, opt){
   if(!it) return;
   opt=opt||{};
-  if((it.类型||'md')!=='md'){ openExternal(it.路径); return; }
-  ST.lastPath=it.路径;
-  saveST();
-  const old=TABS.find(t=>t.path===it.路径 && !t.ext);
-  if(old){ enterReader(); showTab(old.id); if(opt.jump) flashHit(old, opt.jump); return; }
+  const html=(it.类型==='html') || /\.html?$/i.test(it.路径||'');
+  const md=(it.类型||'md')==='md' || /\.md$/i.test(it.路径||'');
+  if(!html && !md){ openExternal(it.路径); return; }
+  const kind=html?'html':'md';
+  touchRecent(it);
+  if(!opt.newTab){
+    const old=TABS.find(t=>t.path===it.路径 && !t.ext);
+    if(old){ enterReader(); showTab(old.id); if(opt.jump && kind==='md') flashHit(old, opt.jump); return; }
+  }
   if(!IS_HTTP) return;                       // 双击 HTML 直接开时读不了本地文件
-
-  const t={id:'t'+(++tabSeq), path:it.路径, title:it.标题||it.路径, type:'md'};
-  TABS.push(t); newPane(t);
-  enterReader(); showTab(t.id);
-  await loadMd(t);
-  if(opt.jump) flashHit(t, opt.jump);
+  const entry=makeEntry(kind, {path:it.路径, title:it.标题||it.路径});
+  const t=await navigate(entry, {newTab:!!opt.newTab});
+  if(opt.jump && t && kind==='md') flashHit(t, opt.jump);
 }
 
 /* ── 按路径 / 题名打开 ──────────────────── */
-function openByPath(rel){
+function openByPath(rel, opt){
   if(!rel) return;
   if(rel[0]==='/' ){
     const root=LIBROOT ? LIBROOT.replace(/\/$/,'')+'/' : '';
-    if(root && rel.startsWith(root)) return openByPath(rel.slice(root.length));
+    if(root && rel.startsWith(root)) return openByPath(rel.slice(root.length), opt);
     if(/\.md$/i.test(rel)) return openExtPath(rel);
     tell('打不开','库外的文件只能读 .md：'+rel);
     return;
   }
   const it=items.find(i=>i.路径===rel);
-  if(it) return openDoc(it);
+  if(it) return openDoc(it, opt);
   const md=/\.md$/i.test(rel);
-  return openDoc({路径:rel, 标题:rel.split('/').pop(), 类型:md?'md':'other'});
+  const html=/\.html?$/i.test(rel);
+  return openDoc({路径:rel, 标题:rel.split('/').pop(), 类型:md?'md':html?'html':'other'}, opt);
 }
 
 /* md 里写的地址是不是指库内的 md / html。是就还原成库根相对路径。 */
@@ -1869,7 +2787,7 @@ function libRel(u, base){
   u=String(u||'').trim();
   if(!u || /^(?:[a-z][a-z0-9+.\-]*:|\/\/|#)/i.test(u)) return null;
   u=u.split('#')[0].split('?')[0];
-  if(!/\.(md|html)$/i.test(u)) return null;
+  if(!/\.(md|html|htm)$/i.test(u)) return null;
   const parts=(u[0]==='/' ? u.slice(1) : (base ? base+'/'+u : u)).split('/');
   const out=[];
   for(let s of parts){
@@ -1885,7 +2803,7 @@ function libRel(u, base){
 function wikiMatches(name){
   const n=name.trim().toLowerCase();
   if(!n) return [];
-  const stem=p=>p.split('/').pop().replace(/\.(md|html)$/i,'').toLowerCase();
+  const stem=p=>p.split('/').pop().replace(/\.(md|html|htm)$/i,'').toLowerCase();
   const exact=items.filter(i=>(i.标题||'').toLowerCase()===n || stem(i.路径)===n);
   if(exact.length) return exact;
   return items.filter(i=>(i.标题||'').toLowerCase().includes(n) || stem(i.路径).includes(n))
@@ -1894,13 +2812,13 @@ function wikiMatches(name){
 function openWiki(name, e){
   const c=wikiMatches(name);
   if(!c.length){ flash(`库里没有叫「${name}」的产出`); return; }
-  if(c.length===1) return openDoc(c[0]);
+  if(c.length===1) return openDoc(c[0], {newTab:!!(e&&(e.metaKey||e.ctrlKey))});
   let pk=$('#wlpick');
   if(!pk){ pk=document.createElement('div'); pk.id='wlpick'; document.body.appendChild(pk);
     document.addEventListener('click', ev=>{ if(!pk.contains(ev.target)) pk.classList.remove('on'); }, true); }
   pk.innerHTML=c.map((i,ix)=>`<button data-ix="${ix}">${esc(i.标题)}<span class="wp">${esc(i.路径)}</span></button>`).join('');
   pk.querySelectorAll('button').forEach(b=>b.onclick=ev=>{
-    ev.stopPropagation(); pk.classList.remove('on'); openDoc(c[+b.dataset.ix]); });
+    ev.stopPropagation(); pk.classList.remove('on'); openDoc(c[+b.dataset.ix], {newTab:!!(ev.metaKey||ev.ctrlKey)}); });
   pk.classList.add('on');
   const x=Math.min(innerWidth-pk.offsetWidth-10, (e&&e.clientX)||60);
   const y=Math.min(innerHeight-pk.offsetHeight-10, ((e&&e.clientY)||60)+12);
@@ -1909,7 +2827,7 @@ function openWiki(name, e){
 
 /* Agent 让门户打开某份时可以带一个锚点：跳到含这段文字的标题上。 */
 function scrollToHeading(txt){
-  const t=active(); if(!t || t.type!=='md' || !txt) return;
+  const t=active(); if(!t || kindOfTab(t)!=='md' || !txt) return;
   const p=paneOf(t); if(!p) return;
   const h=[...p.querySelectorAll('.md h1,.md h2,.md h3,.md h4')]
     .find(el=>(el.textContent||'').includes(txt));
@@ -1998,7 +2916,8 @@ async function openExtPath(abs){
   }catch(e){ tell('打不开','服务没应答'); return; }
   if(!r || !r.ok){ tell('打不开', (r&&r.错误)||'这个文件读不了'); return; }
   const t={id:'t'+(++tabSeq), path:abs, abs:abs, extId:r.id, ext:true,
-           title:r.名称||abs.split('/').pop(), type:'md', noEdit:true, blobs:[]};
+           title:r.名称||abs.split('/').pop(), type:'md', kind:'md', noEdit:true, blobs:[],
+           stack:[makeEntry('md', {path:abs, title:r.名称||abs.split('/').pop()})], idx:0};
   TABS.push(t); newPane(t);
   enterReader(); showTab(t.id);
   await loadExt(t);
@@ -2086,7 +3005,7 @@ function undecorateHistory(md){
 
 /* ── 篇内目录：右侧短横线轨道 ───────────── */
 function heads(){
-  const t=active(); if(!t||t.type!=='md') return [];
+  const t=active(); if(!t||kindOfTab(t)!=='md') return [];
   const p=paneOf(t); return p?[...p.querySelectorAll('.md h2, .md h3')]:[];
 }
 function buildToc(){
@@ -2106,7 +3025,7 @@ function buildToc(){
 }
 function syncProg(){
   const t=active(), p=t&&paneOf(t);
-  if(!p||t.type!=='md') return;
+  if(!p||kindOfTab(t)!=='md') return;
   let cur=null;
   heads().forEach(h=>{ if(h.offsetTop-80<=p.scrollTop) cur=h.id; });
   $$('#toc .tick').forEach(a=>a.classList.toggle('on', a.dataset.id===cur));
@@ -2481,9 +3400,11 @@ function syncTabTitle(t){
   const title=h1 || '无标题';
   if(t.title===title) return;
   t.title=title;
+  const e=ensureStack(t); if(e && e.kind==='md') e.title=title;
   drawTabs();
   lastNat='';
   syncNative();
+  syncChrome();
 }
 function caretAtStart(el){
   const s=getSelection();
@@ -3175,10 +4096,11 @@ function syncNative(){
   const sig=(t?t.path:'')+'|'+d+'|'+LISTS;
   if(sig===lastNat) return;
   lastNat=sig;
+  const file=hasDocNow(t);
   post({type:'doc', title:t?(t.title||''):null,
-        path:(t&&!t.ext)?(LIBROOT+'/'+t.path):(t?t.path:null)});
+        path: file ? ((t&&!t.ext)?(LIBROOT+'/'+t.path):t.path) : null});
   post({type:'dirty', on:d});
-  post({type:'canedit', on:!!t && !t.ext && canEditPath(t.path)});
+  post({type:'canedit', on:!!file && !t.ext && kindOfTab(t)==='md' && canEditPath(t.path)});
 }
 
 /* ── 进／出编辑态 ───────────────────────
@@ -3453,8 +4375,8 @@ function verifyDirty(t){
 }
 
 /* ── 数据 ───────────────────────────────
-   只有一份：`/__tree`，服务从全文索引里现给。库里全部 md 和 html，每条只有
-   路径、标题、类型、改动时间四样。 */
+   只有一份：`/__tree`，服务从全文索引里现给。库里全部 md 和 html，每条有
+   路径、标题、类型、改动时间、预览。 */
 let items=[];
 let TREE=null;
 let fDir=null, fSub=null;       // 选中的大类文件夹 ／ 它下面的子文件夹
@@ -3493,9 +4415,14 @@ function setTree(t){
   TREE=t;
   items=(t.文档||[]).map(d=>({
     路径:d.路径, 标题:d.标题||'', 类型:d.类型||'md',
-    修改时间:d.改于||0, 日期:ymd(d.改于)}));
+    修改时间:d.改于||0, 日期:ymd(d.改于), 预览:d.预览||''}));
   prepItems(); syncNotePv();
   buildNav(); render();
+  drawBmBar();
+  TABS.forEach(t=>{
+    const k=kindOfTab(t);
+    if(k==='folder'||k==='search'||k==='start') paintPage(t);
+  });
 }
 
 async function loadTree(){
@@ -3504,9 +4431,13 @@ async function loadTree(){
   catch(e){ /* 服务没起：列表是空的，状态点会变灰 */ }
 }
 
-/* 类型筛：全部 / Markdown / HTML。最近、文件夹、搜索共用；随手记全是 md，控件藏起来。
-   html 点开仍交系统浏览器，不在门户里渲染。 */
-function kindOf(i){ return (i && i.类型) || 'md'; }
+/* 类型筛：全部 / Markdown / HTML。只在浏览列表时生效；搜索始终覆盖 md 和 html。
+   html 点开在标签里用沙箱 iframe 读。 */
+function kindOf(i){
+  if(i && (i.类型==='html' || i.类型==='md')) return i.类型;
+  if(i && /\.html?$/i.test(i.路径||i.path||'')) return 'html';
+  return (i && i.类型) || 'md';
+}
 function kindOk(i){
   const k=kindOf(i);
   if(fKind==='md') return k==='md';
@@ -3606,11 +4537,14 @@ function goHome(notes){
   buildNav(); render();
   const sc=$(listHost()); if(sc) sc.scrollTop=0;
 }
+function openNotesFolder(){
+  navigate(makeEntry('folder', {folder:NOTE_DIR, title:NOTE_DIR, path:NOTE_DIR+'/'}));
+}
 
 /* ── 搜索 ───────────────────────────────
    搜索一律走全库：只要搜索框里有字，文件夹就不参与。 */
 const terms = () => kw.toLowerCase().split(/\s+/).filter(Boolean);
-const hayOf = i => (String(i.标题||'')+' '+String(i.路径||'')).toLowerCase();
+const hayOf = i => (String(i.标题||'')+' '+String(i.路径||'')+' '+String(i.预览||'')).toLowerCase();
 
 /* 标题和路径的匹配在本地立刻出；正文命中问服务的全文索引（/__search），防抖 250ms。 */
 let FT={q:'', map:new Map(), 状态:'', 总:0, timer:null};
@@ -3637,9 +4571,34 @@ function ftKick(){
 function hit(i){
   const ts=terms();
   if(!ts.length) return passes(i);
-  if(!kindOk(i)) return false;             // 搜索也跟类型筛走：只看 html 时别把 md 搜回来
-  const h=hayOf(i);
-  return ts.every(t=>h.includes(t)) || FT.map.has(i.路径);
+  // 搜索覆盖 md 和 html，不管类型筛。类型筛只在浏览列表时生效。
+  const k=kindOf(i);
+  if(k!=='md' && k!=='html') return false;
+  return ts.every(t=>hayOf(i).includes(t)) || (FT.q===kw && FT.map.has(i.路径));
+}
+function docsMatching(q){
+  q=String(q||'').trim();
+  const ts=q.toLowerCase().split(/\s+/).filter(Boolean);
+  if(!ts.length) return [];
+  const seen=new Set(), out=[];
+  const useFt=FT.q===q;
+  const take=i=>{
+    const p=i && i.路径; if(!p || seen.has(p)) return;
+    const k=kindOf(i);
+    if(k!=='md' && k!=='html') return;
+    seen.add(p); out.push(i);
+  };
+  items.forEach(i=>{
+    if(ts.every(x=>hayOf(i).includes(x)) || (useFt && FT.map.has(i.路径))) take(i);
+  });
+  if(useFt){
+    FT.map.forEach((h,p)=>{
+      if(seen.has(p)) return;
+      if(h.类型==='md' || h.类型==='html')
+        take({路径:p, 标题:h.标题||p.split('/').pop(), 类型:h.类型, 预览:''});
+    });
+  }
+  return out.sort((a,b)=>score(b,ts)-score(a,ts));
 }
 
 /* 相关度：文件名全中最重（跟服务端第一档同一个判据），标题次之，正文命中加一点。 */
@@ -3729,8 +4688,9 @@ const acts = (i, idx) =>
 
 /* 一行。窄栏 / 列表栏 / 搜索结果三种形状，走同一套选中、键盘、拖动、右键。 */
 function excerptOf(i){
-  const pv=(i && (i.预览 || NOTEPV.get(i.路径))) || '';
-  if(pv) return String(pv).replace(/\s+/g,' ').trim();
+  const fromNote=NOTEPV.get(i && i.路径);
+  if(fromNote) return String(fromNote).replace(/\s+/g,' ').trim();
+  if(kindOf(i)==='html' && i && i.预览) return String(i.预览).replace(/\s+/g,' ').trim();
   const p=String((i&&i.路径)||'');
   return p.includes('/') ? p.slice(0, p.lastIndexOf('/')) : '';
 }
@@ -3848,6 +4808,9 @@ function render(){
   paintSel();
   saveFilters();
   pushState();
+  const at=active();
+  if(at && kindOfTab(at)==='search') paintSerp(at);
+  if(omniOn()) paintOmni();
 }
 
 /* 往下滚动续加，不加按钮 */
@@ -3945,8 +4908,9 @@ function rowMenu(e, seq){
   const many=selSet.size>1 ? `（${selSet.size} 份）` : '';
   const md=(i.类型||'md')==='md';
   popMenu(e, [
-    {id:'open', label: md?'打开':'在浏览器里打开'},
-    ...(md&&IS_HTTP?[{id:'newwin', label:'在新窗口打开'}]:[]),
+    {id:'open', label:'打开'},
+    ...(!md?[{id:'browser', label:'在浏览器里打开'}]:[]),
+    ...(IS_HTTP?[{id:'newwin', label:'在新窗口打开'}]:[]),
     {sep:true},
     {id:'copyurl',label:'拷贝路径'+many},
     {id:'reveal', label:'在访达中显示'+many},
@@ -3954,6 +4918,7 @@ function rowMenu(e, seq){
   ], id=>{
     const picked=(selSet.size?[...selSet]:[seq]).map(s=>listNow[s]).filter(Boolean);
     if(id==='open') openDoc(i, {jump:terms()});
+    else if(id==='browser') openExternal(i.路径);
     else if(id==='newwin') openSolo(i.路径);
     else if(id==='reveal') picked.forEach(x=>revealPath(x.路径));
     else if(id==='copyrel') copyText(picked.map(x=>x.路径).join('\n')).then(ok=>flash(ok?'路径已拷贝':'拷不了'));
@@ -3967,7 +4932,9 @@ function rowMenu(e, seq){
 /* 正文上的右键：原来顶栏那一排按钮搬到这里（工具栏收成两颗，见 C 路）。 */
 function docMenu(e, t){
   if(!t) return;
-  if(e.target.closest('a,img,textarea')) return;
+  const kk=kindOfTab(t);
+  if(kk==='start'||kk==='search'||kk==='folder') return;
+  if(e.target.closest('a,img,textarea,iframe,.pagebox')) return;
   const ed=!!t.editing, src=paneOf(t).classList.contains('src');
   popMenu(e, [
     ...(!ed && !t.ext && canEditPath(t.path) ? [{id:'edit', label:'进入编辑'},{sep:true}] : []),
@@ -4024,14 +4991,26 @@ function setKw(v){
   post({type:'search', text:kw});
 }
 function clearQ(focus){ setKw(''); render(); if(focus) focusSearch(); }
-/* 跳到搜索框（⌥⌘K / 壳菜单 AMN.focusSearch）。
-   在读文档又收着列表时，搜索框在屏幕上不存在，先把列表拉出来再聚焦。 */
-function focusSearch(){
-  const hub = document.body.classList.contains('nodoc') && !LISTS;
-  if(!hub && !LISTS) setLists(true);
-  const el = (document.body.classList.contains('nodoc') && !LISTS) ? $('#q') : $('#q2');
-  if(!el) return;
-  el.focus(); el.select();
+/* 跳到地址栏（⌥⌘K / 壳菜单 AMN.focusSearch）。列表栏里那只搜索框还在，但默认去 omnibox。 */
+function focusSearch(){ focusOmnibox(); }
+function focusOmnibox(opts){
+  opts=opts||{};
+  const el=$('#omni'); if(!el) return;
+  const wrap=$('#omnibox');
+  el.focus();
+  if(opts.seed){
+    omniUser=true;
+    el.value=opts.seed;
+    el.setSelectionRange(opts.seed.length, opts.seed.length);
+  }else{
+    el.select();
+  }
+  if(wrap && opts.pulse){
+    wrap.classList.remove('pulse');
+    void wrap.offsetWidth;
+    wrap.classList.add('pulse');
+  }
+  if(opts.suggest!==false) showOmni();
 }
 ['#q','#q2'].forEach(sel=>{
   const el=$(sel); if(!el) return;
@@ -4047,6 +5026,212 @@ function focusSearch(){
 });
 $('#qclear').onclick=()=>clearQ(true);
 $('#qclear2').onclick=()=>clearQ(true);
+
+/* ── 地址栏 ／ 书签栏 ─────────────────────
+   地址栏搜本地文件，不是网址。空着聚焦给最近打开和根目录文件夹。
+   拼音上屏那一下的 Enter 要放过去（isComposing / 229），跟下面列表框同一条规矩。 */
+let omniRows=[], omniIdx=0, omniUser=false, omniTimer=null;
+function omniOn(){ const d=$('#obdrop'); return !!(d && d.classList.contains('on')); }
+function hideOmni(restore){
+  const d=$('#obdrop'); if(d) d.classList.remove('on');
+  const wrap=$('#omnibox'); if(wrap) wrap.classList.remove('focus');
+  omniRows=[]; omniIdx=0;
+  if(restore){
+    omniUser=false;
+    const el=$('#omni'); if(el) el.value=currentPath();
+  }
+}
+function omniSuggest(q){
+  q=String(q||'').trim();
+  const rows=[];
+  if(q){
+    rows.push({kind:'search', title:'在库中搜索「'+q+'」', path:'搜索', q});
+    const ql=q.toLowerCase();
+    const parts=ql.split(/\s+/).filter(Boolean);
+    ((TREE&&TREE.目录)||[]).forEach(d=>{
+      const hay=(d.名称+' '+(d.显示名||'')).toLowerCase();
+      if(parts.every(x=>hay.includes(x))) rows.push({kind:'folder', title:d.显示名||d.名称, path:d.名称+'/', folder:d.名称});
+    });
+    docsMatching(q).slice(0,10).forEach(i=>rows.push({kind:kindOf(i), title:cleanTitle(i), path:i.路径, item:i}));
+  }else{
+    rows.push({kind:'label', title:'最近打开'});
+    const seen=new Set();
+    const rec=[];
+    (ST.recents||[]).forEach(r=>{ if(r&&r.路径&&!seen.has(r.路径)){ seen.add(r.路径); rec.push(r); } });
+    if(ST.lastPath && !seen.has(ST.lastPath)){
+      const it=items.find(i=>i.路径===ST.lastPath);
+      rec.unshift(it||{路径:ST.lastPath, 标题:ST.lastPath.split('/').pop(), 类型:/\.html?$/i.test(ST.lastPath)?'html':'md'});
+    }
+    rec.slice(0,8).forEach(r=>{
+      const it=items.find(i=>i.路径===r.路径) || r;
+      rows.push({kind:kindOf(it)==='html'?'html':'md', title:cleanTitle(it), path:it.路径, item:it});
+    });
+    rows.push({kind:'label', title:'文件夹'});
+    ((TREE&&TREE.目录)||[]).forEach(d=>rows.push({kind:'folder', title:d.显示名||d.名称, path:d.名称+'/', folder:d.名称}));
+    rows.push({kind:'note', title:'新建随手记', path:NOTE_DIR+'/'});
+  }
+  return rows;
+}
+function paintOmni(){
+  const d=$('#obdrop'), wrap=$('#omnibox'), input=$('#omni');
+  if(!d || !wrap || !input) return;
+  const q=omniUser ? input.value : '';
+  omniRows=omniSuggest(q);
+  const pickable=omniRows.map((r,i)=>r.kind==='label'?-1:i).filter(i=>i>=0);
+  if(!pickable.includes(omniIdx)) omniIdx=pickable[0]||0;
+  d.innerHTML=omniRows.map((r,i)=>{
+    if(r.kind==='label') return `<div class="lab">${esc(r.title)}</div>`;
+    return `<button type="button" class="obrow${i===omniIdx?' on':''}" data-i="${i}" role="option">
+      <span class="ico">${omniIconFor(r.kind)}</span>
+      <span class="t">${esc(r.title)}</span>
+      <span class="p">${esc(r.path||'')}</span>
+    </button>`;
+  }).join('') || `<div class="lab">开始输入以搜索本地文件</div>`;
+  d.querySelectorAll('.obrow').forEach(b=>{
+    b.onmousedown=e=>{ e.preventDefault(); pickOmni(+b.dataset.i, e.metaKey||e.ctrlKey); };
+  });
+  const rect=wrap.getBoundingClientRect();
+  d.style.width=Math.max(240, rect.width)+'px';
+  d.style.left=Math.max(8, Math.min(rect.left, innerWidth-rect.width-8))+'px';
+  d.style.top=(rect.bottom+6)+'px';
+  d.classList.add('on');
+  wrap.classList.add('focus');
+  const on=d.querySelector('.obrow.on');
+  if(on) on.scrollIntoView({block:'nearest'});
+}
+function showOmni(){
+  hideBmDrop();
+  paintOmni();
+}
+function pickOmni(i, newTab){
+  const r=omniRows[i]; if(!r || r.kind==='label') return;
+  hideOmni(false);
+  const input=$('#omni'); if(input) input.blur();
+  omniUser=false;
+  if(r.kind==='note'){ newNote(); return; }
+  if(r.kind==='search'){
+    const q=r.q||'';
+    setKw(q);
+    navigate(makeEntry('search', {q, title:q, path:'搜索: '+q}), {newTab});
+  }else if(r.kind==='folder'){
+    navigate(makeEntry('folder', {folder:r.folder, title:r.title, path:r.folder+'/'}), {newTab});
+  }else if(r.item){
+    openDoc(r.item, {newTab});
+  }
+}
+function moveOmni(dir){
+  const ids=omniRows.map((r,i)=>r.kind==='label'?-1:i).filter(i=>i>=0);
+  if(!ids.length) return;
+  let p=ids.indexOf(omniIdx); if(p<0) p=0;
+  p=(p+dir+ids.length)%ids.length;
+  omniIdx=ids[p];
+  paintOmni();
+}
+
+(function wireOmni(){
+  const input=$('#omni'), wrap=$('#omnibox');
+  if(!input || !wrap) return;
+  input.addEventListener('focus', ()=>{
+    wrap.classList.add('focus');
+    input.select();
+    omniUser=false;
+    showOmni();
+  });
+  input.addEventListener('input', ()=>{
+    omniUser=true;
+    const q=input.value.trim();
+    if(q){ setKw(q); ftKick(); }
+    showOmni();
+  });
+  input.addEventListener('keydown', e=>{
+    if(e.isComposing || e.keyCode===229) return;
+    if(e.key==='ArrowDown'){ e.preventDefault(); if(!omniOn()) showOmni(); else moveOmni(1); }
+    else if(e.key==='ArrowUp'){ e.preventDefault(); if(omniOn()) moveOmni(-1); }
+    else if(e.key==='Enter'){
+      e.preventDefault();
+      if(omniOn() && omniRows[omniIdx] && omniRows[omniIdx].kind!=='label') pickOmni(omniIdx, e.metaKey||e.ctrlKey);
+      else if(omniUser && input.value.trim()){
+        const q=input.value.trim();
+        hideOmni(false); input.blur(); omniUser=false;
+        setKw(q);
+        navigate(makeEntry('search', {q, title:q, path:'搜索: '+q}), {newTab:e.metaKey||e.ctrlKey});
+      }
+    }else if(e.key==='Escape'){
+      e.preventDefault(); e.stopPropagation();
+      hideOmni(true); input.blur();
+    }
+  });
+  input.addEventListener('blur', ()=>{
+    setTimeout(()=>{
+      if(omniOn()) return;
+      wrap.classList.remove('focus');
+      omniUser=false;
+      syncChrome();
+    }, 120);
+  });
+})();
+
+function bmDropOn(){ const d=$('#bmdrop'); return !!(d && d.classList.contains('on')); }
+function hideBmDrop(){
+  const d=$('#bmdrop'); if(d){ d.classList.remove('on'); d.innerHTML=''; }
+  $$('#bmbar .bm.open').forEach(b=>b.classList.remove('open'));
+}
+function drawBmBar(){
+  const bar=$('#bmbar'); if(!bar) return;
+  const dirs=(TREE&&TREE.目录)||[];
+  bar.innerHTML=dirs.map(d=>
+    `<button type="button" class="bm" data-folder="${esc(d.名称)}" title="${esc(d.名称)}">${folderMark(16)}<span class="lbl">${esc(d.显示名||d.名称)}</span></button>`
+  ).join('');
+  bar.querySelectorAll('.bm').forEach(b=>{
+    b.onclick=e=>{
+      if(e.metaKey||e.ctrlKey){
+        hideBmDrop();
+        navigate(makeEntry('folder', {folder:b.dataset.folder, title:b.dataset.folder, path:b.dataset.folder+'/'}));
+      }else showBmMenu(b.dataset.folder, b);
+    };
+  });
+}
+function showBmMenu(name, anchor){
+  hideOmni(false); hideBmDrop();
+  const d=$('#bmdrop'); if(!d || !anchor) return;
+  anchor.classList.add('open');
+  const files=filesInFolder(name);
+  d.innerHTML=`<div class="lab">${esc(name)}</div>`
+    + (files.map(i=>`<button type="button" data-open="${esc(i.路径)}" data-kind="${esc(kindOf(i))}"><span class="t">${esc(cleanTitle(i))}</span><span class="p">${kindOf(i)==='html'?'HTML':'MD'}</span></button>`).join('')
+       || `<button type="button" disabled>没有文件</button>`)
+    + `<div class="sep"></div><button type="button" data-openfolder="${esc(name)}">打开文件夹…</button>`;
+  d.querySelectorAll('[data-open]').forEach(b=>b.onclick=e=>{
+    hideBmDrop();
+    const it=items.find(i=>i.路径===b.dataset.open) || {路径:b.dataset.open, 标题:b.dataset.open.split('/').pop(), 类型:b.dataset.kind||'md'};
+    openDoc(it, {newTab:e.metaKey||e.ctrlKey});
+  });
+  const of=d.querySelector('[data-openfolder]');
+  if(of) of.onclick=()=>{
+    hideBmDrop();
+    navigate(makeEntry('folder', {folder:name, title:name, path:name+'/'}));
+  };
+  const r=anchor.getBoundingClientRect();
+  d.style.minWidth='240px';
+  d.style.left=Math.max(8, Math.min(r.left, innerWidth-260))+'px';
+  d.style.top=(r.bottom+6)+'px';
+  d.classList.add('on');
+}
+function toggleBookmarks(){
+  ST.bookmarks = ST.bookmarks===false;
+  document.body.classList.toggle('nobm', ST.bookmarks===false);
+  saveST();
+  const bm=$('#navBm'); if(bm) bm.classList.toggle('on', ST.bookmarks!==false);
+}
+
+(function wireChromeBtns(){
+  const back=$('#navBack'), fwd=$('#navFwd'), rel=$('#navReload'), plus=$('#tabplus'), bm=$('#navBm'), mark=$('#appmark');
+  if(back) back.onclick=()=>goHist(-1);
+  if(fwd) fwd.onclick=()=>goHist(1);
+  if(rel) rel.onclick=()=>{ const t=active(); if(t) loadEntry(t); };
+  if(plus) plus.onclick=()=>{ newTab(); plus.blur(); };
+  if(bm) bm.onclick=toggleBookmarks;
+  if(mark) mark.onclick=()=>goAppHome();
+})();
 
 /* 列表本身可聚焦，上下键走行，回车打开，空格快看 */
 ['#hubbody','#listbody'].forEach(sel=>{
@@ -4066,12 +5251,14 @@ $('#qclear2').onclick=()=>clearQ(true);
    上面是动作，下面是笔记。认标题与文件名，按「前缀 / 包含 ＋ 最近改动」排序。 */
 let ckList=[], ckSel=0;
 const CK_ACTS=[
-  {id:'new', title:'新建随手记', kbd:'⌘N', go(){ newNote(); }},
+  {id:'tab', title:'新建标签页', kbd:'⌘T', go(){ newTab(); }},
+  {id:'new', title:'新建随手记', kbd:'', go(){ newNote(); }},
+  {id:'win', title:'新建窗口', kbd:'⌘N', go(){ AMN.newWindow(); }},
   {id:'lists', title:'显示列表', kbd:'⌃⌘S', go(){ toggleLists(); }},
   {id:'edit', title:'进入编辑', kbd:'⌘E', go(){ AMN.enterEdit(); }},
   {id:'type', title:'排版', kbd:'', go(){ openType(); }},
   {id:'finder', title:'在访达中显示', kbd:'⇧⌘R', go(){ AMN.reveal(); }},
-  {id:'home', title:'回到首页', kbd:'Esc', go(){ tryLeaveReader(); }},
+  {id:'home', title:'回到开始页', kbd:'Esc', go(){ navigate(makeEntry('start', {title:'开始'})); }},
 ];
 function openQuick(){
   $('#cmdkWrap').classList.add('on');
@@ -4082,15 +5269,19 @@ function closeQuick(){ $('#cmdkWrap').classList.remove('on'); }
 const quickOn = () => $('#cmdkWrap').classList.contains('on');
 function ckNotes(q){
   q=String(q||'').trim().toLowerCase();
-  const stem=p=>p.split('/').pop().replace(/\.(md|html)$/i,'');
-  const pool=items.slice();
+  const stem=p=>p.split('/').pop().replace(/\.(md|html|htm)$/i,'');
+  const pool=items.filter(i=>{ const k=kindOf(i); return k==='md'||k==='html'; });
   if(!q) return pool.sort(byRecent).slice(0,12);
   const w=q.split(/\s+/).filter(Boolean);
   const rank=i=>{
-    const t=(i.标题||'').toLowerCase(), n=stem(i.路径).toLowerCase();
-    if(!w.every(x=>t.includes(x)||n.includes(x))) return -1;
+    const t=(i.标题||'').toLowerCase(), n=stem(i.路径).toLowerCase(), h=hayOf(i);
+    if(!w.every(x=>h.includes(x))) return -1;
     let s=0;
-    w.forEach(x=>{ if(t.startsWith(x)||n.startsWith(x)) s+=100; else s+=40; });
+    w.forEach(x=>{
+      if(t.startsWith(x)||n.startsWith(x)) s+=100;
+      else if(t.includes(x)||n.includes(x)) s+=40;
+      else s+=10;
+    });
     return s;
   };
   return pool.map(i=>({i, s:rank(i)})).filter(x=>x.s>=0)
@@ -4138,11 +5329,13 @@ function ckRender(){
     });
   }
   if(notes.length){
-    html+=`<div class="ksec">笔记</div>`;
+    html+=`<div class="ksec">文件</div>`;
     notes.forEach(it=>{
       const n=ckList.indexOf(it);
+      const htmlKind=kindOf(it.i)==='html';
       html+=`<div class="krow${n===ckSel?' on':''}" data-n="${n}">`
         + `<span class="t">${mark(cleanTitle(it.i))}</span>`
+        + (htmlKind?'<span class="kindtag">HTML</span>':'')
         + `<span class="p">${esc(stripNo(it.i._d0||''))}</span></div>`;
     });
   }
@@ -4240,7 +5433,7 @@ function applySlash(id){
 }
 
 /* ── 新建随手记 ─────────────────────────
-   落在随手记目录。⌘N 全局可用；编辑中先自动保存再新建。
+   落在随手记目录。从开始页点「新建随手记」；编辑中先自动保存再新建。
    不再弹命名框：直接落一份「无标题」，打开正文，标题圈住就能改。
    第一次写出真正的一级标题时，文件名跟着改。 */
 function syncNotePv(){
@@ -4308,12 +5501,16 @@ function applyRenamedPath(t, next){
   const old=t.path;
   if(!next || next===old) return;
   t.path=next;
-  ST.lastPath=next; saveST();
+  const e=ensureStack(t); if(e){ e.path=next; if(t.title) e.title=t.title; }
+  ST.lastPath=next;
+  if(Array.isArray(ST.recents)) ST.recents.forEach(r=>{ if(r.路径===old) r.路径=next; });
+  saveST();
   items.forEach(i=>{ if(i.路径===old){ i.路径=next; if(t.title) i.标题=t.title; } });
   if(TREE && TREE.文档) TREE.文档.forEach(d=>{ if(d.路径===old){ d.路径=next; if(t.title) d.标题=t.title; } });
   lastNat='';
   syncTabTitle(t);
   drawTabs();
+  syncChrome();
   pushState();
   if(LISTS) render();
 }
@@ -4348,7 +5545,7 @@ async function openFreshNote(rel, 日){
     items.unshift({路径:rel, 标题:UNTITLED, 类型:'md', 修改时间:now, 日期:日||ymdParts().日});
     prepItems();
   }
-  await openDoc({路径:rel, 标题:UNTITLED, 类型:'md'});
+  await openDoc({路径:rel, 标题:UNTITLED, 类型:'md'}, {newTab:!isStartTab(active())});
   const t=active();
   if(t && t.path===rel) t.fresh=true;
   await startEdit({fresh:true});
@@ -4583,11 +5780,15 @@ $('#qlwrap').onclick=e=>{ if(e.target.id==='qlwrap') closeQL(); };
 addEventListener('pointerdown', e=>{
   if(!e.target.closest('#ctx')) closeCtx();
   if(!e.target.closest('#tabpick') && !e.target.closest('#tabmore')) closeTabPick();
+  if(!e.target.closest('#obdrop') && !e.target.closest('#omnibox') && !e.target.closest('[data-act="focusomni"],#appmark')) hideOmni(true);
+  if(!e.target.closest('#bmdrop') && !e.target.closest('#bmbar')) hideBmDrop();
 }, true);
 addEventListener('resize', ()=>{ layoutTabs(); if(tabPickOn()) openTabPick(); });
 if(window.ResizeObserver){
   const pane=$('#docpane');
   if(pane) new ResizeObserver(()=>layoutTabs()).observe(pane);
+  const strip=$('#tabstrip');
+  if(strip) new ResizeObserver(()=>layoutTabs()).observe(strip);
 }
 addEventListener('blur', closeCtx);
 /* 空白处右键：不弹自己的菜单，交回系统 */
@@ -4601,31 +5802,40 @@ window.AMN = {
   closeTab(){ if(curTab) closeTab(curTab); },
   save(){ const t=active(); if(t&&t.editing) saveEdit(false); },
   newNote(){ newNote(); },
-  reveal(){ const t=active(); if(t) revealPath(t.path); },
-  copyPath(){ const t=active(); if(t) clipPath(t.path); },
+  newTab(){ newTab(); },
+  newWindow(){ if(IS_HTTP) window.open('/portal?win=1','_blank','width=1320,height=880'); },
+  reveal(){ const t=active(); if(t && t.path) revealPath(t.path); },
+  copyPath(){ const t=active(); if(t && t.path) clipPath(t.path); },
   settings(){ openCfg(); },
   toggleSidebar(){ toggleLists(); },
   toggleLists(){ toggleLists(); },
   toggleToc(){ ST.toc=!ST.toc; saveST(); syncToc(); },
-  back(){ tryLeaveReader(); },
+  toggleBookmarks(){ toggleBookmarks(); },
+  back(){ goHist(-1); },
+  forward(){ goHist(1); },
   search(t){
-    if(t && !document.body.classList.contains('nodoc') && !LISTS) setLists(true);
-    setKw(t||''); render();
+    const q=String(t||'');
+    const el=$('#omni'); if(el) el.value=q;
+    setKw(q); render();
+    if(q) navigate(makeEntry('search', {q, title:q, path:'搜索: '+q}));
   },
-  focusSearch(){ focusSearch(); },
+  focusSearch(){ focusOmnibox(); },
+  focusOmnibox(){ focusOmnibox(); },
   searchEnter(){ if(hits.length) openDoc(hits[0], {jump:terms()}); },
   quickOpen(){ quickOn() ? closeQuick() : openQuick(); },
   enterEdit(){ const t=active(); if(t && !t.editing) startEdit(); },
   toggleEdit(){ const t=active(); if(!t) return; t.editing ? endEdit(t) : startEdit(); },
   rescan(){ doRescan(); },
-  openNotes(){ goHome(true); },
-  openRecent(){ goHome(false); },
+  openNotes(){ openNotesFolder(); },
+  openRecent(){ if(!LISTS) setLists(true); goHome(false); },
   openPath(rel){ if(rel) openByPath(rel); },
   openExternalPath(abs){ if(abs) openExtPath(abs); },
-  popoutWindow(){ const t=active(); if(t && !t.ext) openSolo(t.path); },
+  popoutWindow(){ const t=active(); if(t && !t.ext && hasDocNow(t)) openSolo(t.path); },
   quickLook(){ qlOn?closeQL():quickLook(listNow[selSeq]); },
   print(){ try{ window.print(); }catch(e){} },
   escape(){
+    if(omniOn()){ hideOmni(true); return; }
+    if(bmDropOn()){ hideBmDrop(); return; }
     if($('#ctx').classList.contains('on')){ closeCtx(); return; }
     if(tabPickOn()){ closeTabPick(); return; }
     if(slashOn()){ hideSlash(); return; }
@@ -4638,7 +5848,6 @@ window.AMN = {
     const t=active();
     if(t && t.editing){ cancelEdit(); return; }
     if(kw){ clearQ(false); return; }
-    if(!document.body.classList.contains('nodoc')) tryLeaveReader();
   },
   /* 壳那边「取消」的回执靠一个 50 毫秒的延时判定，极端情况下会先送一条 null
      再送真实选择。所以收到 null 不立刻销毁回调，延后一拍再销毁。 */
@@ -4649,23 +5858,31 @@ window.AMN = {
   confirmReply(){},                       // 确认框走同步那条路，这里留着占位
   state(){
     const t=active();
+    const start=isStartTab(t) && TABS.length===1;
     return JSON.stringify({
-      hasDoc:!!t,
-      inReader:!!t && !document.body.classList.contains('nodoc'),
+      hasDoc:hasDocNow(t),
+      inReader:inReaderNow(),
+      isStart:start,
+      tabCount:TABS.length,
+      canBack:canBack(t),
+      canForward:canForward(t),
+      bookmarks:ST.bookmarks!==false,
       dirty:!!dirty(t), editing:!!(t&&t.editing),
-      canEdit:!!t && !t.ext && canEditPath(t.path),
+      canEdit:hasDocNow(t) && !t.ext && kindOfTab(t)==='md' && canEditPath(t.path),
       lists:!!LISTS, sidebar:!!LISTS, toc:!!ST.toc
     });
   }
 };
 
-/* 回列表 / 回空态。标签不关——原来就是这样，回去还找得回刚才那几份。 */
+/* 以前回沉浸首页。现在 chrome 不收，改成当前标签去开始页，前进后退还能回来。 */
 function tryLeaveReader(){
   const t=active();
   if(t && t.editing) flushSave(t);
   if(dirty(t) && !ask('要离开这份文稿吗？','改动还没保存，离开就丢了。','不保存并离开','取消',true)) return false;
   if(t && t.editing) endEdit(t);
-  leaveReader(); return true;
+  if(SOLO){ leaveReader(); return true; }
+  navigate(makeEntry('start', {title:'开始'}));
+  return true;
 }
 
 /* ═══ 键盘 ═══════════════════════════════
@@ -4673,7 +5890,7 @@ function tryLeaveReader(){
    浏览器直开门户时的兜底：壳在就不重复接，免得一次按键触发两遍。 */
 addEventListener('keydown', e=>{
   if(e.isComposing || e.keyCode===229) return;
-  const inReader=!document.body.classList.contains('nodoc');
+  const inReader=inReaderNow();
   const inField=/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName||'') || e.target.isContentEditable;
 
   if(e.key==='Escape'){ AMN.escape(); return; }
@@ -4686,9 +5903,22 @@ addEventListener('keydown', e=>{
   if(e.metaKey && e.ctrlKey && e.key.toLowerCase()==='s'){ e.preventDefault(); toggleLists(); return; }
   if(e.metaKey && e.key===','){ e.preventDefault(); openCfg(); return; }
   if(e.metaKey && e.altKey && e.key.toLowerCase()==='c'){
-    e.preventDefault(); const t=active(); if(t) clipPath(t.path); return; }
+    e.preventDefault(); const t=active(); if(t && t.path) clipPath(t.path); return; }
   if(e.metaKey && e.altKey && e.key.toLowerCase()==='i'){ e.preventDefault(); AMN.toggleToc(); return; }
-  // 关掉当前标签
+  if(e.metaKey && e.key.toLowerCase()==='l'){ e.preventDefault(); focusOmnibox(); return; }
+  if(e.metaKey && e.key==='['){ e.preventDefault(); goHist(-1); return; }
+  if(e.metaKey && e.key===']'){ e.preventDefault(); goHist(1); return; }
+  if(e.metaKey && e.shiftKey && e.key.toLowerCase()==='b'){ e.preventDefault(); toggleBookmarks(); return; }
+  if(e.metaKey && e.key.toLowerCase()==='t'){ e.preventDefault(); newTab(); return; }
+  if(!e.metaKey && !e.ctrlKey && !e.altKey && !inField && e.key.length===1 && !/\s/.test(e.key)){
+    const t=active();
+    if(isStartTab(t)){
+      e.preventDefault();
+      focusOmnibox({seed:e.key, pulse:true});
+      return;
+    }
+  }
+  // 关掉当前标签。开始页且只剩一个时 inReader 为假，⌘W 交给壳关窗口。
   if(e.metaKey && e.key.toLowerCase()==='w' && inReader && curTab){
     e.preventDefault(); closeTab(curTab); return;
   }
@@ -4702,7 +5932,7 @@ addEventListener('keydown', e=>{
   if(SHELL) return;                       // 下面几条壳里走菜单转发
   if(e.metaKey && e.altKey && e.key.toLowerCase()==='k'){ e.preventDefault(); focusSearch(); return; }
   if(e.metaKey && e.key.toLowerCase()==='k'){ e.preventDefault(); AMN.quickOpen(); return; }
-  if(e.metaKey && e.key.toLowerCase()==='n'){ e.preventDefault(); newNote(); return; }
+  if(e.metaKey && e.key.toLowerCase()==='n'){ e.preventDefault(); AMN.newWindow(); return; }
   if(e.metaKey && e.key.toLowerCase()==='e' && inReader){
     const t=active();
     if(t && !t.ext && canEditPath(t.path) && !t.editing){ e.preventDefault(); startEdit(); }
@@ -4710,6 +5940,12 @@ addEventListener('keydown', e=>{
   }
   if(e.key==='/' && !inField && !inReader){ e.preventDefault(); focusSearch(); return; }
   if(e.key===' ' && !inField && qlOn){ e.preventDefault(); closeQL(); }
+});
+addEventListener('compositionend', e=>{
+  const inField=/^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName||'') || e.target.isContentEditable;
+  if(inField || !e.data) return;
+  const t=active();
+  if(isStartTab(t)) focusOmnibox({seed:e.data, pulse:true});
 });
 
 /* ═══ 拖进来的文件 ═══════════════════════
@@ -4729,7 +5965,8 @@ addEventListener('drop', e=>{
 
 /* ═══ 起步 ═══════════════════════════════ */
 if(EMBED){
-  const t={id:'t'+(++tabSeq), path:EMBED.路径, title:EMBED.标题, type:'md', noEdit:true};
+  const t=makeTab(makeEntry('md', {path:EMBED.路径, title:EMBED.标题}));
+  t.noEdit=true;
   TABS.push(t); newPane(t);
   t.raw=EMBED.正文;
   const md=paneOf(t).querySelector('.md');
@@ -4739,9 +5976,18 @@ if(EMBED){
   enterReader(); showTab(t.id);
 }else{
   loadFilters();
+  applyST();
   mountOut(listHost());
   render();
-  loadTree();
+  if(!SOLO){
+    openStartTab();
+  }
+  loadTree().then(()=>{
+    drawBmBar();
+    if(!SOLO && !TABS.length) openStartTab();
+    const at=active();
+    if(at && (kindOfTab(at)==='folder'||kindOfTab(at)==='search'||kindOfTab(at)==='start')) paintPage(at);
+  });
   if(!TOKEN_OK && IS_HTTP) bnr('upgrade', true);
   // solo 窗口一律不轮询：它只显示自己那一份，不该替主窗口收件
   if(LIVE && !SOLO){ tick(); setInterval(tick, 3000); }
