@@ -605,6 +605,13 @@ kbd{
 .dirchip svg{width:13px;height:13px;color:var(--bm-ico);flex:none}
 .dirchip.fav svg{color:var(--pin)}
 .dirchip .n{color:var(--t3);font-size:10px}
+/* 行尾那枚「收起」／收起后那枚「N 个文件夹 ›」：安静的文字按钮，
+   不占底色也不描边，跟芯片同高所以两者天然对齐。 */
+.chipfold{display:inline-flex;align-items:center;gap:6px;height:28px;padding:0 4px;
+  color:var(--t4);font-size:11.5px;transition:color var(--d-base) ease}
+.chipfold:hover{color:var(--t3)}
+.chipfold svg{flex:none;color:currentColor}
+.chipfold .ar{font-size:12.5px;line-height:1;margin-left:-1px}
 
 /* ── 分区标题：计数 + 类型筛选 + 网格/列表 ── */
 .section-head{display:flex;align-items:center;gap:15px;margin:28px 1px 14px}
@@ -2034,6 +2041,7 @@ const DEF_ST={sbw:224, lcw:320, side:true, toc:true, bookmarks:false, recents:[]
   homeFilter:'all',     /* 开始页/文件夹页/已收藏页的类型筛：all | md | html */
   homeView:'grid',      /* 卡片网格 grid ｜ 单列列表 list */
   tips:false,           /* 开始页那张「第一次来？」提示卡，只有全新档案才为 true */
+  chipsOpen:true,       /* 开始页那行文件夹芯片展着还是收着，收起只剩「已收藏」＋一枚计数 */
   cfgTab:'reading',     /* 设置弹层上次停在哪一段 */
   cfgAdv:false};        /* 「高级」那段的折叠区展没展开 */
 /* 整个键不存在＝这台机器第一次打开门户。只认「没有 tp-state」这一种情况：
@@ -2279,6 +2287,12 @@ function syncPrefControls(){
     const on=ST.toc!==false;
     tc.classList.toggle('on', on);
     tc.setAttribute('aria-checked', on?'true':'false');
+  }
+  const cq=$('#cfgChips');
+  if(cq){
+    const on=ST.chipsOpen!==false;
+    cq.classList.toggle('on', on);
+    cq.setAttribute('aria-checked', on?'true':'false');
   }
   const rb=$('#rstPref');
   if(rb) rb.disabled = RESETTABLE.every(k=>PREF[k]===DEF_PREF[k]);
@@ -2932,12 +2946,30 @@ function greetingHtml(ico, eyebrow, title, sub, opts){
   </div>`;
 }
 /* 顶层文件夹芯片行：数据跟书签栏是同一份（TREE.目录），点开文件夹页，⌘ 点开新标签。
-   末尾那枚是「已收藏」。5.4 起书签栏由它取代。 */
+   末尾那枚是「已收藏」。5.4 起书签栏由它取代。
+   顶层文件夹一多就是三行，5.4.1 起整行可收：收起后只剩「已收藏」＋一枚计数，
+   位置不动，所以上面的问候区不会跟着跳。一个顶层文件夹都没有时不出收放件。 */
+function chipsOpen(){ return ST.chipsOpen!==false; }
+function favChipHtml(){
+  return `<button type="button" class="dirchip fav" data-act="pins" title="已收藏">${icon('star',13)}<span>已收藏</span></button>`;
+}
 function startChipsHtml(){
   const dirs=(TREE&&TREE.目录)||[];
+  if(!dirs.length) return `<div class="dirchips">${favChipHtml()}</div>`;
+  if(!chipsOpen()){
+    return `<div class="dirchips folded">${favChipHtml()}<button type="button" class="chipfold"
+      data-act="chipsfold" aria-expanded="false" title="展开文件夹">${icon('folder',14)}<span>${dirs.length} 个文件夹</span><span class="ar" aria-hidden="true">›</span></button></div>`;
+  }
   return `<div class="dirchips">${dirs.map(d=>
       `<button type="button" class="dirchip" data-folder="${esc(d.名称)}" title="${esc(d.名称)}">${icon('folder',13)}<span>${esc(d.显示名||d.名称)}</span></button>`
-    ).join('')}<button type="button" class="dirchip fav" data-act="pins" title="已收藏">${icon('star',13)}<span>已收藏</span></button></div>`;
+    ).join('')}${favChipHtml()}<button type="button" class="chipfold"
+      data-act="chipsfold" aria-expanded="true" title="收起文件夹">${icon('chevron-up',13)}<span>收起</span></button></div>`;
+}
+/* 就地重画，滚动位置由 repaintPages 留住；设置页开着就顺手把那颗开关也拨过去。 */
+function setChipsOpen(on){
+  ST.chipsOpen=!!on; saveST();
+  repaintPages();
+  syncPrefControls();
 }
 /* 首次提示卡。只有全新档案（从没写过 tp-state）第一次进来时出，点「知道了」就不再来。 */
 function tipsCardHtml(){
@@ -3975,6 +4007,7 @@ function newPane(t){
       if(act.dataset.act==='pins'){ openPins(e.metaKey||e.ctrlKey); return; }
       if(act.dataset.act==='revealvault'){ revealVault(); return; }
       if(act.dataset.act==='tipsok'){ ST.tips=false; saveST(); repaintPages(); return; }
+      if(act.dataset.act==='chipsfold'){ setChipsOpen(!chipsOpen()); return; }
     }
     const pin=e.target.closest('[data-pin]');
     if(pin){ e.preventDefault(); e.stopPropagation(); togglePin(pin.dataset.pin); return; }
@@ -7200,6 +7233,12 @@ function panelReading(){
         aria-label="打开文档时默认显示大纲"></button>
     </div></div></div>
 
+    <div class="frow"><span class="flab">开始页</span><div class="fctl"><div class="swrow">
+      <span class="txt">开始页显示文件夹入口</span>
+      <button type="button" class="sw" id="cfgChips" role="switch" aria-checked="false"
+        aria-label="开始页显示文件夹入口"></button>
+    </div></div></div>
+
     <div class="frow"><span class="flab"></span><div class="fctl">
       <button type="button" class="link" id="rstPref">恢复默认</button></div></div>
   </section>`;
@@ -7390,6 +7429,8 @@ function wireCfg(tab){
       setPref(b.parentElement.dataset.k, +b.dataset.v));
     const tc=$('#cfgToc');
     if(tc) tc.onclick=()=>{ ST.toc = !(ST.toc!==false); saveST(); syncToc(); syncPrefControls(); };
+    const cq=$('#cfgChips');
+    if(cq) cq.onclick=()=>setChipsOpen(!chipsOpen());
     const rb=$('#rstPref');
     if(rb) rb.onclick=()=>{ RESETTABLE.forEach(k=>PREF[k]=DEF_PREF[k]); savePref(); applyPref(); };
     return;

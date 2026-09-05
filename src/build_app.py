@@ -188,6 +188,7 @@ def export_icons(dest_dir):
 
 # ───────────────────────── 后台服务脚本（LaunchAgent 调用）─────────────────────────
 NATIVE_SRC = "app_shell.m"
+# 5.4.1 = 开始页文件夹芯片行可收起，状态记在 tp-state.chipsOpen，设置里有开关。
 # 5.4.0 = 珍珠紫玻璃图标；首启不再弹「选择文件夹 / 退出」，没库时服务起在占位空根、
 # 欢迎与「找不到库」由网页画；新注入 __AMN_SHELL_VERSION__ / __AMN_VAULT_STATE__ /
 # __AMN_VAULT_PATH__ / __AMN_ONBOARDING__ / __AMN_AUTO_UPDATE__；新桥接 chooseVault /
@@ -199,7 +200,7 @@ NATIVE_SRC = "app_shell.m"
 # （20260903）。有 digest 核 sha256，解开后核对 bundle id。
 # 5.0.0 = 开源首发。
 # 版本号是唯一能在「关于 AM·Note」里看出来跑的是新壳还是旧壳的地方，改了壳就要动它。
-NATIVE_VERSION = ("5.4.0", "27")
+NATIVE_VERSION = ("5.4.1", "28")
 MIN_MACOS = "12.0"
 
 
