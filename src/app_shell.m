@@ -1963,6 +1963,16 @@ static void applySeamlessChrome(NSWindow *window) {
     // 占一个键不划算，也少一次跟门户抢键的机会。
     [[file addItemWithTitle:@"分享…" action:@selector(mShare:) keyEquivalent:@""] setTarget:self];
     [file addItem:NSMenuItem.separatorItem];
+    // 移到废纸篓。⌘⌫ 是 Finder 里同一件事的键，肌肉记忆是现成的。
+    // **编辑态一定要灰掉**（validateMenuItem: 读 canTrash，门户在编辑态返回假）：
+    // 菜单项灰着，这一下 ⌘⌫ 才会放行给 WebView，在编辑器里仍然是「删到行首」。
+    NSMenuItem *trash = [file addItemWithTitle:@"移到废纸篓"
+                                        action:@selector(mTrash:)
+                                 keyEquivalent:[NSString stringWithFormat:@"%C",
+                                                (unichar)NSBackspaceCharacter]];
+    trash.keyEquivalentModifierMask = NSEventModifierFlagCommand;
+    trash.target = self;
+    [file addItem:NSMenuItem.separatorItem];
     // ⌘E 进编辑。菜单占了这个键，门户自己那条 ⌘E 监听就作废了（设计约束 1），
     // 一切以 AMN.enterEdit 为准——「光标落到鼠标所在那一段」的判断在门户里做。
     [[file addItemWithTitle:@"进入编辑" action:@selector(mEnterEdit:) keyEquivalent:@"e"] setTarget:self];
@@ -2016,7 +2026,7 @@ static void applySeamlessChrome(NSWindow *window) {
                                      action:@selector(mLists:) keyEquivalent:@"s"];
     sb.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagControl;
     sb.target = self;
-    NSMenuItem *toc = [view addItemWithTitle:@"显示检查器"
+    NSMenuItem *toc = [view addItemWithTitle:@"显示大纲"
                                       action:@selector(mToc:) keyEquivalent:@"i"];
     toc.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagOption;
     toc.target = self;
@@ -2096,6 +2106,9 @@ static void applySeamlessChrome(NSWindow *window) {
         return [self stateFlag:@"hasDoc"] && (NSApp.keyWindow == _win || NSApp.keyWindow == nil);
     if (a == @selector(mReveal:))   return [self stateFlag:@"hasDoc"];
     if (a == @selector(mShare:))    return [self stateFlag:@"hasDoc"];
+    // 老门户没有 canTrash 这个键，stateFlag: 返回 NO，⌘⌫ 就一路放行给网页——
+    // 灰掉比「按了把别人的字删了」好
+    if (a == @selector(mTrash:))    return [self stateFlag:@"canTrash"];
     if (a == @selector(mEnterEdit:)) return [self stateFlag:@"canEdit"];
     if (a == @selector(mToc:)) {
         item.state = [self stateFlag:@"toc"] ? NSControlStateValueOn : NSControlStateValueOff;
@@ -2190,6 +2203,9 @@ static void applySeamlessChrome(NSWindow *window) {
 - (void)mEnterEdit:(id)s  { [self amn:@"enterEdit" args:nil]; }
 /// 分享。门户没导出 AMN 时壳自己也能做——路径在 doc 消息里已经拿到了。
 - (void)mShare:(id)s     { [self sharePath:nil]; }
+/// 移到废纸篓。壳不自己搬文件：搬哪一份、搬完关哪几个标签、撤销那颗按钮，
+/// 全在门户里，壳只转发一下。门户那边不弹确认框，废纸篓本身就是后悔药。
+- (void)mTrash:(id)s     { [self amn:@"trashDoc" args:nil]; }
 /// 拷贝路径：门户把路径交给壳，壳写 NSPasteboard（见 copyToPasteboard: 上面那段）。
 /// 门户没导出 AMN 时壳自己也能做——路径在 doc 消息里已经拿到了。
 - (void)mCopyPath:(id)s {
@@ -2272,9 +2288,10 @@ static void applySeamlessChrome(NSWindow *window) {
     a.informativeText =
         @"⌘T 新建标签页（开始页）\n⌘N 新建窗口\n⌘L 聚焦地址栏\n⌘⇧B 显示/隐藏书签栏\n"
          "⌘[ / ⌘] 后退 / 前进\n⌥⌘C 拷贝路径\n⇧⌘R 在访达中显示\n⌥⌘O 把这份放到独立阅读窗\n"
-         "⌘E 进入编辑\n⌘S 存储\n⌘W 关闭标签／仅剩起始页时关窗口\n⇧⌘W 关闭窗口\n⌘P 打印\n"
+         "⌘E 进入编辑\n⌘S 存储\n⌘⌫ 移到废纸篓\n⌘W 关闭标签／仅剩起始页时关窗口\n"
+         "⇧⌘W 关闭窗口\n⌘P 打印\n"
          "⌃Tab 切换标签\n"
-         "⌘K 快速直达\n⌥⌘K 聚焦地址栏\n⌃⌘S 显示列表\n⌥⌘I 显示检查器\n"
+         "⌘K 快速直达\n⌥⌘K 聚焦地址栏\n⌃⌘S 显示列表\n⌥⌘I 显示大纲\n"
          "⌘F 在本页查找\n⌘R 重新载入\n"
          "⌃⌘F 进入全屏\nEsc 关浮层 / 退出编辑";
     [a addButtonWithTitle:@"好"];
@@ -2947,6 +2964,14 @@ static BOOL isBenignNavError(NSError *e) {
     if ([self isAuxURL:u])  return [self makeBrowserWebWithConfiguration:cfg features:feat];
     if (u) [NSWorkspace.sharedWorkspace openURL:u];
     return nil;
+}
+
+/// 网页里的 window.close()。独立文稿窗把自己那一份挪进废纸篓之后就靠这一句收尾——
+/// 不接的话窗口原地留着，显示的还是一份已经不在库里的笔记。主窗口不给关：
+/// 门户一卸整个界面就没了，那条路只能走红灯／⌘W。
+- (void)webViewDidClose:(WKWebView *)web {
+    NSWindow *win = web.window;
+    if (win && win != _win) [win performClose:nil];
 }
 
 /// 自家这次起的那个门户服务：本机 http、端口对得上。solo / aux 都先过这一关。

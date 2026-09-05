@@ -20,7 +20,10 @@ v21（界面与编辑改版，A 路）改了五处，其余一律照旧：
     ④ 留档节流：自动保存把保存频次拉到停笔 2 秒一次，每次都留档会把 10 版名额
        几分钟就轮空，改成按 BACKUP_MIN_GAP 节流，两个例外必须留（见 _backup）。
     ⑤ 库外文档只读三件套 /__extopen /__extdoc /__extasset。**不写任何文件。**
-       写库内文件的路由仍然只有 /__save 一条。
+       改库内文件内容的路由仍然只有 /__save 一条。
+
+v22（删除入口）新增两条搬文件的路由，见下方「写库内文件的路由」那一段：
+    /__trash / /__untrash —— 移进废纸篓 ／ 撤销。**只搬位置，不改内容。**
 
 ── 门户和 Agent 共用 ───────────────────────────────
     /__tree      目录树 ＋ 全部 md/html 文档 ＋ 随手记。**数据源是
@@ -61,6 +64,8 @@ v21（界面与编辑改版，A 路）改了五处，其余一律照旧：
     `~/.CFUserTextEncoding` 设成 `0x2`（MacChineseTrad），`pbpaste` 输出时照它转码，
     好好的 UTF-8 也会打印成 Big5 乱码。要验用原生 API 读回来。
     /__save      POST，写 md（含随手记）。见下。
+    /__trash     POST，{路径}，把一份 md/html 移进 ~/.Trash/。见下。      ← v22
+    /__untrash   POST，{路径}，把刚才那份从废纸篓挪回原位（前端的「撤销」）。← v22
 
     /portal      → 同目录 template.html。
                  模板里的 /*__DATA__*/null/*__DATA__*/ 占位符原样留着不注入，
@@ -69,12 +74,20 @@ v21（界面与编辑改版，A 路）改了五处，其余一律照旧：
 
 只绑 127.0.0.1，不对外。
 
-**写库内文件的路由只剩 /__save 一条。** 放开到全库 md。换来的保险是口令门禁——
-没有 token 打不进这条路由。三道老保险照旧：
+**写库内文件的路由一共三条，分两类：**
+    · **改内容的只有 /__save 一条**——新建、贴图、覆写都挂在它下面，
+      放开到全库 md。别的路由一个字节的正文都不写。
+    · **只搬位置不改内容的是 /__trash 和 /__untrash**（v22）：把一份 md/html
+      挪进当前用户的 ~/.Trash/，或者把刚挪走的那份挪回原位。文件原样搬走，
+      内容不动，废纸篓里还捞得回来。撤销表只在内存里，重启即清。
+      流水由随后那趟同步落，一次删除只留一行「删除／门户」（v23，见 trash()）。
+
+三条共用的保险是口令门禁——没有 token 一条都打不进。/__save 那三道老保险照旧：
     ① 写前把旧内容留进 .amnote/backups/，每份留最近 10 版（v21 起按时间节流）；
     ② 先写临时文件再 os.replace，中途断电不会留半截文件；
     ③ 打开编辑之后这份在别处被改过的，先拦一次，要前台再确认。
-挡住的位置见 _edit_ok：备份目录、缓存目录、隐藏目录一律不给写。
+挡住的位置见 _edit_ok（写）和 _trash_ok（搬）：备份目录、缓存目录、隐藏目录
+一律不给动，两处判据逐条对应，只差认哪些后缀。
 
 v20 撤掉的路由（代码已删）：
     /__sheet、/__untagged、POST /__tag、/__backlinks、/__deadlinks、
@@ -82,11 +95,13 @@ v20 撤掉的路由（代码已删）：
 """
 
 import base64
+import errno
 import hmac
 import json
 import os
 import re
 import secrets
+import shutil
 import subprocess
 import sys
 import threading
@@ -618,8 +633,13 @@ def _rename_md(rel: str, new_rel: str):
         return rel, err
     try:
         note_portal_write(new_rel)
+        # 旧名字在下一趟同步里是一条 removed。不记这一笔就落成「删除／外部」——
+        # 随手记写出 H1 自动改名，流水上会冒出一行「不是我干的」。
+        # 改名不动 mtime，所以走搬动表（note_portal_write 那张按 mtime 认领，对不上）。
+        fulltext.note_portal_move(rel)
         os.rename(src, dest)
     except OSError as e:
+        fulltext.take_portal_move(rel)            # 没改成，把刚记的那笔收回来
         return rel, f"改名失败：{e}"
     return new_rel, ""
 
@@ -713,6 +733,230 @@ def save_route(req: dict):
     if req.get("新建"):
         return new_md(req)
     return save_md(req)
+
+
+# ── 删除：移进废纸篓，几秒内可撤销 ──────────────────────────────
+#
+# 「建错了一份随手记」是最常见的一次误操作，之前门户里没有出口，只能去访达删。
+# 这里给两条路由，语义是**搬文件，不是删内容**：
+#     /__trash    把这份挪进当前用户的 ~/.Trash/，原样躺着，能从访达捞回来
+#     /__untrash  刚才那一下挪回原位（前端 toast 上那颗「撤销」）
+# 不做「库内回收站」：库里多一个隐藏目录，同步、索引、留档、静态服务都得跟着
+# 开一条特例；系统废纸篓是用户本来就认得的地方，捞回来不用教。
+#
+# 挡的位置跟写入那条路同一套判据（_seg_blocked：隐藏目录 / 备份 / 缓存 /
+# .amnote），只把「只认 md」放宽到 md/html/htm——门户里能打开的就这三种。
+# 段一样判两遍（相对路径一遍、realpath 之后按实际落点再判一遍），理由见 _edit_ok：
+# 只判前者的话，一条指向库外的软链接就把「库根之内」绕过去了。
+
+TRASH_DIR = os.path.expanduser("~/.Trash")
+TRASH_EXT = (".md", ".html", ".htm")
+TRASH_KEEP = 50                       # 撤销表最多记这么多份，超了挤掉最旧的
+TRASH_TTL = 24 * 3600                 # 记了这么久还没撤，就不该再从这条路撤了
+
+# 相对路径 → {废纸篓: 绝对路径, 原位: 绝对路径, 路径: 相对路径, 时间: 时间戳}。
+# 键和「路径」都是**盘上逐字的**那一份（见 _disk_name）。只在内存里，
+# 重启即清：撤销是「刚点错那几秒」的事，隔了一次重启该走访达，不是这条路由。
+#
+# **「原位」记的是搬走那一刻的真实落点，撤销时按它挪回去，不拿相对路径现算。**
+# 后缀比对是不分大小写的（跟 _view_full 一个口径，树上列得出来的就删得掉），
+# 而 macOS 的盘默认不分大小写：请求写 a.MD、盘上是 a.md 也能删掉，现算一遍
+# 就会把它「撤销」成 a.MD——文件是回来了，名字被改了一个字。
+_trashed = OrderedDict()
+
+
+def _disk_name(full: str):
+    """盘上那一份文件逐字的名字；没有这份就返回 None。
+
+    **realpath 不做大小写规范化。** 后缀比对是不分大小写的（跟 _view_full 一个
+    口径，树上列得出来的就删得掉），而 macOS 的盘默认也不分大小写：请求写
+    周末计划.MD、盘上是周末计划.md，realpath 照样把 .MD 原样还回来。拿它当废纸篓
+    里的落点，废纸篓里就多出一个改了名的文件；撤销时又按这个名字挪回去，盘上
+    那份真的被改了名。fulltext 的活表也是按这个字符串认领的，对不上就落一行
+    「外部」。所以在这儿扫一遍父目录，取盘上那一条逐字的名字。"""
+    d, name = os.path.split(full)
+    hit = None
+    try:
+        with os.scandir(d) as it:
+            for e in it:
+                if e.name == name:            # 逐字对上，不用校正
+                    return name
+                if hit is None and e.name.lower() == name.lower():
+                    hit = e.name
+    except OSError:
+        return None
+    return hit
+
+
+def _fix_rel(rel: str, full: str) -> str:
+    """请求里的相对路径，末段换成盘上逐字的那个名字。"""
+    name = os.path.basename(full)
+    head = rel.rsplit("/", 1)[0] if "/" in rel else ""
+    return (head + "/" + name) if head else name
+
+
+def _trash_ok(rel: str, on_disk: bool = True):
+    """能不能挪这份。返回 (绝对路径, 错误)，错误为空串即放行。
+
+    判据和 _edit_ok 逐条对应，两处差别只有后缀：写只认 md，挪认 md/html/htm。
+    on_disk=True 时顺带把末段的大小写校正成盘上那一份（见 _disk_name）；
+    撤销那条路上文件已经在废纸篓里了，盘上本来就没有，那边传 False。
+    """
+    if not rel or rel.startswith("/") or "\x00" in rel or ".." in rel.split("/"):
+        return None, "路径不合法"
+    if not rel.lower().endswith(TRASH_EXT):
+        return None, "只有笔记和网页能删"
+    for seg in rel.split("/"):
+        if not seg or _seg_blocked(seg):
+            return None, "这个位置不给删"
+    full = os.path.realpath(os.path.join(ROOT, rel))
+    if not full.startswith(REAL_ROOT + os.sep):
+        return None, "路径越出库根"
+    for seg in os.path.relpath(full, REAL_ROOT).split(os.sep):
+        if _seg_blocked(seg):
+            return None, "这个位置不给删"
+    if on_disk:
+        name = _disk_name(full)
+        if name is None:
+            return None, "文件不在了"
+        full = os.path.join(os.path.dirname(full), name)
+    return full, ""
+
+
+def _move_file(src: str, dest: str):
+    """搬一份文件。同盘 os.replace 就是一次原子改名；库和家目录不在一个卷上时
+    它会抛 EXDEV，那种才退回 shutil.move（复制＋删原件，慢但跨得过去）。"""
+    try:
+        os.replace(src, dest)
+    except OSError as e:
+        if e.errno != errno.EXDEV:
+            raise
+        shutil.move(src, dest)
+
+
+def _trash_dest(name: str) -> str:
+    """废纸篓里的落点。重名就在扩展名前面缀一个 " (HH-MM-SS)"，跟访达自己
+    重名时的做法一个意思——同一份文件删两回，废纸篓里要看得出哪份是哪份。"""
+    dest = os.path.join(TRASH_DIR, name)
+    if not os.path.lexists(dest):
+        return dest
+    stem, ext = os.path.splitext(name)
+    stamp = datetime.now().strftime("%H-%M-%S")
+    dest = os.path.join(TRASH_DIR, "%s (%s)%s" % (stem, stamp, ext))
+    n = 2
+    while os.path.lexists(dest):                 # 同一秒内删第三份才走得到
+        dest = os.path.join(TRASH_DIR, "%s (%s-%d)%s" % (stem, stamp, n, ext))
+        n += 1
+    return dest
+
+
+def _prune_trashed(now: float):
+    """撤销表剪枝。**调用方必须已经拿着 _lock。**
+
+    两把尺子：条数（超了挤掉最旧的）和时间。只有条数的话，一台开着不关的机器上
+    删一份就永远占着一格，指着几个钟头前那条废纸篓记录——那会儿用户早从访达里
+    自己处理过了，撤销该走访达而不是这条路由。
+    """
+    while len(_trashed) > TRASH_KEEP:
+        _trashed.popitem(last=False)
+    for k in list(_trashed):
+        if now - (_trashed[k].get("时间") or 0) >= TRASH_TTL:
+            _trashed.pop(k, None)
+
+
+def _find_trashed(rel: str):
+    """按相对路径找那条撤销记录，返回 (键, 记录)。**调用方必须已经拿着 _lock。**
+
+    表是按盘上逐字的路径记的，而前端撤销时送回来的是它当初请求用的那一份；
+    大小写不敏感的盘上这两个可能差着几个字母，所以先逐字找，再不分大小写找一遍。
+    """
+    rec = _trashed.get(rel)
+    if rec is not None:
+        return rel, rec
+    low = rel.lower()
+    for k in _trashed:
+        if k.lower() == low:
+            return k, _trashed[k]
+    return rel, None
+
+
+def trash(req: dict):
+    """把一份笔记挪进废纸篓。内容一个字节不动，只是换了个地方躺着。
+
+    **流水不在这儿记。** 挪走之前先在 fulltext 的「门户搬动」活表里记一笔，
+    随后 kick_sync 那一趟发现文件没了，认领这一笔、按「门户」记一行「删除」，
+    顺带把 db 里的原文留进 backups/。自己再补一行的话，同一次删除会在流水上
+    留下两行（一行门户、一行外部）——v22 就是那样，v23 合成一行。
+    """
+    rel = (req.get("路径") or "").strip()
+    full, err = _trash_ok(rel)
+    if err:
+        return {"ok": False, "错误": err}
+    if not os.path.isfile(full):
+        return {"ok": False, "错误": "文件不在了"}
+    try:
+        os.makedirs(TRASH_DIR, exist_ok=True)
+    except OSError as e:
+        return {"ok": False, "错误": f"打不开废纸篓：{e}"}
+    # 废纸篓里的名字、活表里的路径，都用盘上逐字的那一份，不用请求里的大小写
+    real_rel = _fix_rel(rel, full)
+    dest = _trash_dest(os.path.basename(full))
+    try:
+        # 记账赶在文件消失之前，同 save_md：晚一步就会被同步判成「外部删除」
+        fulltext.note_portal_move(real_rel)
+        _move_file(full, dest)
+    except OSError as e:
+        fulltext.take_portal_move(real_rel)       # 没挪成，把刚记的那笔收回来
+        return {"ok": False, "错误": f"挪不进废纸篓：{e}"}
+    now = time.time()
+    with _lock:
+        _trashed[real_rel] = {"废纸篓": dest, "原位": full,
+                              "路径": real_rel, "时间": now}
+        _trashed.move_to_end(real_rel)           # 同一份删两回，记最新那次
+        _prune_trashed(now)
+    return {"ok": True, "路径": real_rel, "废纸篓": dest}
+
+
+def untrash(req: dict):
+    """把刚挪走的那份挪回原位。前端 toast 上那颗「撤销」按的就是这条。
+
+    三种情况不干：表里没有（重启过，或者早就撤过了）、废纸篓里那份已经不在了
+    （用户自己清空了废纸篓）、原来那个位置这会儿被别的文件占着。
+
+    流水同 trash：只记活表，让随后那趟同步落一行「新增／门户」。
+    **这里不能用 note_portal_write。** 那张表按「记账时刻离 mtime 多近」认领，
+    而挪回来不动 mtime——一份上周写的笔记，撤销时 mtime 还是上周，一条都对不上。
+    """
+    rel = (req.get("路径") or "").strip()
+    # 盘上已经没有这份了（就在废纸篓里躺着），大小写校正这一步做不了也不用做
+    _, err = _trash_ok(rel, on_disk=False)
+    if err:
+        return {"ok": False, "错误": err}
+    with _lock:
+        _prune_trashed(time.time())
+        key, rec = _find_trashed(rel)
+    if not rec:
+        return {"ok": False, "错误": "这份撤不回来了，去废纸篓里找"}
+    src, full = rec["废纸篓"], rec["原位"]
+    real_rel = rec.get("路径") or key
+    if not os.path.isfile(src):
+        with _lock:
+            _trashed.pop(key, None)
+        return {"ok": False, "错误": "废纸篓里已经没有这份了"}
+    if os.path.lexists(full):
+        return {"ok": False, "错误": "原来那个位置又有文件了，先挪开"}
+    if not os.path.isdir(os.path.dirname(full)):
+        return {"ok": False, "错误": "原来那个目录不在了"}
+    try:
+        # 记账赶在文件出现之前，同 save_md：晚一步就会被同步判成「外部新增」
+        fulltext.note_portal_move(real_rel)
+        _move_file(src, full)
+    except OSError as e:
+        fulltext.take_portal_move(real_rel)       # 没挪成，把刚记的那笔收回来
+        return {"ok": False, "错误": f"挪不回去：{e}"}
+    with _lock:
+        _trashed.pop(key, None)
+    return {"ok": True, "路径": real_rel}
 
 
 # ── 配置 ──────────────────────────────────────────
@@ -1304,7 +1548,8 @@ class Handler(SimpleHTTPRequestHandler):
             return
         route = self.path.split("?")[0]
         if route not in ("/__config", "/__reveal", "/__external",
-                         "/__save", "/__state", "/__rescan", "/__extopen"):
+                         "/__save", "/__trash", "/__untrash",
+                         "/__state", "/__rescan", "/__extopen"):
             self.send_error(404, "not found")
             return
         # **所有 POST 都要口令。** 这是写路由和触发类路由的唯一一道门
@@ -1334,12 +1579,17 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             out = {"/__config": write_config, "/__reveal": reveal,
                    "/__external": open_external, "/__extopen": ext_open,
-                   "/__save": save_route, "/__state": state_set}[route](req)
+                   "/__save": save_route, "/__state": state_set,
+                   "/__trash": trash, "/__untrash": untrash}[route](req)
         except Exception as e:                       # 界面上要看得见，不能静默 500
             out = {"ok": False, "错误": f"{type(e).__name__}: {e}"}
-        # 补一轮全文同步，索引在几秒内就能跟上这次改动。
-        # **记账不在这儿**：save_md / new_md 在真正落盘前就记了，见那两处注释
-        if route == "/__save" and isinstance(out, dict) and out.get("ok"):
+        # 补一轮全文同步，索引在几秒内就能跟上这次改动。/__trash 和 /__untrash
+        # 一样要：文件进出库根，树和搜索里那一条得跟着消失／回来，
+        # 而且这一趟同步就是这两条路由记流水的地方（trash / untrash 只记活表）。
+        # **记账不在这儿**：save_md / new_md / trash / untrash 在真正动文件之前
+        # 就记了，见那四处注释
+        if (route in ("/__save", "/__trash", "/__untrash")
+                and isinstance(out, dict) and out.get("ok")):
             kick_sync()
         self._json(json.dumps(out, ensure_ascii=False))
 

@@ -94,6 +94,7 @@
   --sbw:224px;    /* 边栏宽，可拖，存 localStorage */
   --lcw:320px;    /* 列表栏宽，可拖 */
   --docw:640px;   /* 正文栏宽，跟 PREF.w 走 */
+  --outline-w:232px; /* 左侧大纲栏宽 */
 
   /* 书签栏小黄夹：浅色深色都用同一对，夹在灰底上才认得出来。 */
   --folder:#e9b949;
@@ -917,11 +918,25 @@ body.solo .pane.html .htmlframe{top:0}
 .save-state.pending{color:var(--t3)}
 .save-state.act{color:var(--folder);cursor:pointer}
 
-.doc-layout{max-width:1020px;margin:0 auto;padding:38px 60px 120px}
+/* 版心：默认一栏。开了左侧大纲变两栏，版心也跟着加宽一个栏宽。
+   栏还够宽的话再往右补一条等宽的空栏（ol-3）：左右一样重，正文就落在正文栏
+   正中，跟没大纲时是同一处；不够宽退回两栏，正文往右偏半个栏宽，先认了。
+   够不够由 syncToc 里的 olWider() 算——看的是正文栏自己的宽，不是窗口宽，
+   三栏模式下窗口没变、正文栏窄了一大截。 */
+.doc-layout{display:grid;grid-template-columns:minmax(0,1fr);
+  max-width:1020px;margin:0 auto;padding:38px 60px 120px}
+.doc-layout.ol-on{grid-template-columns:var(--outline-w) minmax(0,1fr);
+  max-width:calc(1020px + var(--outline-w))}
+.doc-layout.ol-on.ol-3{
+  grid-template-columns:var(--outline-w) minmax(0,1fr) var(--outline-w);
+  max-width:calc(var(--docw) + 2 * var(--outline-w) + 120px)}
 .pane.edit .doc-layout{padding-bottom:200px}
 /* 不给 position：篇内目录、搜索命中定位都按 h.offsetTop 算，
    这一层一旦成了 offsetParent，那些偏移就全对不上了。 */
-.document{max-width:var(--docw);margin:0 auto}
+/* width:100% 一个字都不能少：.document 是 grid item，item 上的 auto 外边距
+   会让它按 fit-content 定宽——正文于是塌成「最长的那一行」，
+   阅读宽度那一栏调什么都不动。 */
+.document{width:100%;max-width:var(--docw);margin:0 auto;min-width:0}
 .doc-meta{display:flex;align-items:center;flex-wrap:wrap;gap:8px;
   font-size:10px;color:var(--t3);margin:0 0 16px;user-select:none;-webkit-user-select:none}
 .doc-meta svg{width:12px;height:12px;flex:none}
@@ -954,27 +969,51 @@ body.solo .pane.html .htmlframe{top:0}
 .pane.edit.src .md{display:none}
 .pane.edit.src .ed{display:block}
 
-/* 篇内目录：右侧短横线轨道，读到哪亮哪，hover 滑出标题气泡，⌥⌘I 钉住 */
-.toc{position:absolute;top:190px;z-index:5;
-  right:max(20px, calc(50% - var(--docw)/2 - 42px));
-  display:flex;flex-direction:column;gap:5px}
-.toc.hide{display:none}
-.tick{position:relative;height:22px;display:flex;align-items:center;justify-content:flex-end;
-  gap:10px;color:var(--t3);cursor:default}
-.tick .bar{width:14px;height:2px;border-radius:2px;background:currentColor;flex:none;
-  transition:background-color .15s ease}
-.tick.h3 .bar{width:9px}
-.tick:hover{color:var(--accent)}
-.tick.on{color:var(--t1)}
-.tick .lab{
-  white-space:nowrap;font-size:10px;color:var(--t2);
-  background:var(--pop);box-shadow:var(--popshadow);border-radius:6px;padding:4px 8px;
-  opacity:0;transform:translateX(3px);pointer-events:none;
-  transition:opacity .15s ease,transform .15s ease;
-  max-width:240px;overflow:hidden;text-overflow:ellipsis;
-}
-.toc:hover .tick .lab,.toc:focus-within .tick .lab{opacity:1;transform:none}
-body.toc-pin .tick .lab{opacity:1;transform:none}
+/* 篇内大纲：版心左边常驻一栏，跟着正文滚，读到哪一节亮哪一条，⌥⌘I 收放。
+   栏窄了（三栏模式、小窗）左栏收起，改从顶栏那颗按钮弹 #outfloat 浮层，
+   两处用的是同一套 .ol-* 类名和同一份 HTML。 */
+.outline{display:none;flex-direction:column;min-width:0;
+  padding-right:24px;align-self:start;             /* sticky 在 grid 里必须 start，不然占满整行没得贴 */
+  position:sticky;top:70px;z-index:4;
+  max-height:calc(100vh - var(--chrome-h) - var(--status-h) - var(--bnr-h, 0px) - 118px)}
+.doc-layout.ol-on > .outline{display:flex}
+.ol-head{display:flex;align-items:center;gap:6px;flex:none;padding:0 8px 8px}
+.ol-t{font-size:13px;font-weight:550;color:var(--t2)}
+.ol-n{font-size:11px;color:var(--t3)}
+.ol-x{margin-left:auto;flex:none;width:22px;height:22px;border-radius:6px;
+  display:flex;align-items:center;justify-content:center;color:var(--t3)}
+.ol-x:hover{background:var(--hover);color:var(--t1)}
+.ol-x svg{width:14px;height:14px}
+/* 条目自己滚。滚动条平时不露，鼠标进来才浮出一条细的。 */
+.ol-list{position:relative;flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;
+  scrollbar-width:thin;scrollbar-color:transparent transparent}
+.ol-list::-webkit-scrollbar{width:7px}
+.ol-list::-webkit-scrollbar-track{background:transparent}
+.ol-list::-webkit-scrollbar-thumb{background:transparent;border-radius:4px;
+  border:2px solid transparent;background-clip:padding-box}
+.outline:hover .ol-list,#outfloat:hover .ol-list{scrollbar-color:var(--rule-head) transparent}
+.outline:hover .ol-list::-webkit-scrollbar-thumb,
+#outfloat:hover .ol-list::-webkit-scrollbar-thumb{background:var(--rule-head);background-clip:padding-box}
+.ol-i{display:block;width:100%;text-align:left;
+  font-size:13px;line-height:1.4;color:var(--t2);
+  padding:4px 8px;border-radius:6px;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  transition:background-color .14s ease,color .14s ease}
+.ol-i.l1{font-weight:550}
+.ol-i.l2{padding-left:20px}
+.ol-i.l3{padding-left:32px}
+.ol-i.l4{padding-left:44px}
+.ol-i:hover{background:var(--hover);color:var(--t1)}
+.ol-i.on{background:var(--accent-soft);color:var(--accent)}
+/* 顶栏那颗大纲按钮：栏宽够就是「收放左栏」，不够就是「弹浮层」。
+   [hidden] 得自己写一条——UA 那条 display:none 压不过 .dt-ico 的 inline-flex。 */
+.doc-toolbar .dt-ol[hidden]{display:none}
+.doc-toolbar .dt-ol.on{background:var(--accent-soft);color:var(--accent)}
+#outfloat{position:fixed;z-index:60;display:none;flex-direction:column;
+  width:260px;max-height:60vh;padding:8px;
+  background:var(--win);border:1px solid var(--rule-row);border-radius:14px;
+  box-shadow:var(--float);animation:arrive .16s ease-out}
+#outfloat.on{display:flex}
 
 /* ═══ Markdown 正文 ═══════════════════════
    默认 17 / 1.85 / 640。中文标题 letter-spacing 为 0，层级靠字重和留白。
@@ -1284,7 +1323,9 @@ body.solo .statusbar{display:none}
 #statusDetail{max-width:60%;text-align:right}
 
 /* ═══ 轻提示 ═══════════════════════════════
-   一句话、两秒、不挡手。持久性的话走顶部横幅，不走这里。 */
+   一句话、两秒、不挡手。持久性的话走顶部横幅，不走这里。
+   带动作按钮的那一版（notify(t,{action})，「已移到废纸篓 · 撤销」）多停几秒，
+   而且只有它 pointer-events:auto——平时这张卡片飘在正文上，不该拦鼠标。 */
 #toast{
   position:fixed;bottom:calc(var(--status-h) + 35px);left:50%;
   transform:translate(-50%,8px);
@@ -1293,8 +1334,16 @@ body.solo .statusbar{display:none}
   z-index:200;pointer-events:none;opacity:0;
   transition:opacity .18s ease,transform .18s ease;
   max-width:calc(100% - 32px);text-align:center;
+  display:flex;align-items:center;justify-content:center;gap:14px;
 }
 #toast.on{opacity:1;transform:translate(-50%,0)}
+#toast.act{pointer-events:auto;padding:9px 10px 9px 18px}
+.toast-act{
+  flex:0 0 auto;font:inherit;font-weight:600;color:var(--accent);
+  background:transparent;border:0;border-radius:8px;padding:5px 10px;
+  cursor:pointer;white-space:nowrap;
+}
+.toast-act:hover{background:var(--hover)}
 
 /* 页面切换的淡入。 */
 .page-enter{animation:pageIn .19s ease-out}
@@ -1306,8 +1355,7 @@ body.solo .statusbar{display:none}
   body.lists-on #side{position:fixed;left:0;top:var(--chrome-h);bottom:var(--status-h);width:var(--sbw);z-index:60;
     box-shadow:var(--popbig);display:none}
   body.lists-on.sideover #side{display:flex}
-  /* 篇内目录和地址栏那颗 ⌘K 先让位，正文别被挤窄 */
-  .toc{display:none}
+  /* 地址栏那颗 ⌘K 先让位，正文别被挤窄 */
   .ob-kbd{display:none}
   .section-head .section-meta{display:none}
 }
@@ -1333,7 +1381,7 @@ body.solo #chrome{display:none!important}
    ⌘P 走壳的 NSPrintOperation，打的是整个 WebView，所以界面得在这里收干净。 */
 @media print{
   html,body{height:auto;overflow:visible;background:#fff;color:#000}
-  #side,#listpane,.split,.tabbar,.toc,.listbtn,.editstatus,
+  #side,#listpane,.split,.tabbar,.outline,#outfloat,.listbtn,.editstatus,
   #chrome,#obdrop,#bmdrop,.statusbar,#toast,
   .doc-toolbar,.formatbar,.doc-end,.editor-hint,
   #banners,#ctx,#fmt,#wlpick,#tabpick,#cmdkWrap,#qlwrap,#cfgWrap,#slash,#typeWrap{display:none!important}
@@ -1450,7 +1498,6 @@ body.solo #chrome{display:none!important}
     <button class="listbtn" id="listbtn" title="显示列表　⌃⌘S" aria-label="显示列表"><i data-ic="sidebar"></i></button>
     <div class="editstatus" id="edMsg"></div>
     <div id="panes"></div>
-    <div class="toc hide" id="toc"></div>
   </div>
 </div>
 
@@ -1478,6 +1525,7 @@ body.solo #chrome{display:none!important}
 
 <div id="ctx"></div>
 <div id="tabpick"></div>
+<div id="outfloat" role="navigation" aria-label="大纲"></div>
 
 <div id="qlwrap">
   <div id="ql">
@@ -1583,7 +1631,7 @@ function bnr(id, on){
    Mac 的约定是重开就回到离开时的样子。存储键名沿用 tp-state，不改。
    lists（列表与边栏收放）只在当次会话内保持，不进 localStorage：
    打开文档默认纯正文，重开回纯正文。 */
-const DEF_ST={sbw:224, lcw:320, side:true, toc:false, bookmarks:true, recents:[],
+const DEF_ST={sbw:224, lcw:320, side:true, toc:true, bookmarks:true, recents:[],
   pins:[],              /* 已收藏：库根相对路径。文件没了就在 setTree 里剔掉 */
   homeFilter:'all',     /* 开始页/文件夹页/已收藏页的类型筛：all | md | html */
   homeView:'grid'};     /* 卡片网格 grid ｜ 单列列表 list */
@@ -1595,6 +1643,9 @@ function saveST(){ clearTimeout(stSaveT); stSaveT=setTimeout(()=>{
 function applyST(){
   document.documentElement.style.setProperty('--sbw', ST.sbw+'px');
   document.documentElement.style.setProperty('--lcw', ST.lcw+'px');
+  /* toc 这个键以前存的是「右侧目录气泡钉不钉住」，默认关；现在是左侧大纲，默认开。
+     语义换了，老值不能直接沿用，迁一次就够，之后听用户的。 */
+  if(!ST.tocv){ ST.toc=true; ST.tocv=2; saveST(); }
   if(ST.bookmarks===undefined) ST.bookmarks=true;
   document.body.classList.toggle('nobm', ST.bookmarks===false);
 }
@@ -1690,14 +1741,37 @@ function clipPath(rel){
   copyText('file://'+LIBROOT+'/'+rel).then(ok=>flash(ok?'路径已拷贝':'拷不了'));
 }
 /* 一句话的回执，两秒多自己消失。窗口底部居中一张小卡片。
-   持久的事（断线、升级、冲突）走顶部横幅 bnr()，不走这里。 */
+   持久的事（断线、升级、冲突）走顶部横幅 bnr()，不走这里。
+
+   第二个参数可选 {action:{label,fn}, ms}：右侧多一颗按钮（「撤销」就是它），
+   停留时间也能加长。**只有带按钮那一版收鼠标**——平时这张卡片
+   pointer-events:none，飘在正文上不挡手，加了按钮才临时打开，
+   收掉的时候一起关回去。 */
 let toastT=null;
-function notify(t){
+function notify(t, opt){
   const el=$('#toast'); if(!el){ return; }
-  el.textContent=String(t||'');
+  opt=opt||{};
+  const act=opt.action;
+  el.innerHTML='';
+  const sp=document.createElement('span');
+  sp.className='toast-text';
+  sp.textContent=String(t||'');
+  el.appendChild(sp);
+  if(act && act.label){
+    const b=document.createElement('button');
+    b.type='button'; b.className='toast-act'; b.textContent=act.label;
+    b.onclick=()=>{ hideToast(); if(act.fn) act.fn(); };
+    el.appendChild(b);
+  }
+  el.classList.toggle('act', !!(act && act.label));
   el.classList.add('on');
   clearTimeout(toastT);
-  toastT=setTimeout(()=>{ el.classList.remove('on'); }, 2400);
+  toastT=setTimeout(hideToast, Math.max(1200, +opt.ms || 2400));
+}
+function hideToast(){
+  const el=$('#toast'); if(!el) return;
+  clearTimeout(toastT); toastT=null;
+  el.classList.remove('on','act');
 }
 /* 老代码里到处在调 flash()，名字留着，统一走 toast。 */
 function flash(t){ notify(t); }
@@ -1743,6 +1817,7 @@ function applyPref(){
   // 源码框固定等宽 13 / 1.9，不跟正文字号走——源码看的是行，不是阅读节奏。
   document.documentElement.style.setProperty('--docw', PREF.w+'px');
   growAllEd();                                   // 字号／版心变了，源码框的高度得重算
+  syncToc();                                     // 版心变了，三栏还摆不摆得下也变了
   if (PREF.theme==='auto') document.documentElement.removeAttribute('data-theme');
   else document.documentElement.setAttribute('data-theme', PREF.theme);
   // 全屏内容视图把网页铺进原生标题栏后，两层必须用同一套明暗外观。
@@ -2214,7 +2289,17 @@ async function navigate(entry, opt){
     await loadEntry(t);
     return t;
   }
-  if(t.editing){ flushSave(t); endEdit(t); }
+  // 有东西可丢就先等落盘，落成了再跑一遍；没落成就不跳，字留在编辑区里。
+  // 干净又没冲突的编辑态照旧同步收掉——平常跳转不该为此多一次来回。
+  // src 框里的改动 dirty 看不见（.md 还是进框前那一版），所以在源码里也一律先存。
+  if(t.editing){
+    const ep=paneOf(t);
+    if(t.editing && (dirty(t) || t.conflict || (ep && ep.classList.contains('src')))){
+      saveBeforeLeave(t).then(ok=>{ if(ok) navigate(entry, opt); });
+      return;
+    }
+    endEdit(t);
+  }
   ensureStack(t);
   const replace=!!opt.replace || kindOfTab(t)==='start';
   if(replace) t.stack[t.idx]=entry;
@@ -2233,7 +2318,14 @@ async function goHist(dir){
   ensureStack(t);
   const n=(t.idx||0)+dir;
   if(n<0 || n>=t.stack.length) return;
-  if(t.editing){ flushSave(t); endEdit(t); }
+  if(t.editing){                              // 同 navigate：有改动就先落盘，落成了再走一遍
+    const ep=paneOf(t);
+    if(t.editing && (dirty(t) || t.conflict || (ep && ep.classList.contains('src')))){
+      saveBeforeLeave(t).then(ok=>{ if(ok) goHist(dir); });
+      return;
+    }
+    endEdit(t);
+  }
   t.idx=n;
   applyEntry(t, t.stack[n]);
   drawTabs();
@@ -2871,14 +2963,17 @@ function tabMenu(e, id){
     else if(mid==='copyurl') clipPath(t.path);
   });
 }
+/* 一个一个来，谁按了「取消」就停在那儿——closeTab 现在是 async，
+   不能再拿 ===false 当判据（拿到的是个 Promise，永远不等于 false）。 */
+async function closeMany(ids){
+  for(const id of ids){ if(await closeTab(id)===false) return; }
+}
 function closeOtherTabs(keepId){
-  TABS.filter(t=>t.id!==keepId).map(t=>t.id).reverse()
-    .some(id=>closeTab(id)===false);
+  closeMany(TABS.filter(t=>t.id!==keepId).map(t=>t.id).reverse());
 }
 function closeTabsToRight(id){
   const i=TABS.findIndex(t=>t.id===id); if(i<0) return;
-  TABS.slice(i+1).map(t=>t.id).reverse()
-    .some(id=>closeTab(id)===false);
+  closeMany(TABS.slice(i+1).map(t=>t.id).reverse());
 }
 function cycleTab(dir){
   if(TABS.length<2) return;
@@ -2935,12 +3030,26 @@ async function reopenClosed(){
   notify('已恢复「' + (t.title||'开始') + '」');
 }
 
-function closeTab(id){
-  const i=TABS.findIndex(t=>t.id===id); if(i<0) return true;
-  const t=TABS[i];
-  if(t.editing) flushSave(t);                       // 关标签强制落盘
-  if(dirty(t) && !ask(`要关掉「${t.title||''}」吗？`,'改动还没保存，关掉就丢了。','不保存并关闭','取消',true)) return false;
-  rememberClosed(t);
+/* opt.forget：不进 ⌘⇧T 的恢复栈。文件已经不在了（移到废纸篓那条路），
+   恢复出来只会是一个开不了的标签。 */
+/* 关一个标签。跟同标签跳转、前进后退、回开始页一条路：**先落盘，落成了就直接关**，
+   不问。只有真没存进去（写失败、冲突、自检不过）才弹一次确认——原先是先 flushSave
+   把请求发出去、再问「不保存并关闭」，问的和做的是反的。
+   按了「不保存并关闭」之后一条 /__save 都不许再发：先清定时器再 endEdit，
+   之后 flushAll / flushSave 判 t.editing 自然跳过。 */
+async function closeTab(id, opt){
+  const t=TABS.find(x=>x.id===id); if(!t) return true;
+  if(t.editing && dirty(t)){
+    if(!(await saveBeforeLeave(t))){                // 存住了 saveBeforeLeave 自己会收编辑态
+      if(!ask(`要关掉「${t.title||''}」吗？`,'这份改动还没存进去，关掉就丢了。','不保存并关闭','取消',true)) return false;
+      clearTimeout(t.autoT); t.autoT=null;
+      endEdit(t);
+    }
+  }
+  // 落盘那一等里标签条可能已经变了，序号现算
+  const i=TABS.indexOf(t); if(i<0) return true;
+  if(t.editing){ clearTimeout(t.autoT); t.autoT=null; }   // 干净的编辑态：没什么要存，收掉定时器就行
+  if(!(opt && opt.forget)) rememberClosed(t);
   const p=paneOf(t); if(p) p.remove();
   if(t.blobs) t.blobs.forEach(u=>{ try{ URL.revokeObjectURL(u); }catch(e){} });
   TABS.splice(i,1);
@@ -2992,6 +3101,7 @@ function wireDocBar(p, t){
       navigate(makeEntry('folder',{folder:f, title:f?f.split('/').pop():'库根', path:f?f+'/':'/'}),
                {newTab:e.metaKey||e.ctrlKey});
     }
+    else if(a==='outline') AMN.toggleToc();
     else if(a==='focus') toggleFocus();
     else if(a==='more') docMoreMenu(e, t);
     else if(a==='edit') startEdit();
@@ -3008,6 +3118,19 @@ function wireDocBar(p, t){
       docFmt(b.dataset.format);
     });
   }
+}
+
+/* 左栏大纲：点条目跳过去，点头上那颗收起来。
+   编辑态里 pointerdown 要拦一下，不然点大纲的那一下先把正文的选区清掉。 */
+function wireOutline(p, t){
+  const ol=p.querySelector('.outline'); if(!ol) return;
+  ol.addEventListener('pointerdown', e=>{ if(e.target.closest('.ol-i,.ol-x')) e.preventDefault(); });
+  ol.addEventListener('click', e=>{
+    if(e.target.closest('[data-ol="hide"]')){ AMN.toggleToc(); return; }
+    const a=e.target.closest('.ol-i'); if(!a) return;
+    if(t.id!==curTab) showTab(t.id);
+    olJump(+a.dataset.oi);
+  });
 }
 
 /* 面包屑：库内是「文件夹 › 文件名」，点文件夹进那一页；
@@ -3057,12 +3180,20 @@ function drawDocBar(t){
       + (canEditPath(t.path)
           ? `<button type="button" class="dt-btn soft" data-dt="edit">${icon('edit',14)} 编辑</button>` : '');
   }
-  bar.innerHTML=`<div class="breadcrumb">${docCrumb(t)}</div>${right}`;
+  /* 大纲那颗常挂着，露不露交给 syncToc——标题数在编辑时随时会变，
+     每变一次就重画整条顶栏太吵，sig 也会跟着来回抖。 */
+  const olBtn = k==='md'
+    ? `<button type="button" class="dt-ico dt-ol" data-dt="outline" title="大纲　⌥⌘I" aria-label="大纲" hidden>`
+      + `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round">`
+      + `<path d="M4 6.5h16"/><path d="M8 12h12"/><path d="M12 17.5h8"/></svg></button>`
+    : '';
+  bar.innerHTML=olBtn+`<div class="breadcrumb">${docCrumb(t)}</div>${right}`;
   const hint=p.querySelector('.editor-hint');
   if(hint) hint.textContent = !t.editing ? ''
     : (src ? '直接改 Markdown，随时切回排版。'
            : '直接在正文里输入。选中一段文字，可以加粗、加链接；⌘ Z 撤销。');
   paintSaveState(t);
+  if(t.id===curTab) syncToc();
 }
 
 /* 保存状态 pill。状态源全是现成的：
@@ -3126,12 +3257,17 @@ function drawDocMeta(t){
 /* 「更多」：壳里弹原生菜单，浏览器里退回页面自己的那张。 */
 function docMoreMenu(e, t){
   if(!t || !t.path) return;
+  /* 编辑态里也列：菜单是点出来的，不跟 ⌘⌫ 抢键（灰掉的是壳里那条菜单项，
+     见 state().canTrash）。正在改的这一份说不要就是不要了，trashDoc 会先把
+     编辑态连同自动保存的定时器一起收干净，不会有 /__save 再把它写回来。 */
+  const del = !t.ext && canTrashPath(t.path);
   popMenu(e, [
     {id:'reveal',  label:'在访达中显示'},
     {id:'copyurl', label:'拷贝路径'},
     {id:'share',   label:'分享…'},
     {sep:true},
     {id:'newwin',  label:'在新窗口打开'},
+    ...(del ? [{sep:true},{id:'trash', label:'移到废纸篓'}] : []),
   ], id=>{
     if(id==='reveal') revealPath(t.path);
     else if(id==='copyurl') clipPath(t.path);
@@ -3140,6 +3276,7 @@ function docMoreMenu(e, t){
       else notify('分享要在 AM·Note 里用。');
     }
     else if(id==='newwin') openSolo(t.path);
+    else if(id==='trash') trashDoc(t.path);
   });
 }
 
@@ -3227,31 +3364,44 @@ function tblAddCol(t, cell){
   if(made) caretEnd(made, true);
 }
 
-/* 「完成」＝落盘 ＋ 回阅读。**必须等真的写进文件再回阅读态**：
-   endEdit 会把工作副本丢掉、按 t.raw 重画，没存成就走等于把这次改的字扔了。
-   所以这里 await 到有结果为止，冲突／写失败一律留在编辑态，字还在屏幕上。
+/* 收编辑态之前先把改动落盘；没落成就不收，返回假（原因已经提示过了）。
+   **必须等真的写进文件**：endEdit 会把工作副本丢掉、按 t.raw 重画，没存成就收
+   等于把这次改的字扔了。所以这里 await 到有结果为止，冲突／写失败一律留在编辑态。
    走的是 saveEdit 而不是 flushSave：flushSave 带 keepalive，那条路上不改名，
-   而且 keepalive 的请求体有 64KiB 上限，长笔记会直接发不出去。 */
-async function finishEdit(){
-  const t=active(); if(!t || !t.editing) return;
+   而且 keepalive 的请求体有 64KiB 上限，长笔记会直接发不出去。
+   「完成」、同标签跳转、前进后退、回开始页四条出口都走这里，报的话一模一样。 */
+async function saveBeforeLeave(t){
+  if(!t || !t.editing || t.trashing) return false;   // 同 autoKick
   const p=paneOf(t);
-  if(p && p.classList.contains('src')) toggleSrc();      // 先回排版，再按正文那条路存
-  if(t.conflict){ bnr('conflict', true); notify('这份在外部被改过了，先挑一个再走。'); return; }
-  if(t.finishing) return;
+  // toggleSrc 认的是当前标签；t 不是当前标签就别回排版，saveEdit 自己会读源码框里的字
+  if(p && p.classList.contains('src') && t.id===curTab) toggleSrc();   // 先回排版，再按正文那条路存
+  if(t.conflict){ bnr('conflict', true); notify('这份在外部被改过了，先挑一个再走。'); return false; }
+  if(t.finishing) return false;
   t.finishing=true;
   let ok=false;
   try{
-    // 自动保存正好在飞，等它落地，别让「完成」白报一次失败
+    // 自动保存正好在飞，等它落地，别白报一次失败
     for(let i=0;i<120 && t.saving;i++) await new Promise(r=>setTimeout(r, 50));
     clearTimeout(t.autoT); t.autoT=null;
     ok=await saveEdit(false, {tab:t, auto:true});
   }finally{ t.finishing=false; }
-  if(!t.editing) return;                                 // 这中间被别处收了编辑态
+  if(!t.editing) return false;                           // 这中间被别处收了编辑态
   if(t.pendingBad && t.pendingBad.length){
-    syncBar(); notify('有 '+t.pendingBad.length+' 处存不进 · 点上面看看'); return;
+    syncBar(); notify('有 '+t.pendingBad.length+' 处存不进 · 点上面看看'); return false;
   }
-  if(t.conflict){ syncBar(); notify('有冲突，先处理一下'); return; }
-  if(!ok){ syncBar(); notify('没存进去，改动还在'); return; }
+  if(t.conflict){ syncBar(); notify('有冲突，先处理一下'); return false; }
+  if(!ok){ syncBar(); notify('没存进去，改动还在'); return false; }
+  /* 存住了就在这儿收编辑态，别留给调用方。四个出口都是 .then(ok=>{ if(ok) 再走一遍 })，
+     而重入那一遍的判据里有「源码框开着」这一条——t 不是当前标签时上面那句
+     toggleSrc 不会跑，.src 一直挂着，于是每一遍都判成「有东西要存」，无限重入。 */
+  endEdit(t);
+  return true;
+}
+
+/* 「完成」＝落盘 ＋ 回阅读。存不成就留在编辑态，字还在屏幕上。 */
+async function finishEdit(){
+  const t=active(); if(!t || !t.editing) return;
+  if(!(await saveBeforeLeave(t))) return;
   endEdit(t); paintWork(t); buildToc(); syncProg(); drawDocMeta(t);
   notify('已保存，继续阅读。');
 }
@@ -3292,7 +3442,9 @@ function newPane(t){
   /* 顶栏 ＋ 版心。渲染稿和源码框都留在版心里，靠 .edit / .src 切换谁露出来。
      .md 仍是块台账的容器，里面的结构一个属性都没动，只是外面多包了两层。 */
   p.innerHTML='<div class="doc-toolbar"></div>'
-    + '<div class="doc-layout"><div class="document">'
+    + '<div class="doc-layout">'
+    +   '<nav class="outline" aria-label="大纲"></nav>'
+    +   '<div class="document">'
     +   '<div class="doc-meta"></div>'
     +   fmtBarHtml()
     +   '<div class="md f-sans"></div>'
@@ -3303,6 +3455,7 @@ function newPane(t){
     + '<iframe class="htmlframe" sandbox hidden title=""></iframe>'
     + '<div class="pagebox" hidden></div>';
   wireDocBar(p, t);
+  wireOutline(p, t);
   p.addEventListener('scroll', ()=>{ if(t.id===curTab) syncProg(); }, {passive:true});
   const box0=p.querySelector('.pagebox');
   box0.addEventListener('click', e=>{
@@ -3331,6 +3484,11 @@ function newPane(t){
       navigate(makeEntry('folder', {folder:f, title:f?f.split('/').pop():'库根', path:f?f+'/':'/'}),
         {newTab:e.metaKey||e.ctrlKey});
     }
+  });
+  // 卡片右键：开始页 / 文件夹页 / 已收藏页 / 搜索结果都走这一条
+  box0.addEventListener('contextmenu', e=>{
+    const row=e.target.closest('[data-open]'); if(!row) return;
+    cardMenu(e, row.dataset.open, row.dataset.kind);
   });
   box0.addEventListener('mousedown', e=>{ if(e.button===1 && e.target.closest('[data-open]')) e.preventDefault(); });
   box0.addEventListener('auxclick', e=>{
@@ -3717,35 +3875,148 @@ function undecorateHistory(md){
   });
 }
 
-/* ── 篇内目录：右侧短横线轨道 ───────────── */
+/* ── 篇内大纲：版心左边那一栏 ─────────────
+   h1~h4 全收，按层级缩进。栏宽够（≥980）就常驻左边，不够就收起来，
+   改从顶栏那颗按钮弹浮层——看的是正文栏自己的宽，不是窗口宽，
+   因为 ⌃⌘S 三栏模式下窗口没变、正文栏窄了一大截。
+   条目认的是「第几个标题」不是 id：编辑时新敲出来的标题没有 id，
+   而大纲每次都从实时 DOM 重建，序号此刻唯一就够。 */
+const OL_MIN=980;
+let OL_ON=false;                    // 左栏此刻是不是真露着，state().toc 报的就是它
 function heads(){
   const t=active(); if(!t||kindOfTab(t)!=='md') return [];
-  const p=paneOf(t); return p?[...p.querySelectorAll('.md h2, .md h3')]:[];
+  const p=paneOf(t); return p?[...p.querySelectorAll('.md h1,.md h2,.md h3,.md h4')]:[];
 }
+function olWide(){ const d=$('#docpane'); return !d || d.clientWidth>=OL_MIN; }
+/* 再宽一档就摆得下三栏：大纲 ｜ 正文 ｜ 一条等宽的空栏。左右一样重，
+   正文才落在正文栏正中；差一点就退回两栏。--outline-w 现读，别写死。 */
+const OL_PADX=120;                  // .doc-layout 左右内边距合计，跟上面的 CSS 对齐
+function olColW(){
+  const v=parseFloat(getComputedStyle(document.documentElement)
+                     .getPropertyValue('--outline-w'));
+  return v>0 ? v : 232;
+}
+function olWider(){
+  const d=$('#docpane'); if(!d) return false;
+  return d.clientWidth >= (+PREF.w||690) + 2*olColW() + OL_PADX;
+}
+function olReady(){ return !document.body.classList.contains('solo') && heads().length>=2; }
+function olSig(hs){ return hs.map(h=>h.tagName+'|'+(h.textContent||'')).join('\n'); }
+function olHtml(hs, float){
+  const shut = float
+    ? `<button type="button" class="ol-x" data-ol="close" title="关闭" aria-label="关闭">${icon('close',14)}</button>`
+    : `<button type="button" class="ol-x" data-ol="hide" title="收起大纲　⌥⌘I" aria-label="收起大纲">${icon('chevron-left',14)}</button>`;
+  return `<div class="ol-head"><span class="ol-t">大纲</span><span class="ol-n num">${hs.length}</span>${shut}</div>`
+    + `<div class="ol-list">`
+    + hs.map((h,i)=>{
+        const txt=esc((h.textContent||'').trim() || '无标题');
+        return `<button type="button" class="ol-i l${h.tagName.charAt(1)}" data-oi="${i}" title="${txt}">${txt}</button>`;
+      }).join('')
+    + `</div>`;
+}
+/* 重建。标题没变就一个字节都不动——编辑时每 300 毫秒来一趟，
+   动了 innerHTML 高亮会闪，面板自己的滚动位置也会跳回顶上。 */
 function buildToc(){
-  const hs=heads();
-  const on=hs.length>=2;
-  const el=$('#toc');
-  el.classList.toggle('hide', !on);
-  el.innerHTML = on ? hs.map(h=>
-    `<button type="button" class="tick${h.tagName==='H3'?' h3':''}" data-id="${h.id}"`
-    + ` aria-label="跳到 ${esc(h.textContent)}">`
-    + `<span class="lab">${esc(h.textContent)}</span><span class="bar"></span></button>`).join('') : '';
-  el.querySelectorAll('.tick').forEach(a=>a.onclick=()=>{
-    const t=active(), p=t&&paneOf(t);
-    const h=p&&p.querySelector('#'+CSS.escape(a.dataset.id));
-    if(h) p.scrollTo({top:Math.max(0, scrollYOf(p,h)-88), behavior:'smooth'});
-  });
+  const t=active(), p=t&&paneOf(t);
+  const hs=heads(), sig=olSig(hs);
+  const el=p&&p.querySelector('.outline');
+  if(el && el.dataset.sig!==sig){
+    el.dataset.sig=sig;
+    el.innerHTML = hs.length ? olHtml(hs, false) : '';
+  }
+  const fl=$('#outfloat');
+  if(fl && olFloatOn() && fl.dataset.sig!==sig){
+    fl.dataset.sig=sig;
+    fl.innerHTML = hs.length ? olHtml(hs, true) : '';
+  }
   syncToc();
+  syncProgNow();          // 同步算，别留一帧「谁都不亮」的空档
 }
+/* 该不该露、顶栏那颗按钮什么样。三处判据：这篇有没有大纲、用户开没开、栏宽够不够。 */
+function syncToc(){
+  const t=active(), p=t&&paneOf(t);
+  const ready=olReady(), wide=olWide();
+  OL_ON = ready && ST.toc!==false && wide;
+  if(p){
+    const lay=p.querySelector('.doc-layout');
+    if(lay){
+      lay.classList.toggle('ol-on', OL_ON);
+      lay.classList.toggle('ol-3', OL_ON && olWider());
+    }
+    const b=p.querySelector('[data-dt="outline"]');
+    if(b){
+      b.hidden=!ready;
+      b.classList.toggle('on', OL_ON || (!wide && olFloatOn()));
+      const lbl = wide ? (OL_ON?'隐藏大纲':'显示大纲') : '大纲';
+      b.title=lbl+'　⌥⌘I'; b.setAttribute('aria-label', lbl);
+    }
+  }
+  if(!ready || wide) closeOlFloat();          // 栏宽回来了，大纲就在左边，浮层没用了
+  placeOlFloat();
+}
+/* 读到哪一节：最后一个「顶已经过了顶栏」的标题。滚动上每帧最多算一次。 */
+let olRaf=0;
 function syncProg(){
+  if(olRaf) return;
+  olRaf=requestAnimationFrame(()=>{ olRaf=0; syncProgNow(); });
+}
+function syncProgNow(){
   const t=active(), p=t&&paneOf(t);
   if(!p||kindOfTab(t)!=='md') return;
-  let cur=null;
-  heads().forEach(h=>{ if(scrollYOf(p,h)-140<=p.scrollTop) cur=h.id; });
-  $$('#toc .tick').forEach(a=>a.classList.toggle('on', a.dataset.id===cur));
+  const hs=heads();
+  // 判定线要比点击落点（标题顶下移 88）再低一点，不然点完一条，亮的却是上一条。
+  const line=p.scrollTop+96;
+  let cur=-1;
+  hs.forEach((h,i)=>{ if(scrollYOf(p,h)<=line) cur=i; });
+  if(cur<0 && hs.length) cur=0;              // 还没滚到第一个标题，就算在第一节里
+  markOl(p.querySelector('.outline'), cur);
+  if(olFloatOn()) markOl($('#outfloat'), cur);
 }
-function syncToc(){ document.body.classList.toggle('toc-pin', !!ST.toc); }
+function markOl(box, cur){
+  if(!box) return;
+  let act=null;
+  box.querySelectorAll('.ol-i').forEach(a=>{
+    const on=+a.dataset.oi===cur;
+    a.classList.toggle('on', on);
+    if(on) act=a;
+  });
+  const list=box.querySelector('.ol-list');
+  if(!act||!list) return;
+  // 只滚面板自己。scrollIntoView 会连带把正文栏一起滚走，这里手算。
+  const y=act.offsetTop, b=y+act.offsetHeight;
+  if(y<list.scrollTop) list.scrollTop=y;
+  else if(b>list.scrollTop+list.clientHeight) list.scrollTop=b-list.clientHeight;
+}
+function olJump(i){
+  const t=active(), p=t&&paneOf(t); if(!p) return;
+  const h=heads()[i]; if(!h) return;
+  p.scrollTo({top:Math.max(0, scrollYOf(p,h)-88), behavior:'smooth'});
+}
+/* 编辑时标题改了要跟上，但别一个字一个字地重建。 */
+let olKickT=null;
+function olKick(){ clearTimeout(olKickT); olKickT=setTimeout(buildToc, 300); }
+
+/* 浮层：栏窄的时候顶栏那颗按钮弹出来的同一份大纲。 */
+function olFloatOn(){ const f=$('#outfloat'); return !!(f && f.classList.contains('on')); }
+function openOlFloat(){
+  const hs=heads(); if(hs.length<2) return;
+  const f=$('#outfloat'); if(!f) return;
+  f.dataset.sig=olSig(hs);
+  f.innerHTML=olHtml(hs, true);
+  f.classList.add('on');
+  placeOlFloat();
+  syncProg();
+}
+function closeOlFloat(){ const f=$('#outfloat'); if(f) f.classList.remove('on'); }
+function placeOlFloat(){
+  const f=$('#outfloat'); if(!f || !f.classList.contains('on')) return;
+  const t=active(), p=t&&paneOf(t);
+  const b=p&&p.querySelector('[data-dt="outline"]');
+  const r=b?b.getBoundingClientRect():null;
+  const x=r?r.left:16, y=r?r.bottom+6:80;
+  f.style.left=Math.max(8, Math.min(x, innerWidth-f.offsetWidth-8))+'px';
+  f.style.top =Math.max(8, Math.min(y, innerHeight-f.offsetHeight-8))+'px';
+}
 
 /* ── 列表与边栏收放 ─────────────────────
    打开文档默认纯正文。这个开关只在当次会话内保持，重开回纯正文。 */
@@ -3993,7 +4264,8 @@ function unwatch(t){ if(t.mo){ t.mo.disconnect(); t.mo=null; } }
 
 function watchEdits(t){
   unwatch(t);
-  const md=paneOf(t).querySelector('.md');
+  const p0=paneOf(t); if(!p0) return;            // 标签已经关了（移到废纸篓那条路）
+  const md=p0.querySelector('.md');
   const top=n=>{
     while(n && n!==md && n.parentNode && n.parentNode!==md) n=n.parentNode;
     return (n && n!==md && n.parentNode===md && n.nodeType===1 && !n.dataset.chrome) ? n : null;
@@ -4014,6 +4286,9 @@ function watchEdits(t){
     const list=[...new Set(hit)];
     if(list.length) requestAnimationFrame(()=>{
       if(COMPOSING) return;
+      // 这一帧之间编辑态可能已经收了（收编辑、关标签、移到废纸篓），
+      // 那就什么都别做：面板都拆了，洗块和重挂观察器全是空转
+      if(!t.editing || !paneOf(t)) return;
       unwatch(t);
       const before=md.innerHTML, keep=saveSel(md);
       list.forEach(b=>{ if(b.isConnected) cleanBlock(b); });
@@ -4022,6 +4297,7 @@ function watchEdits(t){
       syncPh(t);
       if(t.id===curTab && !COMPOSING) syncTabTitle(t);
     });
+    if(t.id===curTab) olKick();                  // 标题改了，大纲停手 300 毫秒跟上
     autoKick(t);                                 // 停笔两秒自动落盘
   });
   t.mo.observe(md, {subtree:true, childList:true, characterData:true});
@@ -4793,6 +5069,118 @@ function canEditPath(rel){
   if(!parts.length) return false;
   return parts.every(s=>s && s!=='..' && !BADSEG.test(s));
 }
+/* 能不能移到废纸篓。判据照抄服务端 _trash_ok，跟 canEditPath 只差认哪些后缀：
+   改只认 .md，搬认 .md / .html / .htm——门户里打得开的就这三种。
+   **两边改必须一起改**（portal_server.py 的 _trash_ok）。
+   库外文档（t.ext）恒假：那些文件不在库根里，服务端一条都不给动。 */
+function canTrashPath(rel){
+  if(!IS_HTTP) return false;
+  rel=String(rel||'');
+  if(!/\.(md|html|htm)$/i.test(rel)) return false;
+  if(rel[0]==='/') return false;
+  const parts=rel.split('/');
+  if(!parts.length) return false;
+  return parts.every(s=>s && s!=='..' && !BADSEG.test(s));
+}
+
+/* ── 移到废纸篓 ─────────────────────────
+   建错一份随手记是最常见的一次误操作，以前只能去访达删。这里给一条出口。
+
+   **不弹确认框。** 文件进的是系统废纸篓，原样躺着；toast 上八秒内点「撤销」
+   就回原位，八秒之后访达里照样捞得回来。多一道确认只是多一次点击。
+
+   TRASHED 是「刚挪走、服务端索引还没跟上」的那几份：/__tree 是从索引里出的，
+   同步跑完之前会照样把它们列出来，卡片会「消失一下又冒回来」。先在 setTree
+   里挡一道，等索引真的不列它了（或者撤销了）再解除。
+   记的是挪走的时刻：同步万一没跑到（服务重启、索引坏了），挡了 30 秒就无条件
+   放行——挡下去等于一份存在的笔记从库里凭空消失，比闪一下糟得多。 */
+const TRASHED=new Map();          // 相对路径 → 挪走的时刻
+const TRASH_HIDE_MS=30000;
+let trashBusy=false;
+
+function forgetPath(rel){
+  ST.recents=(Array.isArray(ST.recents)?ST.recents:[]).filter(x=>x && x.路径!==rel);
+  ST.pins=(Array.isArray(ST.pins)?ST.pins:[]).filter(p=>p!==rel);
+  if(ST.lastPath===rel) ST.lastPath=ST.recents.length ? ST.recents[0].路径 : '';
+  saveST();
+}
+
+async function trashDoc(rel){
+  rel=String(rel||'');
+  if(!rel || !IS_HTTP) return false;
+  if(!canTrashPath(rel)){ flash('这一份不能删'); return false; }
+  if(trashBusy) return false;
+  trashBusy=true;
+  const mine=TABS.filter(t=>!t.ext && t.path===rel);
+  try{
+    /* **等 /__trash 回来了再收编辑态。** 收在前面的话，服务端一说不行，
+       屏幕上还是用户刚敲的字，t.work 却已经丢了、dirty 也假了、停笔自动保存
+       也停了——下一次导航按 t.raw 重画，那几个字就永久没了。
+       等响应这段用 t.trashing 顶住：autoKick / flushSave / saveEdit /
+       saveBeforeLeave 第一行都在判它，不会有哪一存赶在文件挪走前后发出去。 */
+    for(const t of mine){
+      // 自动保存正好在飞：等它落地再动文件，不然那一存会赶在挪走之后，把文件又写出来
+      for(let i=0;i<60 && t.saving;i++) await new Promise(r=>setTimeout(r, 50));
+      t.trashing=true;
+      clearTimeout(t.autoT); t.autoT=null;
+    }
+    let r=null;
+    try{
+      r=await (await fetch('/__trash',{method:'POST', headers:hdrs(),
+        body:JSON.stringify({路径:rel})})).json();
+    }catch(e){ flash('服务没应答'); return false; }
+    if(!r || !r.ok){ flash((r&&r.错误)||'删不掉'); return false; }
+    /* 文件这会儿才真的挪走了，收编辑态才安全。收完 t.editing 就是假，
+       flushAll / flushSave / saveBeforeLeave / saveEdit 四个入口第一行都在判它，
+       pagehide 和 visibilitychange 那两条也走 flushAll——所以挪走之后
+       不会再有任何一条 /__save 把这份文件写回来。 */
+    for(const t of mine){
+      clearTimeout(t.autoT); t.autoT=null;
+      if(t.editing) endEdit(t);              // 里面把 editing/work/touched/pendingBad 一起清了
+      t.again=false; t.conflict=null;
+    }
+    TRASHED.set(rel, Date.now());
+    forgetPath(rel);
+    /* solo 窗里就这一份，关掉标签只剩一块白板。窗口本来就是 window.open 开的，
+       关掉它才是这一步的收尾；关不掉（浏览器里直开的那种）就留着字，报一句。 */
+    if(SOLO){
+      notify('已移到废纸篓，可以关掉这个窗口', {ms:8000});
+      try{ window.close(); }catch(e){}
+      return true;
+    }
+    // 关掉所有开着它的标签。**不进 CLOSED**：⌘⇧T 恢复出来的会是一个开不了的标签
+    for(const t of mine) await closeTab(t.id, {forget:true});
+    refreshTree();
+    notify('已移到废纸篓', {ms:8000, action:{label:'撤销', fn:()=>untrashDoc(rel)}});
+    return true;
+  }finally{
+    trashBusy=false;
+    // 没删成就把顶住的那道撤了，字还在编辑区里，停笔照样自动保存
+    mine.forEach(t=>{ if(t.trashing){ t.trashing=false; if(t.editing && dirty(t)) autoKick(t); } });
+  }
+}
+
+async function untrashDoc(rel){
+  rel=String(rel||'');
+  if(!rel || !IS_HTTP) return;
+  let r=null;
+  try{
+    r=await (await fetch('/__untrash',{method:'POST', headers:hdrs(),
+      body:JSON.stringify({路径:rel})})).json();
+  }catch(e){ flash('服务没应答'); return; }
+  if(!r || !r.ok){ flash((r&&r.错误)||'放不回去'); return; }
+  TRASHED.delete(rel);
+  notify('已放回');
+  await refreshTree();
+  openByPath(rel);
+}
+
+/* 挪完文件重取一次树。服务端那趟同步是后台跑的，第一次取回来可能还是旧的，
+   隔七百毫秒再取一次；再不成也有 /__pulse 那条三秒一次的兜底。 */
+async function refreshTree(){
+  await loadTree();
+  setTimeout(loadTree, 700);
+}
 
 function syncBar(){
   syncStatusLine();
@@ -4923,7 +5311,7 @@ function toggleSrc(){
    停笔 2 秒落盘；切文档、关标签、关窗口、页面隐藏时强制落盘；⌘S 照常手动即存。 */
 const AUTOSAVE_MS = 2000;
 function autoKick(t){
-  if(!t || !t.editing) return;
+  if(!t || !t.editing || t.trashing) return;   // trashing：/__trash 正在飞，这一刻一个字都不许写回去
   t.pendingBad=null;
   // 打字这条路径也要把脏标志推给壳，不然关闭按钮里的脏点要等到别处
   // 调 syncBar 才出现。syncNative 自带 lastNat 去重，敲一个字不会刷屏。
@@ -4933,7 +5321,7 @@ function autoKick(t){
   t.autoT=setTimeout(()=>{ t.autoT=null; saveEdit(false, {tab:t, auto:true}); }, AUTOSAVE_MS);
 }
 function flushSave(t){
-  if(!t || !t.editing) return;
+  if(!t || !t.editing || t.trashing) return;   // 同 autoKick
   clearTimeout(t.autoT); t.autoT=null;
   if(!dirty(t)) return;
   saveEdit(false, {tab:t, auto:true, keepalive:true});
@@ -4957,7 +5345,7 @@ const hhmm = () => { const d=new Date(), z=n=>String(n).padStart(2,'0');
 async function saveEdit(force, opt){
   opt=opt||{};
   const t=opt.tab||active();
-  if(!t || !t.editing) return false;
+  if(!t || !t.editing || t.trashing) return false;   // 同 autoKick
   if(t.saving){ t.again=true; return false; }
   const p=paneOf(t); if(!p) return false;
   const auto=!!opt.auto;
@@ -5151,7 +5539,19 @@ function whenLabel(sec, wide){
 function setTree(t){
   if(!t || !t.ok) return;
   TREE=t;
-  items=(t.文档||[]).map(d=>({
+  let docs=t.文档||[];
+  /* 刚挪进废纸篓的那几份：索引跟上之前先当它们不在。索引真的不列了就解除，
+     免得这张表越攒越长（撤销那条路上 untrashDoc 自己会删）。
+     再加一道时间上限：挡了 30 秒还在树上，就当同步这条路断了，无条件放行——
+     一直挡着等于一份还在的笔记从库里凭空消失，比闪一下糟得多。 */
+  if(TRASHED.size){
+    const have=new Set(docs.map(d=>d.路径)), now=Date.now();
+    TRASHED.forEach((ts, p)=>{
+      if(!have.has(p) || now-ts>TRASH_HIDE_MS) TRASHED.delete(p);
+    });
+    if(TRASHED.size) docs=docs.filter(d=>!TRASHED.has(d.路径));
+  }
+  items=docs.map(d=>({
     路径:d.路径, 标题:d.标题||'', 类型:d.类型||'md',
     修改时间:d.改于||0, 日期:ymd(d.改于), 预览:d.预览||''}));
   prepItems(); syncNotePv(); prunePins();
@@ -5628,6 +6028,29 @@ function rowMenu(e, seq){
       copyText(picked.map(x=>'file://'+LIBROOT+'/'+x.路径).join('\n'))
         .then(ok=>flash(!ok ? '拷不了' : (picked.length>1?`${picked.length} 条路径已拷贝`:'路径已拷贝')));
     }
+  });
+}
+
+/* 卡片上的右键：开始页 / 文件夹页 / 已收藏页那一张张卡片，还有搜索结果那一行行。
+   壳里是原生 NSMenu，浏览器里是 #ctx，都走 popMenu。 */
+function cardMenu(e, rel, kind){
+  if(!rel) return;
+  const it=items.find(i=>i.路径===rel)
+    || {路径:rel, 标题:rel.split('/').pop(), 类型:kind||'md'};
+  popMenu(e, [
+    {id:'open',    label:'打开'},
+    {id:'newtab',  label:'在新标签打开'},
+    {id:'pin',     label:isPinned(rel)?'取消收藏':'收藏'},
+    {id:'reveal',  label:'在访达中显示'},
+    {id:'copyurl', label:'拷贝路径'},
+    ...(canTrashPath(rel) ? [{sep:true},{id:'trash', label:'移到废纸篓'}] : []),
+  ], id=>{
+    if(id==='open') openDoc(it);
+    else if(id==='newtab') openDoc(it, {newTab:true});
+    else if(id==='pin') togglePin(rel);
+    else if(id==='reveal') revealPath(rel);
+    else if(id==='copyurl') clipPath(rel);
+    else if(id==='trash') trashDoc(rel);
   });
 }
 
@@ -6567,17 +6990,28 @@ $('#cfgWrap').onclick=e=>{ if(e.target.id==='cfgWrap') closeCfg(); };
 $('#qlclose').onclick=closeQL;
 $('#qlopen').onclick=()=>{ const i=qlItem; closeQL(); if(i) openDoc(i); };
 $('#qlwrap').onclick=e=>{ if(e.target.id==='qlwrap') closeQL(); };
+/* 浮层大纲：点条目跳过去就收，点 × 也收。 */
+$('#outfloat').addEventListener('pointerdown', e=>{ if(e.target.closest('.ol-i,.ol-x')) e.preventDefault(); });
+$('#outfloat').addEventListener('click', e=>{
+  if(e.target.closest('[data-ol="close"]')){ closeOlFloat(); syncToc(); return; }
+  const a=e.target.closest('.ol-i'); if(!a) return;
+  olJump(+a.dataset.oi);
+  closeOlFloat(); syncToc();
+});
 addEventListener('pointerdown', e=>{
   if(!e.target.closest('#ctx')) closeCtx();
   if(!e.target.closest('#tabpick') && !e.target.closest('#tabmore')) closeTabPick();
   if(!e.target.closest('#obdrop') && !e.target.closest('#omnibox') && !e.target.closest('[data-act="focusomni"],#appmark')) hideOmni(true);
   if(!e.target.closest('#bmdrop') && !e.target.closest('#bmbar')) hideBmDrop();
+  if(olFloatOn() && !e.target.closest('#outfloat') && !e.target.closest('[data-dt="outline"]')){
+    closeOlFloat(); syncToc();
+  }
   if(typeOn() && !e.target.closest('#typeWrap') && !e.target.closest('#navType')) closeType();
 }, true);
-addEventListener('resize', ()=>{ layoutTabs(); growAllEd(); if(tabPickOn()) openTabPick(); });
+addEventListener('resize', ()=>{ layoutTabs(); growAllEd(); syncToc(); if(tabPickOn()) openTabPick(); });
 if(window.ResizeObserver){
   const pane=$('#docpane');
-  if(pane) new ResizeObserver(()=>{ layoutTabs(); growAllEd(); }).observe(pane);
+  if(pane) new ResizeObserver(()=>{ layoutTabs(); growAllEd(); syncToc(); }).observe(pane);
   const strip=$('#tabstrip');
   if(strip) new ResizeObserver(()=>layoutTabs()).observe(strip);
 }
@@ -6588,6 +7022,7 @@ document.addEventListener('contextmenu', e=>{ if(!e.target.closest('[data-seq],#
 /* ═══ 原生壳能调的那一套 ═══════════════════
    每个都必须存在、不许抛异常、不适用时静默返回——菜单项和工具栏都指着它们。
    v17 新增：toggleLists / quickOpen / enterEdit / rescan / focusSearch。
+   v23 新增：trashDoc（文件 → 移到废纸篓，⌘⌫），state() 跟着多一个键 canTrash。
    已有方法一律保留。 */
 window.AMN = {
   closeTab(){ if(curTab) closeTab(curTab); },
@@ -6600,7 +7035,11 @@ window.AMN = {
   settings(){ openCfg(); },
   toggleSidebar(){ toggleLists(); },
   toggleLists(){ toggleLists(); },
-  toggleToc(){ ST.toc=!ST.toc; saveST(); syncToc(); },
+  /* 栏宽够就是收放左栏，不够就弹浮层——两种情况下这一颗（和 ⌥⌘I）都叫「大纲」。 */
+  toggleToc(){
+    if(olReady() && !olWide()){ olFloatOn() ? closeOlFloat() : openOlFloat(); syncToc(); return; }
+    ST.toc=!ST.toc; saveST(); syncToc();
+  },
   toggleBookmarks(){ toggleBookmarks(); },
   back(){ goHist(-1); },
   forward(){ goHist(1); },
@@ -6623,12 +7062,16 @@ window.AMN = {
   openExternalPath(abs){ if(abs) openExtPath(abs); },
   popoutWindow(){ const t=active(); if(t && !t.ext && hasDocNow(t)) openSolo(t.path); },
   quickLook(){ qlOn?closeQL():quickLook(listNow[selSeq]); },
+  /* 文件 → 移到废纸篓（⌘⌫）。编辑态下菜单项是灰的（state().canTrash 为假），
+     那一下按键会放行给编辑器，⌘⌫ 在编辑态仍然是「删到行首」。 */
+  trashDoc(){ const t=active(); if(t && !t.ext && !t.editing) trashDoc(t.path); },
   print(){ try{ window.print(); }catch(e){} },
   escape(){
     if(omniOn()){ hideOmni(true); return; }
     if(bmDropOn()){ hideBmDrop(); return; }
     if($('#ctx').classList.contains('on')){ closeCtx(); return; }
     if(tabPickOn()){ closeTabPick(); return; }
+    if(olFloatOn()){ closeOlFloat(); syncToc(); return; }
     if(slashOn()){ hideSlash(); return; }
     if(typeOn()){ closeType(); return; }
     const wp=$('#wlpick'); if(wp && wp.classList.contains('on')){ wp.classList.remove('on'); return; }
@@ -6661,7 +7104,10 @@ window.AMN = {
       bookmarks:ST.bookmarks!==false,
       dirty:!!dirty(t), editing:!!(t&&t.editing),
       canEdit:hasDocNow(t) && !t.ext && kindOfTab(t)==='md' && canEditPath(t.path),
-      lists:!!LISTS, sidebar:!!LISTS, toc:!!ST.toc
+      /* 第 14 个键（v23）。编辑态一律为假：⌘⌫ 在编辑器里是「删到行首」，
+         菜单项灰掉这一下按键才会放行给正文。 */
+      canTrash:hasDocNow(t) && !t.ext && !t.editing && canTrashPath(t.path),
+      lists:!!LISTS, sidebar:!!LISTS, toc:OL_ON||olFloatOn()
     });
   }
 };
@@ -6669,9 +7115,16 @@ window.AMN = {
 /* 以前回沉浸首页。现在 chrome 不收，改成当前标签去开始页，前进后退还能回来。 */
 function tryLeaveReader(){
   const t=active();
-  if(t && t.editing) flushSave(t);
-  if(dirty(t) && !ask('要离开这份文稿吗？','改动还没保存，离开就丢了。','不保存并离开','取消',true)) return false;
-  if(t && t.editing) endEdit(t);
+  // 原先是「不保存并离开」＋丢字，现在改成先落盘：既然存得下，就没有要问的了。
+  // 存不成 saveBeforeLeave 自己会报一句，这里不再叠一个确认框。
+  if(t && t.editing){
+    const ep=paneOf(t);
+    if(t.editing && (dirty(t) || t.conflict || (ep && ep.classList.contains('src')))){
+      saveBeforeLeave(t).then(ok=>{ if(ok) tryLeaveReader(); });
+      return false;                          // 这一趟没走成，落盘之后自己再来一遍
+    }
+    endEdit(t);
+  }
   if(SOLO){ leaveReader(); return true; }
   navigate(makeEntry('start', {title:'开始'}));
   return true;

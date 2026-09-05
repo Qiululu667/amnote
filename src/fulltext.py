@@ -1001,6 +1001,55 @@ def take_portal_write(rel, mtime, window=PW_WINDOW):
         return True
 
 
+# ── 门户搬动活表：跟上面那张表同一个套路，只是记「搬位置的」 ───────
+#
+# /__trash 把一份文件挪进系统废纸篓，/__untrash 再把它挪回来。文件在库里
+# 消失和出现，下一趟同步照样会在 removed / added 里看见——不认领的话就记成
+# 「删除／外部」「新增／外部」，用户在门户里点的那两下会在流水上留下
+# 「不是我干的」。所以两条路由动文件之前都先在这里记一笔，_sync_once 认领掉，
+# 来源记「门户」。
+#
+# **只管来源那一列，留档照留。** 外部删除会把 db 里的原文存进 backups/，
+# 门户删除同样需要那一份：文件躺在废纸篓里，用户清空废纸篓之后，
+# backups/ 里那一版就是最后的退路。
+#
+# **搬位置的不能用上面那张写入表。** 那张表按「记账时刻离文件 mtime 多近」
+# 认领，而搬文件不动 mtime：一份上周写的笔记今天删了再撤销，mtime 还是上周，
+# 跟记账时刻差着几天，一条都认不上（而且 _pw_prune 按记账时刻剪枝，把 mtime
+# 直接塞进去也活不过一轮）。所以这张表只看「窗口之内记过没有」，不比 mtime。
+#
+# 一份文件只记一个时刻、不排队：删和撤销必然交替出现，同一个方向连着来两次
+# 中间一定隔着另一次同步。
+
+_pm_lock = threading.Lock()
+_portal_moves = {}                    # {相对路径: 记账时刻}
+PM_WINDOW = 300                       # 记了这么多秒还没被同步认领就作废
+
+
+def note_portal_move(rel):
+    """门户里每搬一份（/__trash 或 /__untrash）就记一条。动文件之前叫，
+    理由同 note_portal_write：晚一步就可能被正在跑的那趟同步判成「外部」。"""
+    if not rel:
+        return
+    now = time.time()
+    with _pm_lock:
+        _portal_moves[rel] = now
+        for k in list(_portal_moves):
+            if now - _portal_moves[k] >= PM_WINDOW:
+                _portal_moves.pop(k, None)
+
+
+def take_portal_move(rel, window=PM_WINDOW):
+    """这份文件这一次进出库根是不是门户自己搬的。查中即消费，一笔只认领一次。
+
+    搬失败的那条路上也叫它一次，把刚记的那笔收回来。
+    """
+    now = time.time()
+    with _pm_lock:
+        at = _portal_moves.pop(rel, None)
+        return at is not None and now - at < window
+
+
 # ── 变更流水 ────────────────────────────────────────────────
 
 JOURNAL_MERGE_GAP = 600               # 门户连续保存的合并窗口（10 分钟）
@@ -1174,8 +1223,19 @@ def _sync_once(log):
     # 门户／外部**只判一次，判完存下来**。take_portal_write 查中即消费，
     # 而下面留档和记流水会各问一遍同一份文件；每问一次就消费一次的话，
     # 第二问必然落空，同一笔改动会一半算门户一半算外部
-    src = {r: ("门户" if take_portal_write(r, cur[r][0]) else "外部")
-           for r in added + changed}
+    # 搬位置的（移到废纸篓 / 撤销）走另一张表：它们不动 mtime，比不了时间。
+    # 认领到就别再记成「外部」——用户在门户里点的那一下不是外人干的。
+    # 留档照留，见 note_portal_move 上面那段
+    # 两张表都得问一遍：写成 `A or B` 的话，A 认领到就把 B 短路了，搬动表里那一笔
+    # 留在原地，300 秒之内下一次真的外部改动就被它顶着记成「门户」。
+    def _claim(r):
+        w = take_portal_write(r, cur[r][0])
+        m = take_portal_move(r)
+        return "门户" if (w or m) else "外部"
+
+    src = {r: _claim(r) for r in added + changed}
+    for r in removed:
+        src[r] = "门户" if take_portal_move(r) else "外部"
 
     def src_of(rel):
         return src.get(rel, "外部")
@@ -1212,7 +1272,7 @@ def _sync_once(log):
                            "留档": baks.get(r, "")})
         for r in sorted(removed):
             events.append({"时间": now_iso, "事件": "删除", "路径": r,
-                           "类型": old[r][2], "来源": "外部",
+                           "类型": old[r][2], "来源": src_of(r),
                            "留档": baks.get(r, "")})
         seq, n_rows = _journal_add(events, seq)
         meta_set(con, "流水号", seq)
