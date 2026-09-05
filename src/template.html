@@ -18,6 +18,8 @@
    下拉、右键、斜杠、标签溢出、快看、设置、格式条、横幅一律 --pop 底 ＋
    --rule-row 描边 ＋ --float 阴影 ＋ arrive 落场，深色各给一套值。
    已删：沉浸首页 #hub 那一整套（运行时不可达，被开始页取代）。
+   大纲栏改为贴窗格左缘的常驻栏，条目按最浅标题归一缩进，当前节改为左缘短杠。
+   标题认到六级：##### / ###### 不再原样显示井号，正文排版、大纲缩进、编辑记号一并跟上。
    设计参考：2026-09 的交互稿（浅色开始页那一版）。
    v23 正文默认 17 / 1.85 / 640，中文标题不做负字距；打开后的纯正文更像一页纸。
    列表和首页最近一篇带一行摘录，搜索结果露出命中片段。⌘K 能找笔记也能做动作。
@@ -94,7 +96,8 @@
   --sbw:224px;    /* 边栏宽，可拖，存 localStorage */
   --lcw:320px;    /* 列表栏宽，可拖 */
   --docw:640px;   /* 正文栏宽，跟 PREF.w 走 */
-  --outline-w:232px; /* 左侧大纲栏宽 */
+  --outline-w:248px; /* 左侧大纲栏宽 */
+  --ol-inset:24px;   /* 大纲栏离窗格左缘的距离；.doc-layout.ol-on 左右内边距各用它一份，olWider() 现读 */
 
   /* 书签栏小黄夹：浅色深色都用同一对，夹在灰底上才认得出来。 */
   --folder:#e9b949;
@@ -918,18 +921,18 @@ body.solo .pane.html .htmlframe{top:0}
 .save-state.pending{color:var(--t3)}
 .save-state.act{color:var(--folder);cursor:pointer}
 
-/* 版心：默认一栏。开了左侧大纲变两栏，版心也跟着加宽一个栏宽。
-   栏还够宽的话再往右补一条等宽的空栏（ol-3）：左右一样重，正文就落在正文栏
-   正中，跟没大纲时是同一处；不够宽退回两栏，正文往右偏半个栏宽，先认了。
+/* 版心：默认一栏，居中限宽。开了左侧大纲就不限宽了——版心撑满窗格，左右内边距
+   各一份 --ol-inset，大纲于是贴着窗格左缘站定，窗口再宽也不往中间飘。
+   栏还够宽的话再往右补一条等宽的空栏（ol-3）：左右两栏一样重，正文就落在正中，
+   跟没大纲时是同一处；不够宽退回两栏，正文往右偏半个栏宽，先认了。
    够不够由 syncToc 里的 olWider() 算——看的是正文栏自己的宽，不是窗口宽，
    三栏模式下窗口没变、正文栏窄了一大截。 */
 .doc-layout{display:grid;grid-template-columns:minmax(0,1fr);
   max-width:1020px;margin:0 auto;padding:38px 60px 120px}
 .doc-layout.ol-on{grid-template-columns:var(--outline-w) minmax(0,1fr);
-  max-width:calc(1020px + var(--outline-w))}
+  max-width:none;padding-left:var(--ol-inset);padding-right:var(--ol-inset)}
 .doc-layout.ol-on.ol-3{
-  grid-template-columns:var(--outline-w) minmax(0,1fr) var(--outline-w);
-  max-width:calc(var(--docw) + 2 * var(--outline-w) + 120px)}
+  grid-template-columns:var(--outline-w) minmax(0,1fr) var(--outline-w)}
 .pane.edit .doc-layout{padding-bottom:200px}
 /* 不给 position：篇内目录、搜索命中定位都按 h.offsetTop 算，
    这一层一旦成了 offsetParent，那些偏移就全对不上了。 */
@@ -973,17 +976,21 @@ body.solo .pane.html .htmlframe{top:0}
    栏窄了（三栏模式、小窗）左栏收起，改从顶栏那颗按钮弹 #outfloat 浮层，
    两处用的是同一套 .ol-* 类名和同一份 HTML。 */
 .outline{display:none;flex-direction:column;min-width:0;
-  padding-right:24px;align-self:start;             /* sticky 在 grid 里必须 start，不然占满整行没得贴 */
+  padding-right:16px;align-self:start;             /* sticky 在 grid 里必须 start，不然占满整行没得贴 */
   position:sticky;top:70px;z-index:4;
   max-height:calc(100vh - var(--chrome-h) - var(--status-h) - var(--bnr-h, 0px) - 118px)}
 .doc-layout.ol-on > .outline{display:flex}
-.ol-head{display:flex;align-items:center;gap:6px;flex:none;padding:0 8px 8px}
-.ol-t{font-size:13px;font-weight:550;color:var(--t2)}
-.ol-n{font-size:11px;color:var(--t3)}
+.ol-head{display:flex;align-items:center;gap:6px;flex:none;padding:0 10px 6px}
+.ol-t{font-size:12px;font-weight:550;color:var(--t3)}
+.ol-n{font-size:11px;color:var(--t4)}
 .ol-x{margin-left:auto;flex:none;width:22px;height:22px;border-radius:6px;
   display:flex;align-items:center;justify-content:center;color:var(--t3)}
 .ol-x:hover{background:var(--hover);color:var(--t1)}
 .ol-x svg{width:14px;height:14px}
+/* 常驻栏那颗收起箭头平时不露，鼠标进栏或键盘聚焦才浮出来；浮层那颗 × 一直在。 */
+.outline .ol-x{opacity:0;transition:opacity .14s ease}
+.outline:hover .ol-x{opacity:1}
+.outline .ol-x:focus-visible{opacity:1}   /* 单开一条，理由同 .card-pin */
 /* 条目自己滚。滚动条平时不露，鼠标进来才浮出一条细的。 */
 .ol-list{position:relative;flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;
   scrollbar-width:thin;scrollbar-color:transparent transparent}
@@ -994,17 +1001,23 @@ body.solo .pane.html .htmlframe{top:0}
 .outline:hover .ol-list,#outfloat:hover .ol-list{scrollbar-color:var(--rule-head) transparent}
 .outline:hover .ol-list::-webkit-scrollbar-thumb,
 #outfloat:hover .ol-list::-webkit-scrollbar-thumb{background:var(--rule-head);background-clip:padding-box}
-.ol-i{display:block;width:100%;text-align:left;
+.ol-i{display:block;position:relative;width:100%;text-align:left;
   font-size:13px;line-height:1.4;color:var(--t2);
-  padding:4px 8px;border-radius:6px;
+  padding:4px 8px 4px 10px;border-radius:6px;
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
   transition:background-color .14s ease,color .14s ease}
-.ol-i.l1{font-weight:550}
+.ol-i.l1{font-weight:550;color:var(--t1)}
 .ol-i.l2{padding-left:20px}
-.ol-i.l3{padding-left:32px}
-.ol-i.l4{padding-left:44px}
+.ol-i.l3{padding-left:30px}
+.ol-i.l4{padding-left:40px;color:var(--t3)}
+.ol-i.l5{padding-left:50px;color:var(--t3)}
+.ol-i.l6{padding-left:60px;color:var(--t3)}
 .ol-i:hover{background:var(--hover);color:var(--t1)}
-.ol-i.on{background:var(--accent-soft);color:var(--accent)}
+/* 当前节：不铺底色，左缘一道 2px 的强调色短杠 ＋ 强调色文字。杠永远贴条目左缘，
+   不跟缩进走，读起来像一枚位置标记。 */
+.ol-i.on{color:var(--accent)}
+.ol-i.on::before{content:'';position:absolute;left:0;top:7px;bottom:7px;width:2px;
+  border-radius:1px;background:var(--accent)}
 /* 顶栏那颗大纲按钮：栏宽够就是「收放左栏」，不够就是「弹浮层」。
    [hidden] 得自己写一条——UA 那条 display:none 压不过 .dt-ico 的 inline-flex。 */
 .doc-toolbar .dt-ol[hidden]{display:none}
@@ -1024,6 +1037,9 @@ body.solo .pane.html .htmlframe{top:0}
 .md h2{font-size:1.25em;font-weight:600;letter-spacing:0;margin:1.9em 0 .7em;line-height:1.6}
 .md h3{font-size:1.08em;font-weight:600;margin:1.5em 0 .6em}
 .md h4{font-size:1em;font-weight:500;margin:1.5em 0 .6em;color:var(--t2)}
+/* h5/h6 接着 h4 往下退：h5 同字号同字重、再退一级色；h6 再缩一点字号、留白也收一点。 */
+.md h5{font-size:1em;font-weight:500;margin:1.3em 0 .5em;color:var(--t3)}
+.md h6{font-size:.94em;font-weight:500;margin:1.2em 0 .5em;color:var(--t3)}
 .md>:first-child{margin-top:0}
 .md p{margin:0 0 1em}
 .md strong{font-weight:600}
@@ -1066,7 +1082,7 @@ body.solo .pane.html .htmlframe{top:0}
    用 anywhere 不用 break-word：只有 anywhere 会把 min-content 宽度也算进去，
    inline-block 的 .imgbad 才收得住。
    表格单元格有意不加——宽表该整条横滚，不该把词拆断；pre 保持自身横滚不动。 */
-.md p,.md li,.md blockquote,.md h1,.md h2,.md h3,.md h4,
+.md p,.md li,.md blockquote,.md h1,.md h2,.md h3,.md h4,.md h5,.md h6,
 .md code,.md .imgbad{overflow-wrap:anywhere}
 .md pre,.md pre code,.md th,.md td{overflow-wrap:normal}
 .md a.wl{text-decoration:underline;text-decoration-style:dotted;text-underline-offset:3px;cursor:pointer}
@@ -1391,6 +1407,8 @@ body.solo #chrome{display:none!important}
   .pane{position:static;display:none;overflow:visible;padding:0}
   .pane.on{display:block}
   .doc-layout{max-width:none;padding:0}
+  /* 开着大纲打印：栏藏了，网格列也得收，不然正文被挤在中间那一栏 */
+  .doc-layout.ol-on,.doc-layout.ol-on.ol-3{grid-template-columns:minmax(0,1fr);padding-left:0;padding-right:0}
   .document{max-width:none}
   .md{max-width:none}
   .histbox>.tw{display:block!important}
@@ -1860,7 +1878,7 @@ function toggleTheme(){
 }
 
 /* ── Markdown → HTML ───────────────────── */
-let HID = 0;                       // 标题 id 的全局号，只增不减，见下面 h1~h4 那段注释
+let HID = 0;                       // 标题 id 的全局号，只增不减，见下面 h1~h6 那段注释
 
 /* 相邻两行拼成一段时中间加不加空格。
    英文要加（词是靠空格断的），中日韩不能加（句子中间会凭空多出一个空格）。
@@ -1968,7 +1986,7 @@ function md2html(src, base, off0){
         +'</tbody></table></div>', s0, i-1);
       continue;
     }
-    const h=l.match(/^(#{1,4})\s+(.*)$/);
+    const h=l.match(/^(#{1,6})\s+(.*)$/);
     // 标题 id 走一个只增不减、跨渲染不重置的全局号。
     // 不能用「第几个标题」——收起编辑框时只重渲染中间一段，计数器会从 0 重来，撞号。
     // 也不能用行号——行号会随编辑平移，data-l0 平移得了、已经写死在 id 里的平移不了，
@@ -1994,7 +2012,7 @@ function md2html(src, base, off0){
     }
     if(l.trim()){const b=[];
       while(i<L.length&&L[i].trim()
-            &&!/^\s*(\||#{1,4}\s|>|```)/.test(L[i])
+            &&!/^\s*(\||#{1,6}\s|>|```)/.test(L[i])
             &&!LIRE.test(L[i])
             &&!/^\s*([-*_])\s*\1\s*\1[\s\-*_]*$/.test(L[i])){b.push(L[i].trim());i++}
       if(b.length) push(`<p>${inl(joinLines(b))}</p>`, s0, i-1); else i++;
@@ -2109,7 +2127,7 @@ function listMd(list, ind){
 function blkMd(el){
   if(!el || el.nodeType !== 1) return '';
   const t = el.tagName;
-  if(/^H[1-6]$/.test(t)) return '#'.repeat(Math.min(4, +t[1])) + ' ' + inlMd(el).trim();
+  if(/^H[1-6]$/.test(t)) return '#'.repeat(Math.min(6, +t[1])) + ' ' + inlMd(el).trim();
   if(t === 'HR') return '---';
   if(t === 'PRE'){
     const code = el.querySelector('code');
@@ -3717,7 +3735,7 @@ function openWiki(name, e){
 function scrollToHeading(txt){
   const t=active(); if(!t || kindOfTab(t)!=='md' || !txt) return;
   const p=paneOf(t); if(!p) return;
-  const h=[...p.querySelectorAll('.md h1,.md h2,.md h3,.md h4')]
+  const h=[...p.querySelectorAll('.md h1,.md h2,.md h3,.md h4,.md h5,.md h6')]
     .find(el=>(el.textContent||'').includes(txt));
   if(h) p.scrollTop=Math.max(0, scrollYOf(p,h)-80);
 }
@@ -3876,7 +3894,7 @@ function undecorateHistory(md){
 }
 
 /* ── 篇内大纲：版心左边那一栏 ─────────────
-   h1~h4 全收，按层级缩进。栏宽够（≥980）就常驻左边，不够就收起来，
+   h1~h6 全收，按层级缩进。栏宽够（≥980）就常驻左边，不够就收起来，
    改从顶栏那颗按钮弹浮层——看的是正文栏自己的宽，不是窗口宽，
    因为 ⌃⌘S 三栏模式下窗口没变、正文栏窄了一大截。
    条目认的是「第几个标题」不是 id：编辑时新敲出来的标题没有 id，
@@ -3885,20 +3903,25 @@ const OL_MIN=980;
 let OL_ON=false;                    // 左栏此刻是不是真露着，state().toc 报的就是它
 function heads(){
   const t=active(); if(!t||kindOfTab(t)!=='md') return [];
-  const p=paneOf(t); return p?[...p.querySelectorAll('.md h1,.md h2,.md h3,.md h4')]:[];
+  const p=paneOf(t); return p?[...p.querySelectorAll('.md h1,.md h2,.md h3,.md h4,.md h5,.md h6')]:[];
 }
 function olWide(){ const d=$('#docpane'); return !d || d.clientWidth>=OL_MIN; }
 /* 再宽一档就摆得下三栏：大纲 ｜ 正文 ｜ 一条等宽的空栏。左右一样重，
-   正文才落在正文栏正中；差一点就退回两栏。--outline-w 现读，别写死。 */
-const OL_PADX=120;                  // .doc-layout 左右内边距合计，跟上面的 CSS 对齐
+   正文才落在正文栏正中；差一点就退回两栏。
+   --outline-w 和 --ol-inset 都现读，别写死——CSS 改了这边跟着走。 */
 function olColW(){
   const v=parseFloat(getComputedStyle(document.documentElement)
                      .getPropertyValue('--outline-w'));
-  return v>0 ? v : 232;
+  return v>0 ? v : 248;
+}
+function olInset(){
+  const v=parseFloat(getComputedStyle(document.documentElement)
+                     .getPropertyValue('--ol-inset'));
+  return v>=0 ? v : 24;
 }
 function olWider(){
   const d=$('#docpane'); if(!d) return false;
-  return d.clientWidth >= (+PREF.w||690) + 2*olColW() + OL_PADX;
+  return d.clientWidth >= (+PREF.w||690) + 2*olColW() + 2*olInset();
 }
 function olReady(){ return !document.body.classList.contains('solo') && heads().length>=2; }
 function olSig(hs){ return hs.map(h=>h.tagName+'|'+(h.textContent||'')).join('\n'); }
@@ -3906,11 +3929,13 @@ function olHtml(hs, float){
   const shut = float
     ? `<button type="button" class="ol-x" data-ol="close" title="关闭" aria-label="关闭">${icon('close',14)}</button>`
     : `<button type="button" class="ol-x" data-ol="hide" title="收起大纲　⌥⌘I" aria-label="收起大纲">${icon('chevron-left',14)}</button>`;
+  // 缩进按「离本篇最浅标题几级」算：整篇从 ## 起头的笔记，二级标题就该顶格，不白缩一层。
+  const base=Math.min(...hs.map(h=>+h.tagName.charAt(1)));
   return `<div class="ol-head"><span class="ol-t">大纲</span><span class="ol-n num">${hs.length}</span>${shut}</div>`
     + `<div class="ol-list">`
     + hs.map((h,i)=>{
         const txt=esc((h.textContent||'').trim() || '无标题');
-        return `<button type="button" class="ol-i l${h.tagName.charAt(1)}" data-oi="${i}" title="${txt}">${txt}</button>`;
+        return `<button type="button" class="ol-i l${+h.tagName.charAt(1)-base+1}" data-oi="${i}" title="${txt}">${txt}</button>`;
       }).join('')
     + `</div>`;
 }
@@ -3983,9 +4008,10 @@ function markOl(box, cur){
   const list=box.querySelector('.ol-list');
   if(!act||!list) return;
   // 只滚面板自己。scrollIntoView 会连带把正文栏一起滚走，这里手算。
-  const y=act.offsetTop, b=y+act.offsetHeight;
-  if(y<list.scrollTop) list.scrollTop=y;
-  else if(b>list.scrollTop+list.clientHeight) list.scrollTop=b-list.clientHeight;
+  // 条目滚出视野才动，动一次就给它留三分之一栏的余量：往下读露出后面的节，往上翻露出前面的。
+  const y=act.offsetTop, b=y+act.offsetHeight, h=list.clientHeight;
+  if(y<list.scrollTop) list.scrollTop=Math.max(0, y-Math.round(h/3));
+  else if(b>list.scrollTop+h) list.scrollTop=b-Math.round(h*2/3);
 }
 function olJump(i){
   const t=active(), p=t&&paneOf(t); if(!p) return;
@@ -4505,6 +4531,7 @@ function closeSrcBlk(t, ta, keep){
    都走「拿到这一块的纯文本 → 按新的块类型重新渲染一块 → 换上去」这条，
    不去手搓 DOM，样子一定跟正常渲染出来的一致。 */
 const MARK={p:'', h1:'# ', h2:'## ', h3:'### ', h4:'#### ',
+            h5:'##### ', h6:'###### ',
             quote:'> ', ul:'- ', ol:'1. ', task:'- [ ] '};
 
 const plainOf = el => blkMd(el)
@@ -4764,14 +4791,14 @@ document.addEventListener('selectionchange', ()=>{
    记号+空格走 input 事件（空格已经进 DOM），不走 keydown preventDefault——
    否则 DIV 还没洗成 P、或输入法刚上屏，keydown 那一拍经常认不出来。 */
 const INPUT_RULES=[
-  [/^(#{1,4}) $/, m=>'h'+m[1].length],
+  [/^(#{1,6}) $/, m=>'h'+m[1].length],
   [/^[-*+] $/, ()=>'ul'],
   [/^\d+[.)] $/, ()=>'ol'],
   [/^> $/, ()=>'quote'],
   [/^\[[ xX]?\] $/, ()=>'task'],
 ];
 const MARKER_ONLY=[
-  [/^(#{1,4})$/, m=>'h'+m[1].length],
+  [/^(#{1,6})$/, m=>'h'+m[1].length],
   [/^[-*+]$/, ()=>'ul'],
   [/^\d+[.)]$/, ()=>'ol'],
   [/^>$/, ()=>'quote'],
@@ -4906,7 +4933,7 @@ function edKey(t, e){
 
     // 标题末尾回车 → 下面起一个正文段，而不是再来一个标题。
     // 下面已经有一个空段（新建笔记会先垫一个）就落到那一段，不再插一层。
-    if(/^H[1-4]$/.test(blk.tagName)){
+    if(/^H[1-6]$/.test(blk.tagName)){
       const s=getSelection();
       const r=s.getRangeAt(0), tail=r.cloneRange();
       tail.selectNodeContents(blk); tail.setStart(r.endContainer, r.endOffset);
