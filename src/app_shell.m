@@ -136,8 +136,7 @@ static NSString *const kLaunchCountKey = @"AMNLaunchCount";
 static const NSTimeInterval kUpdateEvery = 24.0 * 60.0 * 60.0;
 static const NSTimeInterval kUpdateDelay = 18.0;
 
-// 工具栏项标识（设计约束 5：默认就三件，标识随之从 amn.sidebar 改成 amn.lists）
-static NSString *const kTBLists  = @"amn.lists";
+// 工具栏项标识（5.4.1：列表栏下线，amn.lists 那颗跟着撤了）
 static NSString *const kTBSearch = @"amn.search";
 static NSString *const kTBNew    = @"amn.new";
 
@@ -1536,16 +1535,15 @@ static NSString *const kWelcomeNote =
     _toolbar.sizeMode = NSToolbarSizeModeSmall;
 }
 
-/// 设计约束 5：默认就这三件。搜索框不在默认里，但留在「允许」里——
+/// 设计约束 5：默认只剩「新建」这一件。搜索框不在默认里，但留在「允许」里——
 /// 她想把它拖回来还是拖得回来，代码那条 AMN.search 的线也一直连着。
 - (NSArray<NSToolbarItemIdentifier> *)toolbarDefaultItemIdentifiers:(NSToolbar *)t {
-    return @[ kTBLists,
-              NSToolbarFlexibleSpaceItemIdentifier,
+    return @[ NSToolbarFlexibleSpaceItemIdentifier,
               kTBNew ];
 }
 
 - (NSArray<NSToolbarItemIdentifier> *)toolbarAllowedItemIdentifiers:(NSToolbar *)t {
-    return @[ kTBLists, kTBSearch, kTBNew,
+    return @[ kTBSearch, kTBNew,
               NSToolbarFlexibleSpaceItemIdentifier, NSToolbarSpaceItemIdentifier ];
 }
 
@@ -1589,9 +1587,6 @@ static NSString *const kWelcomeNote =
 - (NSToolbarItem *)toolbar:(NSToolbar *)t
      itemForItemIdentifier:(NSToolbarItemIdentifier)ident
  willBeInsertedIntoToolbar:(BOOL)flag {
-    if ([ident isEqualToString:kTBLists])
-        return [self iconItem:ident kind:@"sidebar" symbol:@"sidebar.left" label:@"列表"
-                       action:@selector(tbLists:)];
     if ([ident isEqualToString:kTBNew])
         return [self iconItem:ident kind:@"plus" symbol:@"plus" label:@"新建随手记"
                        action:@selector(tbNew:)];
@@ -1621,13 +1616,11 @@ static NSString *const kWelcomeNote =
     return nil;
 }
 
-/// 剩下的三件都不做启用态校验：列表切换和新建在任何状态下都该点得着，
-/// 搜索框自己管自己。
+/// 剩下的两件都不做启用态校验：新建在任何状态下都该点得着，搜索框自己管自己。
 - (BOOL)validateToolbarItem:(NSToolbarItem *)item {
     return YES;
 }
 
-- (void)tbLists:(id)s { [self amn:@"toggleLists" args:nil]; }
 - (void)tbNew:(id)s   { [self amn:@"newNote" args:nil]; }
 
 // MARK: 原生搜索框
@@ -2239,11 +2232,7 @@ static NSString *const kWelcomeNote =
     [[view addItemWithTitle:@"前进" action:@selector(mForward:) keyEquivalent:@"]"] setTarget:self];
     [view addItem:NSMenuItem.separatorItem];
     // 「显示书签栏 ⇧⌘B」5.4 撤了：那条书签栏没了，文件夹入口并进开始页的芯片行。
-    // 改名「显示列表」：新版切的是「纯正文 ↔ 边栏＋列表＋正文」整块，不只是最左那一栏。
-    NSMenuItem *sb = [view addItemWithTitle:@"显示列表"
-                                     action:@selector(mLists:) keyEquivalent:@"s"];
-    sb.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagControl;
-    sb.target = self;
+    // 「显示列表 ⌃⌘S」5.4.1 撤了：列表栏整条下线，只剩正文一栏。
     NSMenuItem *toc = [view addItemWithTitle:@"显示大纲"
                                       action:@selector(mToc:) keyEquivalent:@"i"];
     toc.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagOption;
@@ -2332,13 +2321,6 @@ static NSString *const kWelcomeNote =
         item.state = [self stateFlag:@"toc"] ? NSControlStateValueOn : NSControlStateValueOff;
         return [self stateFlag:@"hasDoc"];
     }
-    if (a == @selector(mLists:)) {
-        // 勾号先认新键 lists，认不到退回老键 sidebar——改版期间两版门户都可能装在这个壳里，
-        // 认错了最坏也只是勾号不亮，菜单照样点得动。
-        BOOL on = [self stateFlag:@"lists"] || [self stateFlag:@"sidebar"];
-        item.state = on ? NSControlStateValueOn : NSControlStateValueOff;
-        return _stateOK;
-    }
     if (a == @selector(mBack:))     return [self stateFlag:@"canBack"];
     if (a == @selector(mForward:))  return [self stateFlag:@"canForward"];
     if (a == @selector(mCopyPath:)) return [self stateFlag:@"hasDoc"];
@@ -2403,7 +2385,6 @@ static NSString *const kWelcomeNote =
     else [self amn:@"closeTab" args:nil];
 }
 - (void)mSettings:(id)s  { [self amn:@"settings" args:nil]; }
-- (void)mLists:(id)s     { [self amn:@"toggleLists" args:nil]; }
 - (void)mToc:(id)s       { [self amn:@"toggleToc" args:nil]; }
 - (void)mNotes:(id)s     { [self amn:@"openNotes" args:nil]; }
 - (void)mRecent:(id)s    { [self amn:@"openRecent" args:nil]; }
@@ -2504,7 +2485,7 @@ static NSString *const kWelcomeNote =
          "⌘E 进入编辑\n⌘S 存储\n⌘⌫ 移到废纸篓\n⌘W 关闭标签／仅剩起始页时关窗口\n"
          "⇧⌘W 关闭窗口\n⌘P 打印\n"
          "⌃Tab 切换标签\n"
-         "⌘K 快速直达\n⌥⌘K 搜索正文\n⌃⌘S 显示列表\n⌥⌘I 显示大纲\n"
+         "⌘K 快速直达\n⌥⌘K 搜索正文\n⌥⌘I 显示大纲\n"
          "⌘F 在本页查找\n⌘R 重新载入\n"
          "⌃⌘F 进入全屏\nEsc 关浮层 / 退出编辑";
     [a addButtonWithTitle:@"好"];

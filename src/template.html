@@ -118,7 +118,6 @@
 
   /* ── 骨架尺寸 ── */
   --sbw:224px;    /* 边栏宽，可拖，存 localStorage */
-  --lcw:320px;    /* 列表栏宽，可拖 */
   --docw:640px;   /* 正文栏宽，跟 PREF.w 走 */
   --outline-w:248px; /* 左侧大纲栏宽 */
   --ol-inset:24px;   /* 大纲栏离窗格左缘的距离；.doc-layout.ol-on 左右内边距各用它一份，olWider() 现读 */
@@ -282,16 +281,12 @@ a{color:inherit}
 :focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:4px}
 svg{fill:none;stroke:currentColor}
 
-/* ═══ 两态骨架 ═══════════════════════════
-   纯正文（默认）｜三栏（lists-on）。
+/* ═══ 骨架 ═══════════════════════════════
+   5.4.1 起只剩正文一栏：列表栏（⌃⌘S）整条下线。
    分区只靠背景深浅和留白，全程无分割线无描边。 */
 #app{display:grid;height:calc(100% - var(--status-h));
-  grid-template-columns:var(--sbw) 0 var(--lcw) 0 1fr;
-  grid-template-areas:"side sp1 list sp2 doc"}
-body:not(.lists-on) #app{grid-template-columns:0 0 0 0 1fr}
-body:not(.lists-on) #side,
-body:not(.lists-on) #listpane,
-body:not(.lists-on) .split{display:none}
+  grid-template-columns:minmax(0,1fr);
+  grid-template-areas:"doc"}
 
 /* 原生壳是全尺寸透明标题栏：标签条跟红绿灯同一行，工具条和书签栏再往下。
    内容从 --chrome-h 开始。 */
@@ -752,27 +747,6 @@ kbd{
 /* 分隔条：不画线，只留一条看不见的拖动区 */
 .split{position:relative;z-index:5;width:0;cursor:col-resize}
 .split::after{content:"";position:absolute;inset:0 -3px}
-#sp1{grid-area:sp1} #sp2{grid-area:sp2}
-
-/* 列表栏顶上的那只搜索框 */
-.searchpill{
-  height:36px;border-radius:18px;background:var(--pill);
-  display:flex;align-items:center;gap:9px;padding:0 14px;
-}
-.searchpill svg{width:16px;height:16px;flex:none;color:var(--t3);stroke-width:1.5}
-.searchpill input{flex:1;min-width:0;border:0;background:none;outline:none;
-  font-size:13px;color:var(--t1);-webkit-appearance:none}
-.searchpill input::placeholder{color:var(--t3)}
-.searchpill input::-webkit-search-cancel-button{display:none}
-.searchpill .clear{width:20px;height:20px;border-radius:10px;flex:none;
-  display:none;align-items:center;justify-content:center;color:var(--t3);
-  transition:background-color .15s ease}
-body.searching .searchpill .clear{display:flex}
-.searchpill .clear:hover{background:var(--hover)}
-.searchpill .clear svg{width:13px;height:13px}
-.searchpill.sm{height:30px;border-radius:15px;background:var(--field2);padding:0 11px}
-.searchpill.sm svg{width:14px;height:14px}
-.searchpill.sm input{font-size:12px}
 
 /* 搜索结果 */
 .res{padding:10px 12px;margin:0 -12px;border-radius:10px;cursor:default;
@@ -804,9 +778,12 @@ body.searching .searchpill .clear{display:flex}
 .iba:active:not([disabled]){transform:scale(.96)}
 .iba svg{width:15px;height:15px;stroke-width:1.5}
 
-/* ═══ 边栏 ═══════════════════════════════ */
+/* ═══ 边栏 ═══════════════════════════════
+   只在列表栏那一态里露过面，5.4.1 起不再上屏（buildNav 还在往里写，
+   底下那些 .nav / .livedot 的样式跟着留下）。 */
+#side,.split{display:none}
 #side{grid-area:side;background:var(--side);padding:18px 10px 14px;
-  display:flex;flex-direction:column;overflow:hidden auto;min-width:0}
+  flex-direction:column;overflow:hidden auto;min-width:0}
 .nav{
   height:34px;display:flex;align-items:center;gap:9px;padding:0 10px;border-radius:10px;
   width:100%;text-align:left;font-size:12px;color:var(--t2);
@@ -827,15 +804,11 @@ body.searching .searchpill .clear{display:flex}
 .livedot.hit{transform:scale(1.7)}
 #stat.hide{display:none}
 
-/* ═══ 列表栏 ═══════════════════════════════ */
-#listpane{grid-area:list;background:var(--list);padding:18px 0 0;
-  display:flex;flex-direction:column;overflow:hidden;min-width:0}
-.listtop{padding:0 10px 10px;flex:none;display:flex;flex-direction:column;gap:10px}
-.listtop .kindseg{width:100%}
-.listtop .kindseg button{flex:1}
+/* ═══ 条目行 ═══════════════════════════════
+   列表栏下线之后这些只画在离屏的 #out 里：选中、快看、搜索回车
+   都还认这批 [data-seq] 节点，样式跟着留下。 */
 .kindtag{font-size:10px;font-weight:500;letter-spacing:.02em;color:var(--t4);flex:none}
 .kindempty{padding:28px 16px;text-align:center;font-size:12px;color:var(--t4)}
-#listbody{flex:1;overflow-y:auto;padding:0 0 40px;min-height:0}
 .lgroup{font-size:11px;font-weight:560;color:var(--t4);letter-spacing:.01em;padding:0 20px;margin:18px 0 8px}
 .lrow{
   min-height:43px;margin:0 8px;padding:10px 12px;border-radius:10px;cursor:default;
@@ -848,26 +821,9 @@ body.searching .searchpill .clear{display:flex}
 .lrow .ex{font-size:12px;color:var(--t3);width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lrow:hover{background:var(--hover)}
 .lrow.sel{background:var(--sel);box-shadow:var(--selshadow)}
-#listbody .res{margin:0 8px;padding:10px 12px}
 
 /* ═══ 正文栏 ═══════════════════════════════ */
 #docpane{grid-area:doc;position:relative;background:var(--win);overflow:hidden;min-width:0}
-
-/* 「还没选文稿」的那块安静落点连同它的样式一起去掉了：触发条件是
-   body.nodoc.lists-on，而 nodoc 只有 solo 那条路会加，solo 里又没有列表栏。 */
-
-.listbtn{
-  position:absolute;top:13px;left:16px;z-index:7;
-  width:28px;height:28px;border-radius:7px;
-  display:flex;align-items:center;justify-content:center;
-  color:var(--t2);transition:background-color .15s ease,color .15s ease;
-}
-body.shell .listbtn{display:none}     /* 壳里工具栏上已经有一颗 */
-body:not(.solo) .listbtn{display:none} /* 浏览器壳常驻后，列表改走 ⌃⌘S */
-body.solo .listbtn{display:none}
-.listbtn:hover{background:var(--hover);color:var(--t1)}
-body.lists-on .listbtn{background:var(--sel);box-shadow:var(--selshadow);color:var(--t1)}
-.listbtn svg{width:17px;height:17px;stroke-width:1.5}
 
 /* 老的编辑状态字。保存状态挪到笔记页顶栏的 pill 上，这一格留着不显示，
    syncStatusLine 仍往里写，别的地方还有引用。 */
@@ -1755,22 +1711,15 @@ body.bnr-on #chrome{top:var(--bnr-h)}
 
 /* ═══ 窄窗口 ═══════════════════════════════ */
 @media(max-width:900px){
-  body.lists-on #app{grid-template-columns:0 0 var(--lcw) 0 1fr}
-  body.lists-on #side{position:fixed;left:0;top:var(--chrome-h);bottom:var(--status-h);width:var(--sbw);z-index:60;
-    box-shadow:var(--popbig);display:none}
-  body.lists-on.sideover #side{display:flex}
   .section-head .section-meta{display:none}
 }
 @media(max-width:700px){
-  body.lists-on #app{grid-template-columns:0 0 0 0 1fr}
-  body.lists-on #listpane{position:fixed;left:0;top:var(--chrome-h);bottom:var(--status-h);width:var(--lcw);z-index:55;
-    box-shadow:var(--popbig)}
   .modal-footer span:last-child{display:none}
 }
 
 /* ═══ 独立窗口（solo）═══════════════════════ */
-body.solo #side,body.solo #listpane,body.solo .split{display:none!important}
-body.solo #app{display:grid!important;grid-template-columns:0 0 0 0 1fr}
+body.solo #side,body.solo .split{display:none!important}
+body.solo #app{display:grid!important;grid-template-columns:minmax(0,1fr)}
 body.solo .tabbar{display:none!important}
 body.solo #chrome{display:none!important}
 
@@ -1778,7 +1727,7 @@ body.solo #chrome{display:none!important}
    ⌘P 走壳的 NSPrintOperation，打的是整个 WebView，所以界面得在这里收干净。 */
 @media print{
   html,body{height:auto;overflow:visible;background:#fff;color:#000}
-  #side,#listpane,.split,.tabbar,.outline,#outfloat,.listbtn,.editstatus,
+  #side,.split,.tabbar,.outline,#outfloat,.editstatus,
   #chrome,#toast,
   .doc-toolbar,.formatbar,.doc-end,.editor-hint,
   #banners,#ctx,#fmt,#wlpick,#tabpick,#cmdkWrap,#qlwrap,#cfgWrap,#slash,#typeWrap,
@@ -1864,26 +1813,7 @@ body.solo #chrome{display:none!important}
 
   <div class="split" id="sp1" role="separator" aria-orientation="vertical" title="拖动调整边栏宽度"></div>
 
-  <div id="listpane">
-    <div class="listtop">
-      <label class="searchpill sm">
-        <i data-ic="search"></i>
-        <input id="q2" type="search" autocomplete="off" spellcheck="false" aria-label="搜索整个库">
-        <button class="clear" id="qclear2" title="清除"><i data-ic="close"></i></button>
-      </label>
-      <div class="seg kindseg" role="radiogroup" aria-label="文件类型">
-        <button type="button" data-kind="all" class="on" aria-pressed="true">全部</button>
-        <button type="button" data-kind="md" aria-pressed="false">Markdown</button>
-        <button type="button" data-kind="html" aria-pressed="false">HTML</button>
-      </div>
-    </div>
-    <div id="listbody" tabindex="0" role="listbox" aria-label="文稿列表"></div>
-  </div>
-
-  <div class="split" id="sp2" role="separator" aria-orientation="vertical" title="拖动调整列表宽度"></div>
-
   <div id="docpane">
-    <button class="listbtn" id="listbtn" title="显示列表　⌃⌘S" aria-label="显示列表"><i data-ic="sidebar"></i></button>
     <div class="editstatus" id="edMsg"></div>
     <div id="panes"></div>
   </div>
@@ -2034,9 +1964,8 @@ function bnr(id, on){
 
 /* ═══ 会话状态 ═══════════════════════════
    Mac 的约定是重开就回到离开时的样子。存储键名沿用 tp-state，不改。
-   lists（列表与边栏收放）只在当次会话内保持，不进 localStorage：
-   打开文档默认纯正文，重开回纯正文。 */
-const DEF_ST={sbw:224, lcw:320, side:true, toc:true, bookmarks:false, recents:[],
+   老档案里的 lists / lcw（列表栏，5.4.1 下线）读到也不用，静默忽略。 */
+const DEF_ST={sbw:224, side:true, toc:true, bookmarks:false, recents:[],
   pins:[],              /* 已收藏：库根相对路径。文件没了就在 setTree 里剔掉 */
   homeFilter:'all',     /* 开始页/文件夹页/已收藏页的类型筛：all | md | html */
   homeView:'grid',      /* 卡片网格 grid ｜ 单列列表 list */
@@ -2055,7 +1984,6 @@ function saveST(){ clearTimeout(stSaveT); stSaveT=setTimeout(()=>{
 if(FRESH_PROFILE){ ST.tips=true; saveST(); }
 function applyST(){
   document.documentElement.style.setProperty('--sbw', ST.sbw+'px');
-  document.documentElement.style.setProperty('--lcw', ST.lcw+'px');
   /* toc 这个键以前存的是「右侧目录气泡钉不钉住」，默认关；现在是左侧大纲，默认开。
      语义换了，老值不能直接沿用，迁一次就够，之后听用户的。 */
   if(!ST.tocv){ ST.toc=true; ST.tocv=2; saveST(); }
@@ -2222,7 +2150,6 @@ const savePref = () => { try{ localStorage.setItem('tp-pref', JSON.stringify(PRE
 (function migratePrefs(){
   if(!PREF.prefsGen){
     if(+PREF.w === 740) PREF.w = 680;
-    if(+ST.lcw === 336) { ST.lcw = 320; saveST(); }
     PREF.prefsGen = 1;
   }
   if(PREF.prefsGen < 2){
@@ -4170,7 +4097,7 @@ function caretAtOffset(el, n){
   }catch(e){ return false; }
 }
 
-/* 打开文档＝正文栏出现。列表与边栏收放是另一件事（lists-on）。 */
+/* 打开文档＝正文栏出现。 */
 function enterReader(){ document.body.classList.remove('nodoc'); pushState(); }
 function leaveReader(){
   document.body.classList.add('nodoc');
@@ -4422,8 +4349,8 @@ function undecorateHistory(md){
 
 /* ── 篇内大纲：版心左边那一栏 ─────────────
    h1~h6 全收，按层级缩进。栏宽够（≥980）就常驻左边，不够就收起来，
-   改从顶栏那颗按钮弹浮层——看的是正文栏自己的宽，不是窗口宽，
-   因为 ⌃⌘S 三栏模式下窗口没变、正文栏窄了一大截。
+   改从顶栏那颗按钮弹浮层——看的是正文栏自己的宽，不是窗口宽：
+   窗口没变、正文栏被别的东西挤窄了也得跟着收。
    条目认的是「第几个标题」不是 id：编辑时新敲出来的标题没有 id，
    而大纲每次都从实时 DOM 重建，序号此刻唯一就够。 */
 const OL_MIN=980;
@@ -4573,29 +4500,9 @@ function placeOlFloat(){
   f.style.top =Math.max(8, Math.min(y, innerHeight-f.offsetHeight-8))+'px';
 }
 
-/* ── 列表与边栏收放 ─────────────────────
-   打开文档默认纯正文。这个开关只在当次会话内保持，重开回纯正文。 */
-let LISTS=false;
-function setLists(on){
-  LISTS=!!on;
-  document.body.classList.toggle('lists-on', LISTS);
-  mountOut('#listbody');
-  /* 关掉列表也要重画。上一版只在打开时 render，#out 里那列最近文件
-     会被原样搬回首页，居中布局装不下，搜索框就顶进标题栏。 */
-  render();
-  syncNative();
-  requestAnimationFrame(layoutTabs);
-}
-function toggleLists(){ setLists(!LISTS); }
-/* 行都画在同一个 #out 里，按当下这一屏挂到窄栏还是列表栏。
-   只有一套行渲染、一套键盘、一套右键，四态之间不会走样。 */
-function mountOut(sel){
-  const host=$(sel), out=$('#out');
-  if(!host || !out) return;
-  out.hidden=false;
-  if(out.parentElement!==host) host.appendChild(out);
-}
-function listHost(){ return '#listbody'; }
+/* ── 列表栏（⌃⌘S）5.4.1 下线 ─────────────
+   壳菜单和老调用方都还可能喊 AMN.toggleLists，留一颗空壳，点了什么也不做。 */
+function toggleLists(){}
 
 /* 块台账。每一块在原文里是哪几行（src），和下一块之间隔着哪几行（gap）。
    头（frontmatter 和它后面的空行）和尾（末尾的空行）单独留着，原样带出去。
@@ -5751,7 +5658,7 @@ let lastNat='';
 function syncNative(){
   const t=active();
   const d=!!dirty(t);
-  const sig=(t?t.path:'')+'|'+d+'|'+LISTS;
+  const sig=(t?t.path:'')+'|'+d;
   if(sig===lastNat) return;
   lastNat=sig;
   const file=hasDocNow(t);
@@ -6010,7 +5917,7 @@ $('#takeTheirs').onclick=async()=>{
 window.__amnProbe = {
   caretInDoc,
   editing(){ const t=active(); return !!(t&&t.editing); },
-  lists(){ return LISTS; },
+  lists(){ return false; },      /* 列表栏 5.4.1 下线，恒假 */
   histDecorated(){ return !!document.querySelector('.histbox[data-hist-deco]'); },
   histResidue(){
     // 拆干净了没有：正文里不该再剩任何包装痕迹
@@ -6157,25 +6064,7 @@ function loadFilters(){
   fDir=f.dir??null; fSub=f.sub??null;
   fRecent=f.recent===undefined?true:!!f.recent;
   fNotes=!!f.notes;
-  fKind=(f.kind==='md'||f.kind==='html')?f.kind:'all';
-}
-function setKind(k){
-  if(k!=='md' && k!=='html') k='all';
-  if(fKind===k) return;
-  fKind=k; PAGE=80;
-  syncKindSeg(); render();
-  const sc=$(listHost()); if(sc) sc.scrollTop=0;
-}
-function syncKindSeg(){
-  const hide=fNotes && !kw;
-  $$('.kindseg').forEach(box=>{
-    box.hidden=hide;
-    box.querySelectorAll('[data-kind]').forEach(b=>{
-      const on=b.dataset.kind===fKind;
-      b.classList.toggle('on', on);
-      b.setAttribute('aria-pressed', on?'true':'false');
-    });
-  });
+  /* 类型筛的那排按钮跟列表栏一起下线了，老档案里存的 kind 不再沿用。 */
 }
 
 /* ── 边栏：随手记 ｜ 最近 ｜ 文件夹 ｜ 设置 ──
@@ -6222,14 +6111,12 @@ function gotoDir(name, sub){
   else fDir=name;
   fSub=sub||null; fRecent=false; fNotes=false; PAGE=80;
   buildNav(); render();
-  const sc=$(listHost()); if(sc) sc.scrollTop=0;
 }
 
 function goHome(notes){
   setKw('');
   fDir=null; fSub=null; fNotes=!!notes; fRecent=!notes; PAGE=80;
   buildNav(); render();
-  const sc=$(listHost()); if(sc) sc.scrollTop=0;
 }
 function openNotesFolder(){
   navigate(makeEntry('folder', {folder:NOTE_DIR, title:NOTE_DIR, path:NOTE_DIR+'/'}));
@@ -6380,7 +6267,7 @@ const acts = (i, idx) =>
   + `<button class="iba" data-rev="${idx}" title="在访达中显示">${icon('folder',15)}</button>`
   + `</span>`;
 
-/* 一行。窄栏 / 列表栏 / 搜索结果三种形状，走同一套选中、键盘、拖动、右键。 */
+/* 一行。普通行和搜索结果两种形状，走同一套选中、拖动、右键。 */
 function excerptOf(i){
   const fromNote=NOTEPV.get(i && i.路径);
   if(fromNote) return String(fromNote).replace(/\s+/g,' ').trim();
@@ -6422,9 +6309,7 @@ function render(){
   const ts=terms(), searching=ts.length>0;
   document.body.classList.toggle('searching', searching);
   if(searching) ftKick();
-  syncKindSeg();
   buildNav();
-  mountOut(listHost());
   const kind = searching ? 'res' : 'lrow';
   const glab = 'lgroup';
 
@@ -6476,17 +6361,6 @@ function render(){
   if(at && kindOfTab(at)==='search') paintSerp(at);
 }
 
-/* 往下滚动续加，不加按钮 */
-function wireScroll(sel){
-  const el=$(sel); if(!el) return;
-  el.addEventListener('scroll', ()=>{
-    if(el.scrollTop+el.clientHeight < el.scrollHeight-200) return;
-    if(listNow.length < PAGE) return;
-    PAGE+=80; render();
-  }, {passive:true});
-}
-wireScroll('#listbody');
-
 /* ── 选中与键盘 ───────────────────────── */
 function wireRows(root){
   root.querySelectorAll('[data-seq]').forEach(el=>{
@@ -6529,12 +6403,6 @@ function paintSel(){
     el.classList.toggle('sel', on);
     el.setAttribute('aria-selected', on?'true':'false');
   });
-}
-function moveSel(d){
-  if(!listNow.length) return;
-  let n = selSeq<0 ? 0 : selSeq+d;
-  n=Math.max(0, Math.min(listNow.length-1, n));
-  selectSeq(n, true);
 }
 
 /* ── 右键菜单 ───────────────────────────
@@ -6661,11 +6529,9 @@ async function quickLook(i){
 }
 function closeQL(){ qlOn=false; $('#qlwrap').classList.remove('on'); }
 
-/* ── 搜索框：窄栏一个、列表栏一个，共用同一个 kw ─── */
+/* ── 搜索词：5.4.1 起只有 ⌘K 面板这一个入口，页面里没有别的输入框要同步 ── */
 function setKw(v){
   kw=String(v||'').trim();
-  const b=$('#q2');
-  if(b && b.value!==v) b.value=v||'';
   PAGE=80;
   post({type:'search', text:kw});
 }
@@ -6680,20 +6546,6 @@ function focusOmnibox(opts){
   opts=opts||{};
   openQuick(opts.seed||'', {select:!!opts.select});
 }
-['#q2'].forEach(sel=>{
-  const el=$(sel); if(!el) return;
-  el.oninput=e=>{ setKw(e.target.value); render(); };
-  el.onkeydown=e=>{
-    // 拼音上屏那一下也会派发 Enter（isComposing / keyCode 229）。不挡住的话，
-    // 搜「退货率」打到一半按 Enter 选词，就直接把第一条结果打开了。
-    if(e.isComposing || e.keyCode===229) return;
-    if(e.key==='Enter'){ e.preventDefault(); if(hits.length) openDoc(hits[0], {jump:terms()}); }
-    if(e.key==='ArrowDown'){ e.preventDefault(); $(listHost()).focus(); moveSel(selSeq<0?0:1); }
-    if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); clearQ(true); }
-  };
-});
-$('#qclear2').onclick=()=>clearQ(true);
-
 /* ── 书签栏的去处 ─────────────────────────
    5.4 起 #bmbar（书签栏）和 #omnibox（地址栏）整条删了：文件夹入口搬到开始页
    问候区下面那行芯片，路径搬到文档头的芯片，搜索只剩 ⌘K 面板。
@@ -6716,20 +6568,6 @@ function toggleBookmarks(){
   if(mark) mark.onclick=()=>goAppHome();
 })();
 
-/* 列表本身可聚焦，上下键走行，回车打开，空格快看 */
-['#listbody'].forEach(sel=>{
-  const el=$(sel); if(!el) return;
-  el.addEventListener('keydown', e=>{
-    if(e.isComposing) return;
-    if(e.key==='ArrowDown'){ e.preventDefault(); moveSel(1); }
-    else if(e.key==='ArrowUp'){ e.preventDefault(); moveSel(-1); }
-    else if(e.key==='Home'){ e.preventDefault(); selectSeq(0,true); }
-    else if(e.key==='End'){ e.preventDefault(); selectSeq(listNow.length-1,true); }
-    else if(e.key==='Enter'){ e.preventDefault(); if(listNow[selSeq]) openDoc(listNow[selSeq], {jump:terms()}); }
-    else if(e.key===' '){ e.preventDefault(); qlOn?closeQL():quickLook(listNow[selSeq]); }
-  });
-});
-
 /* ── ⌘K 直达 ────────────────────────────
    5.4 起这是唯一的搜索入口。有输入时第一行是「在全部笔记中搜索“…”」——
    走的正是原来地址栏回车那条路（setKw ＋ 搜索页），⌘回车开新标签；
@@ -6739,7 +6577,6 @@ const CK_ACTS=[
   {id:'tab', title:'新建标签页', kbd:'⌘T', go(){ newTab(); }},
   {id:'new', title:'新建随手记', kbd:'', go(){ newNote(); }},
   {id:'win', title:'新建窗口', kbd:'⌘N', go(){ AMN.newWindow(); }},
-  {id:'lists', title:'显示列表', kbd:'⌃⌘S', go(){ toggleLists(); }},
   {id:'edit', title:'进入编辑', kbd:'⌘E', go(){ AMN.enterEdit(); }},
   {id:'type', title:'阅读与外观', kbd:'', go(){ openType(); }},
   {id:'finder', title:'在访达中显示', kbd:'⇧⌘R', go(){ AMN.reveal(); }},
@@ -6790,7 +6627,7 @@ function ckItems(q){
   return head.concat(acts, notes);
 }
 /* 动作行前面那颗图标，只是长相，不进 CK_ACTS。 */
-const CK_ICON={tab:'plus', new:'new-note', win:'newwin', lists:'sidebar',
+const CK_ICON={tab:'plus', new:'new-note', win:'newwin',
   edit:'pencil', type:'sliders', finder:'folder', home:'home'};
 /* 全库搜索：跟原来地址栏回车一字不差——setKw ＋ 一张搜索结果页。 */
 function runSearch(q, newTab){
@@ -7079,7 +6916,6 @@ function applyRenamedPath(t, next){
   drawDocBar(t); drawDocMeta(t);
   syncChrome();
   pushState();
-  if(LISTS) render();
 }
 let newNoteBusy=false;
 async function newNote(){
@@ -7645,7 +7481,7 @@ async function pulse(){
 function tick(){ pulse(); syncStatus(); }
 $('#retry').onclick=()=>{ setState('scan'); tick(); };
 
-/* ── 三栏：分隔条、边栏浮层 ═══════════════ */
+/* ── 边栏分隔条 ═══════════════════════════ */
 function dragSplit(el, get, set, lo, hi){
   if(!el) return;
   el.addEventListener('pointerdown', e=>{
@@ -7655,24 +7491,12 @@ function dragSplit(el, get, set, lo, hi){
     const up=()=>{ el.removeEventListener('pointermove',mv); el.removeEventListener('pointerup',up); saveST(); };
     el.addEventListener('pointermove',mv); el.addEventListener('pointerup',up);
   });
-  el.addEventListener('dblclick', ()=>{ set(el.id==='sp1'?DEF_ST.sbw:DEF_ST.lcw); saveST(); });
+  el.addEventListener('dblclick', ()=>{ set(DEF_ST.sbw); saveST(); });
 }
 dragSplit($('#sp1'), ()=>ST.sbw, v=>{ ST.sbw=v; applyST(); }, 180, 340);
-dragSplit($('#sp2'), ()=>ST.lcw, v=>{ ST.lcw=v; applyST(); }, 280, 620);
-function toggleSidebar(){
-  if(innerWidth<=900 && LISTS){ document.body.classList.toggle('sideover'); return; }
-  toggleLists();
-}
-addEventListener('pointerdown', e=>{
-  if(document.body.classList.contains('sideover')
-     && !e.target.closest('#side') && !e.target.closest('.listbtn'))
-    document.body.classList.remove('sideover');
-}, true);
 
-$('#listbtn').onclick=toggleLists;
 $('#navNotes').onclick=()=>goHome(true);
 $('#navRecent').onclick=()=>goHome(false);
-$$('.kindseg [data-kind]').forEach(b=>b.onclick=()=>setKind(b.dataset.kind));
 $('#navCfg').onclick=openCfg;
 $('#cfgClose').onclick=closeCfg;
 $('#cfgWrap').onclick=e=>{ if(e.target.id==='cfgWrap') closeCfg(); };
@@ -7717,6 +7541,7 @@ document.addEventListener('contextmenu', e=>{ if(!e.target.closest('[data-seq],#
    每个都必须存在、不许抛异常、不适用时静默返回——菜单项和工具栏都指着它们。
    v17 新增：toggleLists / quickOpen / enterEdit / rescan / focusSearch。
    v23 新增：trashDoc（文件 → 移到废纸篓，⌘⌫），state() 跟着多一个键 canTrash。
+   5.4.1：列表栏下线，toggleLists / toggleSidebar 留成空壳。
    已有方法一律保留。 */
 window.AMN = {
   closeTab(){ if(curTab) closeTab(curTab); },
@@ -7727,6 +7552,8 @@ window.AMN = {
   reveal(){ const t=active(); if(t && t.path) revealPath(t.path); },
   copyPath(){ const t=active(); if(t && t.path) clipPath(t.path); },
   settings(){ openCfg(); },
+  /* 列表栏 5.4.1 下线。两个名字都留着——壳菜单和老调用方还指得着，
+     点了静默返回，不抛异常。 */
   toggleSidebar(){ toggleLists(); },
   toggleLists(){ toggleLists(); },
   /* 栏宽够就是收放左栏，不够就弹浮层——两种情况下这一颗（和 ⌥⌘I）都叫「大纲」。 */
@@ -7755,7 +7582,7 @@ window.AMN = {
   toggleEdit(){ const t=active(); if(!t) return; t.editing ? finishEdit() : startEdit(); },
   rescan(){ doRescan(); },
   openNotes(){ openNotesFolder(); },
-  openRecent(){ if(!LISTS) setLists(true); goHome(false); },
+  openRecent(){ goHome(false); },
   openPath(rel){ if(rel) openByPath(rel); },
   openExternalPath(abs){ if(abs) openExtPath(abs); },
   popoutWindow(){ const t=active(); if(t && !t.ext && hasDocNow(t)) openSolo(t.path); },
@@ -7803,7 +7630,8 @@ window.AMN = {
       /* 第 14 个键（v23）。编辑态一律为假：⌘⌫ 在编辑器里是「删到行首」，
          菜单项灰掉这一下按键才会放行给正文。 */
       canTrash:hasDocNow(t) && !t.ext && !t.editing && canTrashPath(t.path),
-      lists:!!LISTS, sidebar:!!LISTS, toc:OL_ON||olFloatOn()
+      /* 列表栏 5.4.1 下线，这两位恒假；键留着，壳还在读。 */
+      lists:false, sidebar:false, toc:OL_ON||olFloatOn()
     });
   }
 };
@@ -7841,7 +7669,6 @@ addEventListener('keydown', e=>{
     const t=active();
     if(t && t.editing){ e.preventDefault(); saveEdit(false); return; }
   }
-  if(e.metaKey && e.ctrlKey && e.key.toLowerCase()==='s'){ e.preventDefault(); toggleLists(); return; }
   if(e.metaKey && e.key===','){ e.preventDefault(); openCfg(); return; }
   if(e.metaKey && e.altKey && e.key.toLowerCase()==='c'){
     e.preventDefault(); const t=active(); if(t && t.path) clipPath(t.path); return; }
@@ -8090,7 +7917,6 @@ if(EMBED){
 }else{
   loadFilters();
   applyST();
-  mountOut(listHost());
   render();
   if(!SOLO){
     openStartTab();
