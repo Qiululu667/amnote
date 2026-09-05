@@ -360,8 +360,23 @@ def _view_full(rel: str):
 # ── 访达 ／ 系统默认程序 ／ 剪贴板 ─────────────────
 
 def reveal(req: dict):
-    """在访达里选中这份文件。只是打开一个窗口，不动文件。"""
-    full, err = _view_full((req.get("路径") or "").strip())
+    """在访达里选中这份文件。只是打开一个窗口，不动文件。
+
+    路径为空＝库根本身（设置页「在访达中显示」那颗按钮）。_view_full 只认库内
+    的文件，库根是目录、相对路径又是空串，两条它都不放行，所以空路径在这里
+    单独处理：直接 open 库根这个目录。越界、格式、存在性那几道对文件的检查
+    一个都没松——空路径压根不经过它们，走的是写死的 REAL_ROOT。"""
+    rel = (req.get("路径") or "").strip()
+    if not rel:
+        if not os.path.isdir(REAL_ROOT):
+            return {"ok": False, "错误": "库根不在了"}
+        try:
+            subprocess.run(["open", REAL_ROOT], timeout=10,
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        except Exception as e:
+            return {"ok": False, "错误": f"打不开访达：{e}"}
+        return {"ok": True, "路径": REAL_ROOT}
+    full, err = _view_full(rel)
     if err:
         return {"ok": False, "错误": err}
     try:

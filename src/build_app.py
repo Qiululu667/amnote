@@ -188,13 +188,18 @@ def export_icons(dest_dir):
 
 # ───────────────────────── 后台服务脚本（LaunchAgent 调用）─────────────────────────
 NATIVE_SRC = "app_shell.m"
+# 5.4.0 = 珍珠紫玻璃图标；首启不再弹「选择文件夹 / 退出」，没库时服务起在占位空根、
+# 欢迎与「找不到库」由网页画；新注入 __AMN_SHELL_VERSION__ / __AMN_VAULT_STATE__ /
+# __AMN_VAULT_PATH__ / __AMN_ONBOARDING__ / __AMN_AUTO_UPDATE__；新桥接 chooseVault /
+# createVault / checkUpdate / setAutoUpdate / openURL / revealVault；顶栏 42+48，
+# kChromeH 52→90；显示菜单去掉书签栏，⌘L 改名「搜索」。
 # 5.2.0 = 浏览器壳界面：地址栏搜库、书签栏是顶层文件夹、新标签是随手记。
 # 5.1.1 = 云朵便签图标（20260904）。母版 src/icon-master-1024.png。
 # 5.1.0 = GitHub Releases 检查更新：菜单「检查更新…」，可下载 zip 替换当前 .app
 # （20260903）。有 digest 核 sha256，解开后核对 bundle id。
 # 5.0.0 = 开源首发。
 # 版本号是唯一能在「关于 AM·Note」里看出来跑的是新壳还是旧壳的地方，改了壳就要动它。
-NATIVE_VERSION = ("5.3.2", "26")
+NATIVE_VERSION = ("5.4.0", "27")
 MIN_MACOS = "12.0"
 
 

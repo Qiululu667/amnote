@@ -57,12 +57,15 @@
   --t3:#9096a0;
   --t4:#a8aeb8;
   --recent:#727881;
-  --accent:#5276b2;
-  --accent-soft:#edf3fd;
+  --accent:#8a63b4;
+  --accent-soft:#f4eefa;
   /* 落在 --accent 实底上的字。浅色下是白，深色下 --accent 本身就亮，得反过来压深，
      不然右键菜单和主按钮上的白字直接糊掉。 */
   --on-accent:#ffffff;
   --ok:#6a9484;
+  /* 自绘提示气泡：深底白字，浅色深色各一套 */
+  --tip-bg:#272b31;
+  --tip-fg:#ffffff;
 
   --pill:#eef0f4;
   --field:#eef0f4;
@@ -73,20 +76,41 @@
   --rule-head:rgba(40,54,74,.13);
   --rule-row:rgba(40,54,74,.085);
   --zebra:#f7f8fa;
-  --hl:rgba(82,118,178,.16);
+  --hl:rgba(138,99,180,.16);
   --dot:#6a9484;
 
-  --shadow:0 3px 7px rgba(30,44,66,.025),0 14px 32px rgba(30,44,66,.045);
-  --float:0 5px 10px rgba(30,44,66,.035),0 20px 40px rgba(30,44,66,.09);
-  --selshadow:0 2px 9px rgba(30,44,66,.08);
+  --shadow:0 3px 7px rgba(58,48,80,.025),0 14px 32px rgba(58,48,80,.045);
+  --float:0 5px 10px rgba(58,48,80,.035),0 20px 40px rgba(58,48,80,.09);
+  --selshadow:0 2px 9px rgba(58,48,80,.08);
   /* 当前标签浮起、开始页那颗白按钮：浅色下几乎看不见的一层，深色要换成实的 */
-  --tab-shadow:0 2px 8px rgba(38,51,75,.05);
-  --btn-shadow:0 2px 4px rgba(37,55,78,.02);
-  --btn-shadow-h:0 4px 12px rgba(37,55,78,.06);
+  --tab-shadow:0 2px 8px rgba(58,48,80,.05);
+  --btn-shadow:0 2px 4px rgba(58,48,80,.02);
+  --btn-shadow-h:0 4px 12px rgba(58,48,80,.06);
   --segshadow:0 1px 4px rgba(38,51,75,.09);
-  --popshadow:0 3px 7px rgba(30,44,66,.025),0 14px 32px rgba(30,44,66,.045);
-  --popbig:0 25px 90px rgba(36,52,73,.15), 0 3px 12px rgba(36,52,73,.05);
+  --popshadow:0 3px 7px rgba(58,48,80,.025),0 14px 32px rgba(58,48,80,.045);
+  --popbig:0 25px 90px rgba(58,48,80,.15), 0 3px 12px rgba(58,48,80,.05);
   --scrim:rgba(37,51,71,.15);
+
+  /* ── 5.4：圆角 / 缓动 / 时长 / 悬浮质感 ──
+     卡片、按钮、芯片、浮层一律不描边，靠这三层阴影让色块「浮」出来。
+     --card-face 是卡片与浮层的面色：浅色下就是白，深色下比页面亮一档，
+     阴影在深底上看不见，全靠它把色块托起来。 */
+  --r-xs:6px; --r-sm:8px; --r-md:10px; --r-lg:14px; --r-xl:18px;
+  --ease-out:cubic-bezier(.22,1,.36,1);
+  --ease-std:cubic-bezier(.2,.8,.2,1);
+  --ease-in:cubic-bezier(.4,0,1,1);
+  --d-fast:120ms; --d-base:200ms; --d-slow:320ms;
+  --el-1:0 1px 2px rgba(58,48,80,.05),0 6px 18px rgba(58,48,80,.06);
+  --el-2:0 2px 4px rgba(58,48,80,.06),0 10px 28px rgba(58,48,80,.10);
+  --el-3:0 4px 8px rgba(58,48,80,.07),0 18px 44px rgba(58,48,80,.14);
+  --hi:inset 0 1px 0 rgba(255,255,255,.75);
+  --card-face:#ffffff;
+  /* 设置弹层：左导航的 hover 底（在 --side 上再浅一层）、
+     服务端「问题」黄条的三件套。深色各另给一套。 */
+  --rail-hover:rgba(255,255,255,.62);
+  --warn:#e9b949;
+  --warn-bg:rgba(233,185,73,.10);
+  --warn-bd:rgba(233,185,73,.30);
 
   /* ── 字体栈 ── */
   --ui:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB',sans-serif;
@@ -127,13 +151,13 @@
      body.bnr-on 的两条规则只在挂着横幅时生效，那时这个值已经被 bnr() 改写过了。 */
   --bnr-h:0px;
 
-  /* 浏览器壳高度：标签条＋工具条＋书签栏。nobm / solo / shell 在 body 上改分项。
-     底部状态栏另算，#app 高度要把它扣掉。 */
+  /* 浏览器壳高度 5.4 起只有标签条一行：地址栏（#toolbar）和书签栏（#bmbar）整条删了，
+     ‹ › ⌂ ／搜索胶囊／设置都并进标签条，路径搬进文档头。solo / shell 在 body 上改它。 */
   --tabstrip-h:42px;
-  --toolbar-h:50px;
-  --bmbar-h:34px;
-  --status-h:28px;
-  --chrome-h:calc(var(--tabstrip-h) + var(--toolbar-h) + var(--bmbar-h));
+  /* 底部状态栏 5.4 起取消。变量留着不删：toast 的下边距、大纲栏的最大高度、
+     窄窗里那两条侧栏的 bottom 都还在 calc 里引用它，删了会整片塌掉。 */
+  --status-h:0px;
+  --chrome-h:var(--tabstrip-h);
 }
 
 :root[data-theme="light"]{ color-scheme: light }
@@ -144,11 +168,20 @@
   --canvas:#1b1e24; --win:#252931; --side:#1b1e24; --chrome:#22262d; --list:#1f232a;
   --win-blur:rgba(37,41,49,.94); --quote-b:#5f7d74;
   --hover:#303640; --sel:#303640;
-  --t1:#e9edf3; --t2:#a4acb9; --t3:#929bab; --t4:#7d8593; --recent:#a4acb9; --accent:#a4c2ef;
-  --accent-soft:#303e55; --on-accent:#171a20; --ok:#9ec2b4;
+  --t1:#e9edf3; --t2:#a4acb9; --t3:#929bab; --t4:#7d8593; --recent:#a4acb9; --accent:#c6a3e0;
+  --accent-soft:#3a3150; --on-accent:#171a20; --ok:#9ec2b4;
+  --tip-bg:#3f4753; --tip-fg:#eef2f8;
   --pill:#2b3038; --field:#2b3038; --field2:#2b3038; --segon:#3a414d; --pop:#252931;
   --rule-head:rgba(215,226,250,.16); --rule-row:rgba(215,226,250,.11); --zebra:#22262d;
-  --hl:rgba(164,194,239,.20); --dot:#9ec2b4;
+  --hl:rgba(198,163,224,.20); --dot:#9ec2b4;
+  --card-face:#2c313a;
+  --rail-hover:rgba(255,255,255,.055);
+  --warn-bg:rgba(233,185,73,.13);
+  --warn-bd:rgba(233,185,73,.30);
+  --el-1:0 1px 2px rgba(0,0,0,.35),0 6px 18px rgba(0,0,0,.30);
+  --el-2:0 2px 4px rgba(0,0,0,.35),0 10px 28px rgba(0,0,0,.40);
+  --el-3:0 4px 8px rgba(0,0,0,.40),0 18px 44px rgba(0,0,0,.50);
+  --hi:inset 0 1px 0 rgba(255,255,255,.06);
   --shadow:0 3px 10px rgba(0,0,0,.13),0 14px 32px rgba(0,0,0,.13);
   --float:0 16px 45px rgba(0,0,0,.33);
   --selshadow:0 2px 9px rgba(0,0,0,.30);
@@ -173,11 +206,20 @@
   --canvas:#1b1e24; --win:#252931; --side:#1b1e24; --chrome:#22262d; --list:#1f232a;
   --win-blur:rgba(37,41,49,.94); --quote-b:#5f7d74;
   --hover:#303640; --sel:#303640;
-  --t1:#e9edf3; --t2:#a4acb9; --t3:#929bab; --t4:#7d8593; --recent:#a4acb9; --accent:#a4c2ef;
-  --accent-soft:#303e55; --on-accent:#171a20; --ok:#9ec2b4;
+  --t1:#e9edf3; --t2:#a4acb9; --t3:#929bab; --t4:#7d8593; --recent:#a4acb9; --accent:#c6a3e0;
+  --accent-soft:#3a3150; --on-accent:#171a20; --ok:#9ec2b4;
+  --tip-bg:#3f4753; --tip-fg:#eef2f8;
   --pill:#2b3038; --field:#2b3038; --field2:#2b3038; --segon:#3a414d; --pop:#252931;
   --rule-head:rgba(215,226,250,.16); --rule-row:rgba(215,226,250,.11); --zebra:#22262d;
-  --hl:rgba(164,194,239,.20); --dot:#9ec2b4;
+  --hl:rgba(198,163,224,.20); --dot:#9ec2b4;
+  --card-face:#2c313a;
+  --rail-hover:rgba(255,255,255,.055);
+  --warn-bg:rgba(233,185,73,.13);
+  --warn-bd:rgba(233,185,73,.30);
+  --el-1:0 1px 2px rgba(0,0,0,.35),0 6px 18px rgba(0,0,0,.30);
+  --el-2:0 2px 4px rgba(0,0,0,.35),0 10px 28px rgba(0,0,0,.40);
+  --el-3:0 4px 8px rgba(0,0,0,.40),0 18px 44px rgba(0,0,0,.50);
+  --hi:inset 0 1px 0 rgba(255,255,255,.06);
   --shadow:0 3px 10px rgba(0,0,0,.13),0 14px 32px rgba(0,0,0,.13);
   --float:0 16px 45px rgba(0,0,0,.33);
   --selshadow:0 2px 9px rgba(0,0,0,.30);
@@ -202,9 +244,11 @@
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation:none!important;
     transition-duration:.001ms!important;scroll-behavior:auto!important}
-  /* 卡片上浮、按钮回弹、浮层落场、翻页淡入，全部按住不动 */
+  /* 卡片上浮、按钮回弹、芯片抬起、箭头右移、浮层落场、翻页淡入，全部按住不动 */
   .note-card:hover,.note-card:active,.resume:hover,.resume:active,
-  .hbtn:hover,.card-pin:hover,#appmark:hover img,#appmark:active{transform:none}
+  .hbtn:hover,.hbtn:active,.btn:hover,.btn:active,.dt-btn:hover,.dt-btn:active,
+  .dirchip:hover,.card-pin:hover,.resume:hover .continue svg,
+  #appmark:hover img,#appmark:active{transform:none}
   button:active:not([disabled]){transform:none}
 }
 /* 系统里关掉「透明」时，毛玻璃退回实色，别糊成一团。 */
@@ -219,16 +263,16 @@ body{background:var(--win);color:var(--t1);
   font:13px/1.5 var(--ui);
   font-synthesis:none;
   -webkit-font-smoothing:antialiased;
-  --tabstrip-h:42px; --toolbar-h:50px; --bmbar-h:34px; --status-h:28px;
-  --chrome-h:calc(var(--tabstrip-h) + var(--toolbar-h) + var(--bmbar-h))}
+  --tabstrip-h:42px; --status-h:0px;
+  --chrome-h:var(--tabstrip-h)}
 /* 标签跟红绿灯同一行，左侧让出交通灯（约 78px）。多出来的标签由 layoutTabs
    整颗藏进 ▾，不再被左边距裁成半个。 */
 body.shell{--tabstrip-h:42px; --tab-left:80px}
-body.nobm{--bmbar-h:0px}
-body.solo{--tabstrip-h:0px; --toolbar-h:0px; --bmbar-h:0px; --status-h:0px}
-body.shell.solo{--tabstrip-h:52px; --toolbar-h:0px; --bmbar-h:0px; --status-h:0px}
+body.solo{--tabstrip-h:0px; --status-h:0px}
+body.shell.solo{--tabstrip-h:52px; --status-h:0px}
 button{font:inherit;color:inherit;border:0;background:none;padding:0;margin:0;cursor:pointer;-webkit-appearance:none;
-  transition:background-color .16s ease,color .16s ease,box-shadow .18s ease}
+  transition:background-color .16s ease,color .16s ease,box-shadow .18s ease,
+             transform var(--d-fast) var(--ease-out)}
 button:active:not([disabled]){transform:scale(.98)}
 input,textarea,select{font:inherit;color:inherit}
 a{color:inherit}
@@ -253,14 +297,15 @@ body:not(.lists-on) .split{display:none}
    内容从 --chrome-h 开始。 */
 #app{padding-top:var(--chrome-h)}
 
-/* ═══ 浏览器壳：标签条 / 工具条 / 书签栏 ═══
-   标签条跟红绿灯同一行。空处可拖窗口。
-   标签、加号、按钮、地址栏、书签一律 no-drag，不然点不着。
+/* ═══ 浏览器壳：只剩一条标签条 ═══════════
+   42px 一行装下全部窗口层控件：左 ‹ › ⌂（壳里从红绿灯右缘 80px 起），
+   中间标签，右边搜索胶囊 ＋ ⚙ ＋ 品牌标。空处可拖窗口，控件一律 no-drag。
    当前标签是一枚 9px 圆角白卡片，浮在 --chrome 灰底上。 */
-/* 底下那道线用 inset 阴影画，不用 border——border 会额外占 1px，
-   而 --chrome-h 只算了三条的高度，正文顶上就会被压掉一行的头。 */
+/* 5.4 起顶栏与正文之间不画线：--chrome（#f7f8fa）和 --win（#fff）本来就差一档，
+   色差就是分界。要加回来的话记得用 inset 阴影，不要用 border——border 会额外
+   占 1px，而 --chrome-h 只算了标签条的高度，正文顶上就会被压掉一行的头。 */
 #chrome{position:fixed;top:0;left:0;right:0;z-index:20;background:var(--chrome);
-  display:flex;flex-direction:column;box-shadow:inset 0 -1px 0 var(--rule-row)}
+  display:flex;flex-direction:column;box-shadow:none}
 body.solo #chrome{display:none!important}
 #tabstrip{
   height:var(--tabstrip-h);flex:none;position:relative;
@@ -276,7 +321,11 @@ body.solo #chrome{display:none!important}
    多出来的标签由 layoutTabs 整颗藏进 ▾，不要被 overflow 切成半个。 */
 #tabcluster{
   display:flex;align-items:center;gap:5px;
-  flex:0 1 auto;min-width:0;max-width:calc(100% - 52px);
+  flex:0 1 auto;min-width:0;
+  /* 右边那簇（搜索胶囊 ＋ ⚙ ＋ 品牌标）加左边三颗导航钮大概 320px，
+     给标签留出上限，剩下的交给 flex 收缩和 layoutTabs 的 ▾ 收纳。 */
+  max-width:max(120px, calc(100% - 320px));
+  transition:opacity var(--d-base) var(--ease-out);
 }
 #tabstrip .tabbar{
   position:relative;top:auto;left:auto;right:auto;z-index:auto;
@@ -334,7 +383,7 @@ body.solo #chrome{display:none!important}
 }
 #appmark{
   width:30px;height:30px;border-radius:9px;flex:none;
-  align-self:center;margin:0 0 0 6px;
+  align-self:center;margin:0;
   display:flex;align-items:center;justify-content:center;
   position:relative;z-index:6;
   -webkit-app-region:no-drag;
@@ -342,7 +391,7 @@ body.solo #chrome{display:none!important}
 }
 #appmark img{
   width:22px;height:22px;border-radius:6px;display:block;
-  box-shadow:0 1px 2px rgba(30,44,66,.14);
+  box-shadow:0 1px 2px rgba(58,48,80,.14);
   -webkit-user-drag:none;pointer-events:none;
 }
 #appmark:hover{background:var(--hover)}
@@ -352,95 +401,57 @@ body.solo #chrome{display:none!important}
 #tabstrip .tabmore,
 #appmark{-webkit-app-region:no-drag}
 
-#toolbar{
-  height:var(--toolbar-h);flex:none;background:var(--chrome);
-  display:flex;align-items:center;gap:4px;padding:0 16px;
-  position:relative;-webkit-app-region:no-drag;
+/* 导航钮：‹ › ⌂ 三颗，5.4 起搬进标签条左端（壳里贴红绿灯右缘，浏览器里贴左缘）。 */
+.navgrp{
+  display:flex;align-items:center;gap:2px;flex:none;margin-right:10px;
+  -webkit-app-region:no-drag;
 }
 .navb{
-  width:31px;height:31px;border-radius:8px;color:var(--t2);flex:none;
+  width:28px;height:28px;border-radius:7px;color:var(--t3);flex:none;
   display:inline-flex;align-items:center;justify-content:center;
+  -webkit-app-region:no-drag;
+  transition:background-color var(--d-fast) ease,color var(--d-fast) ease,
+             transform var(--d-fast) var(--ease-out);
 }
+.navb:active:not([disabled]){transform:scale(.96)}
 .navb:hover:not([disabled]){background:var(--hover);color:var(--t1)}
 .navb[disabled]{opacity:.28;pointer-events:none}
 .navb.on{background:var(--hover);color:var(--t1)}
 .navb svg{width:16px;height:16px;stroke-width:1.6}
 
-.omnibox.pulse{animation:omniPulse .8s ease}
-@keyframes omniPulse{
-  0%{box-shadow:0 0 0 0 var(--accent-soft)}
-  100%{box-shadow:0 0 0 8px transparent}
+/* 标签条右端：搜索胶囊（⌘K 的唯一入口）＋ ⚙ ＋ 品牌标。 */
+.rightgrp{
+  display:flex;align-items:center;gap:6px;flex:none;
+  -webkit-app-region:no-drag;
 }
-/* 地址栏＝搜索入口。设计稿里的胶囊：左搜索图标、中间路径/输入、右 ⌘K。 */
-.omnibox{
-  flex:1;min-width:0;height:32px;margin:0 10px 0 8px;
-  border-radius:9px;background:var(--win);border:1px solid var(--rule-row);
-  display:flex;align-items:center;gap:10px;padding:0 12px;
-  position:relative;color:var(--t3);text-align:left;
-  box-shadow:0 1px 2px rgba(38,51,75,.01);
-  transition:background-color .15s ease,box-shadow .15s ease;
+/* 搜索胶囊：不描边（无线条规则），--field 底靠色差立住，hover 抬 1px 加 --el-1。 */
+.topsearch{
+  display:flex;align-items:center;gap:8px;flex:none;
+  width:150px;height:28px;padding:0 11px;border-radius:999px;
+  background:var(--field);border:0;color:var(--t3);font-size:11px;
+  -webkit-app-region:no-drag;
+  transition:background-color var(--d-base) ease,box-shadow var(--d-base) var(--ease-out),
+             transform var(--d-base) var(--ease-out);
 }
-.omnibox:hover{box-shadow:0 1px 2px rgba(38,51,75,.01),0 0 0 3px var(--hover)}
-.omnibox.focus{
-  background:var(--win);
-  box-shadow:0 0 0 2px var(--accent-soft), var(--selshadow);
-  border-color:var(--accent);
+.topsearch svg{width:13px;height:13px;flex:none;stroke-width:1.6}
+.topsearch .lbl{flex:1;text-align:left;white-space:nowrap}
+.topsearch kbd{font:10px/1.6 var(--ui);font-weight:500;white-space:nowrap;
+  color:var(--t4);background:none;border:0;padding:0}
+.topsearch:hover{background:var(--win);box-shadow:var(--el-1);transform:translateY(-1px)}
+.topsearch:active{transform:translateY(0);box-shadow:none}
+/* 窗口窄了收成一枚 28px 圆钮，只留放大镜——标签永远优先。 */
+@media(max-width:1000px){
+  .topsearch{width:28px;padding:0;gap:0;justify-content:center}
+  .topsearch .lbl,.topsearch kbd{display:none}
 }
-.ob-icon{width:14px;height:14px;flex:none;color:var(--t3);display:flex}
-.ob-icon svg{width:14px;height:14px}
-.ob-field{flex:1;min-width:0;position:relative;height:100%;display:flex;align-items:center}
-.omnibox input{
-  flex:1;min-width:0;border:0;background:none;outline:none;
-  font-size:12px;line-height:1;color:var(--t1);-webkit-appearance:none;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-}
-.omnibox:not(.focus) input{color:transparent;caret-color:transparent}
-.omnibox input::placeholder{color:var(--t3)}
-.omnibox.focus input::placeholder{color:var(--t3)}
-.omnibox:not(.focus) input::placeholder{color:transparent}
-.omnibox input::-webkit-search-cancel-button{display:none}
-.ob-path{
-  position:absolute;inset:0;display:flex;align-items:center;
-  overflow:hidden;pointer-events:none;font-size:11px;line-height:1;color:var(--t2);
-}
-.omnibox.focus .ob-path{display:none}
-.ob-path > span{
-  display:block;max-width:100%;overflow:hidden;white-space:nowrap;
-  direction:ltr;text-align:left;
-}
-.ob-chip{
-  flex:none;font-size:10px;font-weight:600;letter-spacing:.04em;
-  color:var(--t3);padding:2px 6px;border-radius:6px;background:var(--field);
-}
-/* 右边那颗 ⌘ K：只在没聚焦、也没在编路径时露出来。 */
-.ob-kbd{
-  flex:none;font:10px/1.6 var(--ui);white-space:nowrap;color:var(--t3);
-  background:none;border:0;border-radius:5px;padding:0 5px;
-}
-.omnibox.focus .ob-kbd{display:none}
-.loadbar{position:absolute;left:0;right:0;bottom:0;height:2px;overflow:hidden;pointer-events:none}
+/* 载入细条：地址栏没了，改贴标签条上缘。 */
+.loadbar{position:absolute;left:0;right:0;top:0;height:2px;z-index:8;
+  overflow:hidden;pointer-events:none}
 .loadbar.on::after{
   content:"";display:block;height:100%;width:38%;background:var(--accent);
   animation:loadbar .55s ease-out;
 }
 @keyframes loadbar{from{transform:translateX(-120%)}to{transform:translateX(280%)}}
-
-#bmbar{
-  height:var(--bmbar-h);flex:none;background:var(--chrome);
-  display:flex;align-items:center;gap:10px;padding:0 23px 9px;
-  overflow-x:auto;overflow-y:hidden;
-  -webkit-app-region:no-drag;
-}
-body.nobm #bmbar{display:none}
-.bm{
-  padding:5px 9px;border-radius:6px;
-  display:inline-flex;align-items:center;gap:7px;
-  color:var(--t2);font-size:11px;white-space:nowrap;flex:none;
-}
-.bm:hover,.bm.open,.bm.on{background:var(--win);color:var(--t1)}
-.bm .fi,.bm svg{width:13px;height:13px;flex:none;display:block;color:var(--bm-ico)}
-.bm.pin svg{color:var(--pin)}
-.bm .lbl{max-width:140px;overflow:hidden;text-overflow:ellipsis}
 
 .htmlframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:var(--win);display:none}
 .pagebox{position:absolute;inset:0;overflow:auto;display:none;background:var(--win)}
@@ -448,7 +459,7 @@ body.nobm #bmbar{display:none}
 .pane.html .htmlframe{display:block}
 .pane.html .md,.pane.html .ed,.pane.html .pagebox{display:none!important}
 .pane.html .doc-layout{display:none}
-.pane.html .htmlframe{top:56px;height:auto;bottom:0}
+.pane.html .htmlframe{top:48px;height:auto;bottom:0}
 .pane.pg .pagebox{display:block}
 .pane.pg .md,.pane.pg .ed,.pane.pg .htmlframe{display:none!important}
 .pane:not(.html) .htmlframe{display:none}
@@ -491,34 +502,58 @@ kbd{
   border:1px solid var(--rule-row);border-radius:5px;padding:0 5px;
 }
 /* ═══ 开始页 / 文件夹页 / 已收藏页 ═══════════
-   三种页面共用同一套骨架：问候 → 大卡 → 分区标题 → 卡片网格。
-   底色用 --canvas（灰），卡片是 --win（白）；打开的笔记页仍然整面白。 */
-.pagebox.canvas{background:var(--canvas)}
-.home{max-width:1050px;margin:0 auto;padding:38px 38px 44px}
-.home-greeting{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:26px}
+   三种页面共用同一套骨架：问候 → 文件夹芯片 → 大卡 → 分区标题 → 卡片网格。
+   5.4 起底色是纯白 --win，卡片靠 --el-* 三层阴影浮起来，一条描边都不画；
+   --canvas 只留给引用块、代码块和内凹控件。 */
+.home{max-width:1050px;margin:0 auto;padding:32px 38px 40px}
+.home-greeting{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:20px}
 .eyebrow{color:var(--t2);font-size:11px;display:flex;align-items:center;gap:7px;margin-bottom:8px}
 .eyebrow svg{width:13px;height:13px}
+/* 眉行右边这枚点＋一句话，就是原来底部状态栏那一格：绿＝就绪，琥珀＝扫描中，灰＝服务没起 */
+.ey-sep{width:1px;height:9px;background:var(--rule-head);flex:none;margin:0 2px}
+.scan{display:inline-flex;align-items:center;gap:6px;color:var(--t3)}
+.scan i{width:5px;height:5px;border-radius:50%;background:var(--dot);flex:none;display:block;
+  transition:background-color var(--d-base) ease}
+.scan.scan-busy i{background:var(--folder)}
+.scan.scan-off i{background:var(--t4)}
 .home h1{font-weight:570;font-size:29px;letter-spacing:.02em;line-height:1.45;margin:0}
 .home-sub{color:var(--t3);margin:7px 0 0;font-size:12px}
+/* 次级按钮：白底一层极淡的渐变 ＋ 顶部高光，不描边（§5 悬浮质感） */
 .hbtn{
   display:inline-flex;align-items:center;justify-content:center;gap:7px;flex:none;
-  border-radius:9px;padding:9px 14px;font-size:12px;white-space:nowrap;
-  background:var(--win);color:var(--t1);border:1px solid var(--rule-row);
-  box-shadow:var(--btn-shadow);
+  height:30px;border-radius:9px;padding:0 13px;font-size:13px;font-weight:500;white-space:nowrap;
+  background:linear-gradient(#fff,#fafbfc);color:var(--t1);border:0;
+  box-shadow:var(--el-1),var(--hi);
+  transition:transform var(--d-fast) var(--ease-out),box-shadow var(--d-fast) var(--ease-out);
 }
-.hbtn svg{width:15px;height:15px}
-.hbtn:hover{background:var(--win);box-shadow:var(--btn-shadow-h)}
+.hbtn svg{width:15px;height:15px;color:var(--t2)}
+.hbtn:hover{transform:translateY(-1px);box-shadow:var(--el-2),var(--hi)}
+.hbtn:active:not([disabled]){transform:translateY(0);box-shadow:var(--el-1)}
+:root[data-theme="dark"] .hbtn{background:linear-gradient(#323843,#2c313a)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .hbtn{
+  background:linear-gradient(#323843,#2c313a)}}
+/* 首屏那颗是全页第一动作，紧挨 29px 标题，比通用次级按钮再大一档 */
+.hbtn.hero-new{height:34px;padding:0 16px;border-radius:10px;font-size:14px}
+.hbtn.hero-new svg{width:16px;height:16px}
+/* 主按钮：淡紫底板 ＋ 强调色字，同样不描边 */
+.hbtn.key{background:var(--accent-soft);color:var(--accent)}
+.hbtn.key svg{color:var(--accent)}
 
 /* ── 继续阅读大卡 ───────────────────────── */
 .resume{
-  width:100%;text-align:left;padding:24px 28px;min-height:146px;
-  border:1px solid var(--rule-row);border-radius:15px;background:var(--win);
-  box-shadow:var(--shadow);position:relative;overflow:hidden;
+  width:100%;text-align:left;padding:22px 26px;min-height:150px;
+  border:1px solid transparent;border-radius:var(--r-lg);background:var(--card-face);
+  box-shadow:var(--el-1);position:relative;overflow:hidden;
   display:flex;justify-content:space-between;align-items:center;gap:16px;
-  transition:transform .22s cubic-bezier(.2,.8,.2,1),box-shadow .22s ease;
+  transition:transform var(--d-base) var(--ease-out),box-shadow var(--d-base) var(--ease-out);
 }
-.resume:hover{transform:translateY(-3px);box-shadow:var(--float)}
-.resume:active:not([disabled]){transform:translateY(0) scale(.997)}
+/* 左上→右下一层极淡的强调色，让大卡在纯白页面上成为视觉中心 */
+.resume::before{content:'';position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(132deg,var(--accent-soft) 0%,transparent 62%);opacity:.85}
+.resume > *{position:relative;z-index:1}
+.resume:hover{transform:translateY(-2px);box-shadow:var(--el-3);
+  transition:transform var(--d-slow) var(--ease-out),box-shadow var(--d-slow) var(--ease-out)}
+.resume:active:not([disabled]){transform:translateY(0) scale(.995);transition-duration:80ms}
 .resume .rs-text{min-width:0;flex:1}
 .resume .overline{font-size:10px;color:var(--ok);display:flex;align-items:center;gap:6px;
   margin-bottom:9px;letter-spacing:.03em}
@@ -529,7 +564,8 @@ kbd{
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .resume-bottom{display:flex;align-items:center;gap:15px;color:var(--t3);font-size:10px;margin-top:15px}
 .resume .continue{display:inline-flex;align-items:center;gap:6px;color:var(--accent);font-size:11px;flex:none}
-.resume .continue svg{width:13px;height:13px}
+.resume .continue svg{width:13px;height:13px;transition:transform var(--d-base) var(--ease-out)}
+.resume:hover .continue svg{transform:translateX(3px)}
 
 /* 右边那三张叠着的纸，纯 CSS 画的，没有图片。深色下换成一套暗纸。 */
 .paper-art{width:137px;height:108px;position:relative;margin-right:21px;flex:none;transform:rotate(-7deg)}
@@ -546,21 +582,28 @@ kbd{
 .paper-front i:last-child{width:65%}
 .paper-dot{
   position:absolute;width:27px;height:27px;background:var(--paper-dot);
-  border:4px solid var(--win);border-radius:50%;bottom:-6px;right:10px;z-index:2;
+  border:4px solid var(--card-face);border-radius:50%;bottom:-6px;right:10px;z-index:2;
   display:flex;align-items:center;justify-content:center;
   color:var(--paper-dot-ico);transform:rotate(7deg);
 }
 .paper-dot svg{width:12px;height:12px}
 
-/* ── 子文件夹小夹子 ─────────────────────── */
-.dirchips{display:flex;flex-wrap:wrap;gap:7px;margin:0 1px}
+/* ── 文件夹芯片行 ───────────────────────
+   开始页拿它替掉了书签栏（顶层文件夹 ＋ 已收藏），文件夹页拿它列子文件夹。
+   不描边：静态是 --field 的浅底块，鼠标进来才浮起来变成一枚白片。 */
+.dirchips{display:flex;flex-wrap:wrap;gap:8px;margin:0 1px 20px}
 .dirchip{
-  display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;
-  border-radius:9px;background:var(--win);border:1px solid var(--rule-row);
-  color:var(--t1);font-size:11px;box-shadow:0 1px 2px rgba(37,55,78,.03);
+  display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 13px;
+  border-radius:999px;background:var(--field);border:1px solid transparent;
+  color:var(--t2);font-size:11.5px;
+  transition:background-color var(--d-base) ease,color var(--d-base) ease,
+             box-shadow var(--d-base) var(--ease-out),transform var(--d-base) var(--ease-out);
 }
-.dirchip:hover{background:var(--hover)}
+.dirchip:hover{background:var(--card-face);color:var(--t1);
+  box-shadow:var(--el-1);transform:translateY(-1px)}
+.dirchip:active:not([disabled]){transform:translateY(0);box-shadow:none}
 .dirchip svg{width:13px;height:13px;color:var(--bm-ico);flex:none}
+.dirchip.fav svg{color:var(--pin)}
 .dirchip .n{color:var(--t3);font-size:10px}
 
 /* ── 分区标题：计数 + 类型筛选 + 网格/列表 ── */
@@ -568,33 +611,42 @@ kbd{
 .section-head h2{font-size:13px;font-weight:570;margin:0}
 .section-head .section-meta{font-size:10px;color:var(--t3)}
 .section-head .fill{flex:1}
-.filters{display:flex;gap:3px;background:var(--seg-track);padding:3px;border-radius:8px;flex:none}
-.filters button{font-size:10px;border-radius:6px;color:var(--t2);padding:4px 9px}
+.filters{display:flex;gap:3px;background:var(--seg-track);padding:3px;border-radius:var(--r-sm);flex:none}
+.filters button{font-size:10px;border-radius:var(--r-xs);color:var(--t2);padding:4px 9px;
+  transition:background-color var(--d-base) var(--ease-out),color var(--d-base) ease,
+             box-shadow var(--d-base) var(--ease-out)}
 .filters button:hover{color:var(--t1)}
-.filters button.on{background:var(--win);color:var(--t1);box-shadow:var(--segshadow)}
-.view-toggle{width:28px;height:28px;border-radius:8px;flex:none;color:var(--t2);
+.filters button.on{background:var(--segon);color:var(--t1);box-shadow:var(--segshadow)}
+.view-toggle{width:28px;height:28px;border-radius:7px;flex:none;color:var(--t2);
   display:flex;align-items:center;justify-content:center}
 .view-toggle:hover{background:var(--hover);color:var(--t1)}
+.view-toggle:active:not([disabled]){transform:scale(.96)}
 .view-toggle svg{width:14px;height:14px}
 
 /* ── 卡片网格 ───────────────────────────── */
 .cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
 .note-card{
-  position:relative;min-width:0;border:1px solid var(--rule-row);border-radius:13px;
-  background:var(--win);box-shadow:var(--shadow);
-  transition:transform .2s cubic-bezier(.2,.8,.2,1),box-shadow .2s ease;
+  position:relative;min-width:0;border:1px solid transparent;border-radius:13px;
+  background:var(--card-face);box-shadow:var(--el-1);
+  transition:transform var(--d-base) var(--ease-out),box-shadow var(--d-base) var(--ease-out);
 }
-.note-card:hover{transform:translateY(-3px);box-shadow:var(--float)}
-.note-card:active{transform:translateY(-1px)}
+/* 进来慢一点（--d-slow）、出去快一点（--d-base）：抬起有分量，放下利索 */
+.note-card:hover{transform:translateY(-2px);box-shadow:var(--el-3);
+  transition:transform var(--d-slow) var(--ease-out),box-shadow var(--d-slow) var(--ease-out)}
+.note-card:active{transform:translateY(0) scale(.99);transition-duration:80ms}
+/* 卡片自己在动，里面那颗全尺寸按钮就别跟着 scale(.98) 了 */
+.note-card .card-open:active:not([disabled]){transform:none}
 .card-open{padding:19px 20px 17px;text-align:left;width:100%;height:100%;
   display:flex;flex-direction:column;align-items:flex-start}
 .card-open>*{max-width:100%}
 .card-top{display:flex;align-items:center;gap:7px;margin-bottom:12px}
 .file-icon{width:28px;height:30px;border-radius:7px;flex:none;
   display:flex;align-items:center;justify-content:center;
-  background:var(--ico-md-bg);color:var(--ico-md)}
+  background:var(--ico-md-bg);color:var(--ico-md);
+  transition:background-color var(--d-base) ease,color var(--d-base) ease}
 .file-icon svg{width:15px;height:15px}
 .file-icon.html{background:var(--ico-html-bg);color:var(--ico-html)}
+.note-card:hover .file-icon{background:var(--accent-soft);color:var(--accent)}
 .kind-label{font-size:9px;color:var(--t3);letter-spacing:.04em}
 .note-card h3{font-size:14px;font-weight:550;line-height:1.65;margin:0;min-height:23px;
   display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
@@ -606,7 +658,7 @@ kbd{
 .card-footer .fdr{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .card-footer .when{margin-left:auto;flex:none;padding-left:8px}
 .card-pin{
-  position:absolute;right:10px;top:12px;width:25px;height:25px;border-radius:6px;
+  position:absolute;right:10px;top:12px;width:25px;height:25px;border-radius:var(--r-xs);
   color:var(--t3);opacity:0;display:flex;align-items:center;justify-content:center;
   transition:opacity .15s ease,background-color .16s ease,color .16s ease;
 }
@@ -628,19 +680,44 @@ kbd{
 .cards.list .card-footer{grid-column:3;grid-row:1 / 3;margin:0;padding-right:15px}
 .cards.list .card-pin{top:19px;right:6px}
 .cards.list .note-card:hover{transform:translateY(-1px)}
+.cards.list .note-card:active{transform:translateY(0) scale(.997)}
+
+/* ── 首次提示卡（只在全新的档案第一次进来时出一次）────── */
+.tipcard{margin:0 0 20px;padding:15px 20px 16px;border:0;
+  border-radius:var(--r-lg);background:var(--accent-soft)}
+.tc-head{display:flex;align-items:center;gap:12px;margin-bottom:13px}
+.tc-head h3{font-size:12.5px;font-weight:600;color:var(--accent);margin:0;flex:1}
+.tc-x{font-size:11px;color:var(--accent);opacity:.8;padding:4px 8px;border-radius:var(--r-xs);
+  transition:background-color var(--d-fast) ease,opacity var(--d-fast) ease}
+.tc-x:hover{opacity:1;background:var(--hl)}
+.tc-cols{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.tc-col{display:flex;align-items:center;gap:10px;min-width:0}
+.tc-ico{width:26px;height:26px;border-radius:var(--r-sm);flex:none;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--card-face);color:var(--accent);box-shadow:var(--el-1)}
+.tc-ico svg{width:14px;height:14px}
+.tc-col p{margin:0;font-size:11.5px;color:var(--t2);line-height:1.5}
+.tc-col kbd{color:var(--t2);border-color:var(--hl);margin-right:2px}
 
 /* ── 空态 / 底部提示 ────────────────────── */
-.empty{padding:70px 20px;text-align:center;color:var(--t2)}
-.empty>svg{width:30px;height:30px;color:var(--t3);margin-bottom:15px}
+.empty{padding:60px 20px;text-align:center;color:var(--t2)}
+/* 空库那一版占满问候区以下的整片空白并居中，别缩在上半页留一大块无主的白 */
+.empty.big{min-height:56vh;padding:20px;display:flex;flex-direction:column;
+  align-items:center;justify-content:center}
+.empty-mark{width:76px;height:76px;border-radius:50%;background:var(--canvas);
+  color:var(--t3);margin:0 auto 20px;display:flex;align-items:center;justify-content:center}
+.empty-mark svg{width:30px;height:30px}
 .empty h2{font-size:17px;font-weight:550;color:var(--t1);margin:0 0 8px}
-.empty p{font-size:12px;margin:0 0 20px;line-height:1.7}
+.empty p{font-size:12px;margin:0 0 22px;line-height:1.8;color:var(--t3)}
+.empty-btns{display:flex;align-items:center;justify-content:center;gap:10px;flex-wrap:wrap}
 .home-tip{display:flex;align-items:center;justify-content:center;gap:8px;
-  font-size:10px;color:var(--t3);margin:24px 0 0}
+  font-size:10px;color:var(--t4);margin:22px 0 0}
 .home-tip svg{width:13px;height:13px}
+.home-tip kbd{color:var(--t4)}
 /* 「最近打开」最多画 12 张，剩下的从这条进库根接着翻 */
 .see-all{display:flex;align-items:center;gap:7px;margin:14px 0 0;padding:9px 14px;
   border-radius:9px;background:var(--field);color:var(--t2);font-size:11px;
-  transition:background-color .15s ease,color .15s ease}
+  transition:background-color var(--d-base) ease,color var(--d-base) ease}
 .see-all:hover{background:var(--hover);color:var(--t1)}
 .see-all svg{width:14px;height:14px}
 
@@ -660,45 +737,10 @@ kbd{
   .paper-art{display:none}
   .card-pin{opacity:1}
   .home-greeting .hbtn .lbl{display:none}
+  .tc-cols{grid-template-columns:minmax(0,1fr);gap:10px}
   .cards.list .card-open{grid-template-columns:40px minmax(0,1fr)}
   .cards.list .card-footer{grid-column:2;grid-row:auto;margin-top:6px;padding-right:0}
 }
-
-.drop{
-  position:fixed;z-index:40;min-width:240px;max-width:320px;max-height:min(52vh,420px);
-  overflow:auto;padding:6px;background:var(--pop);
-  border:1px solid var(--rule-row);border-radius:12px;box-shadow:var(--float);
-  display:none;animation:arrive .16s ease-out;
-}
-.drop.on{display:block}
-.drop button{
-  display:flex;align-items:center;gap:10px;width:100%;
-  min-height:34px;padding:6px 10px;border-radius:8px;font-size:13px;text-align:left;
-}
-.drop button:hover,.drop button.on{background:var(--hover)}
-.drop .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.drop .p{font-size:11px;color:var(--t4);flex:none}
-.drop .sep{height:1px;background:var(--rule-row);margin:5px 8px}
-.drop .lab{font-size:11px;font-weight:560;color:var(--t4);padding:6px 10px 4px}
-
-.obdrop{
-  position:fixed;z-index:50;padding:6px;background:var(--pop);
-  border:1px solid var(--rule-row);border-radius:12px;box-shadow:var(--float);
-  overflow:auto;max-height:min(56vh,460px);
-  display:none;animation:arrive .16s ease-out;
-}
-.obdrop.on{display:block}
-.obrow{
-  display:flex;align-items:center;gap:10px;width:100%;
-  min-height:38px;padding:6px 10px;border-radius:9px;font-size:13px;text-align:left;
-}
-.obrow:hover,.obrow.on{background:var(--hover)}
-.obrow .ico{width:22px;height:22px;border-radius:6px;background:var(--field);
-  display:flex;align-items:center;justify-content:center;flex:none;color:var(--t3)}
-.obrow .ico svg{width:13px;height:13px}
-.obrow .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:470}
-.obrow .p{font-size:11px;color:var(--t4);flex:none;max-width:42%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.obdrop .lab{font-size:11px;font-weight:560;color:var(--t4);padding:8px 10px 4px}
 
 /* 分隔条：不画线，只留一条看不见的拖动区 */
 .split{position:relative;z-index:5;width:0;cursor:col-resize}
@@ -748,8 +790,11 @@ body.searching .searchpill .clear{display:flex}
   transition:opacity .15s ease}
 .lrow:hover .racts,.res:hover .racts,.racts:focus-within{opacity:1}
 .iba{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;
-  border-radius:7px;color:var(--t3);transition:background-color .15s ease,color .15s ease}
+  border-radius:7px;color:var(--t3);
+  transition:background-color var(--d-fast) ease,color var(--d-fast) ease,
+             transform var(--d-fast) var(--ease-out)}
 .iba:hover{background:var(--hover);color:var(--t1)}
+.iba:active:not([disabled]){transform:scale(.96)}
 .iba svg{width:15px;height:15px;stroke-width:1.5}
 
 /* ═══ 边栏 ═══════════════════════════════ */
@@ -857,8 +902,8 @@ body.lists-on .listbtn{background:var(--sel);box-shadow:var(--selshadow);color:v
 .tabmore svg{flex:none}
 #tabpick{position:fixed;z-index:90;display:none;min-width:240px;max-width:360px;
   max-height:min(52vh,420px);overflow-y:auto;padding:6px;
-  background:var(--pop);border:1px solid var(--rule-row);border-radius:12px;
-  box-shadow:var(--float);animation:arrive .16s ease-out}
+  background:var(--card-face);border:0;border-radius:12px;
+  box-shadow:var(--el-3);animation:arrive .16s ease-out}
 #tabpick.on{display:block}
 #tabpick .tprow{display:flex;align-items:center;gap:10px;width:100%;text-align:left;
   padding:8px 10px;border-radius:8px}
@@ -882,11 +927,14 @@ body.lists-on .listbtn{background:var(--sel);box-shadow:var(--selshadow);color:v
    编辑」，编辑态换成「保存状态 / 源码 / 完成」。毛玻璃底色让正文从下面透一点过去。 */
 .doc-toolbar{
   position:sticky;top:0;z-index:8;
-  height:56px;flex:none;padding:0 30px;
-  display:flex;align-items:center;gap:10px;
-  border-bottom:1px solid var(--rule-row);
+  height:48px;flex:none;padding:0 22px;
+  display:flex;align-items:center;gap:6px;
+  border-bottom:0;
   background:var(--win-blur);
+  box-shadow:0 4px 12px rgba(58,48,80,.04);
   -webkit-backdrop-filter:blur(15px);backdrop-filter:blur(15px);
+  transition:transform var(--d-slow) var(--ease-out),opacity var(--d-slow) var(--ease-out),
+             box-shadow var(--d-base) ease;
 }
 .pane.pg .doc-toolbar,.pane.pg .doc-layout{display:none!important}
 /* solo 窗只有一份正文，本来就没有标签条和工具条，阅读时顶栏也不出现。
@@ -894,29 +942,93 @@ body.lists-on .listbtn{background:var(--sel);box-shadow:var(--selshadow);color:v
    面包屑、专注、更多在这种窗里没用，收起来，只剩保存状态和收工那两颗。 */
 body.solo .doc-toolbar{display:none}
 body.solo .pane.edit .doc-toolbar{display:flex;justify-content:flex-end}
-body.solo .pane.edit .doc-toolbar .breadcrumb,
+body.solo .pane.edit .doc-toolbar .pathchip,
+body.solo .pane.edit .doc-toolbar .dt-actions,
+body.solo .pane.edit .doc-toolbar .dt-div,
 body.solo .pane.edit .doc-toolbar [data-dt="focus"],
 body.solo .pane.edit .doc-toolbar [data-dt="more"]{display:none}
 body.solo .pane.html .htmlframe{top:0}
-.breadcrumb{display:flex;align-items:center;gap:8px;font-size:10px;color:var(--t3);
-  min-width:0;flex:1;white-space:nowrap;overflow:hidden}
-.breadcrumb svg{width:13px;height:13px;flex:none}
-.breadcrumb span,.breadcrumb button{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.breadcrumb button{border-radius:5px;padding:2px 4px;margin:0 -4px;max-width:40%}
-.breadcrumb button:hover{background:var(--hover);color:var(--t1)}
-.breadcrumb .sep{flex:none;color:var(--t4)}
-.breadcrumb .now{color:var(--t2);min-width:0}
-.dt-tag{flex:none;font-size:9px;color:var(--t2);background:var(--field);
-  border-radius:5px;padding:3px 7px;white-space:nowrap}
+/* ═══ 路径芯片 ═══════════════════════════
+   「一件信息只出现一次」：路径只在这里。文件夹图标 ＋ › 分段 ＋ 尾部拷贝图标。
+   放不下就从最左边起收成一枚 …，最后一段再交给 text-overflow。
+   整枚芯片单击＝拷贝路径；⌘ 单击某个文件夹段仍是「在新标签打开那个文件夹」。 */
+.pathchip{
+  position:relative;display:inline-flex;align-items:center;gap:7px;
+  flex:0 1 auto;min-width:0;max-width:520px;
+  height:30px;padding:0 9px;margin-left:2px;
+  border-radius:var(--r-sm);background:transparent;color:var(--t2);font-size:12px;
+  transition:background-color var(--d-base) ease;
+}
+.pathchip .fi{width:14px;height:14px;flex:none;color:var(--bm-ico);display:flex}
+.pathchip .fi svg{width:14px;height:14px}
+.pc-body{display:flex;align-items:center;gap:6px;min-width:0;flex:1 1 auto;overflow:hidden}
+/* 段一律不缩——缩了的话 scrollWidth 恒等于 clientWidth，fitPathChip 量不出溢出，
+   「从左边起收成 …」那一步就永远不会发生。收到只剩最后一段还嫌长时才加 .tight，
+   放开最后那一段自己打省略号。 */
+.pc-seg{flex:none;white-space:nowrap}
+.pc-body.tight .pc-seg.now{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis}
+.pc-seg.now{color:var(--t1)}
+.pc-sep{flex:none;color:var(--t4)}
+.pathchip .cp{position:relative;width:13px;height:13px;flex:none;color:var(--t4);
+  margin-left:1px;transition:color var(--d-base) ease}
+.pathchip:hover{background:var(--hover)}
+.pathchip:hover .cp{color:var(--t2)}
+/* 拷贝成功：芯片原地不动——宽度和那条路径全留着，只把尾部那枚拷贝图标换成
+   --ok 色的对勾（160ms 缩放浮现），底色临时染 --accent-soft，1.2s 后还原。
+   收成一句「✓ 已拷贝」的话宽度要跳一下，刚拷完的那条路径也跟着消失了。 */
+.pathchip .cp > span{position:absolute;top:0;left:0;display:block;width:13px;height:13px}
+.pathchip .cp .ic-copy{transition:opacity 90ms var(--ease-out)}
+.pathchip .cp .ic-done{color:var(--ok);opacity:0;transform:scale(.6);
+  transition:opacity 160ms var(--ease-out),transform 160ms var(--ease-out)}
+.pathchip.is-copied{background:var(--accent-soft)}
+.pathchip.is-copied .cp .ic-copy{opacity:0}
+.pathchip.is-copied .cp .ic-done{opacity:1;transform:scale(1)}
+
+/* 自绘提示气泡：深底白字，正下方 6px，真鼠标停 500ms 才出（路径芯片快一点）。
+   不用 title——原生气泡样子不受控，还会跟这一枚打架。 */
+.has-tip{position:relative}
+.tip{position:absolute;top:calc(100% + 6px);left:50%;transform:translate(-50%,-4px);
+  background:var(--tip-bg);color:var(--tip-fg);
+  font-size:11px;line-height:1.5;font-weight:400;text-align:center;
+  padding:5px 9px;border-radius:var(--r-xs);white-space:nowrap;pointer-events:none;
+  opacity:0;z-index:40;box-shadow:var(--el-2);
+  transition:opacity var(--d-fast) var(--ease-out),transform var(--d-fast) var(--ease-out)}
+.tip b{display:block;font-weight:400;font-size:10.5px;opacity:.7;
+  max-width:340px;overflow:hidden;text-overflow:ellipsis}
+.has-tip:hover > .tip{opacity:1;transform:translate(-50%,0);transition-delay:.5s}
+.pathchip:hover > .tip{transition-delay:.18s}
+/* 拷完那一下气泡先收掉——底下已经有 toast 了，两句话叠着看不清。
+   排在 :hover 那条后面才压得住（同权重，后来居上）。 */
+.pathchip.is-copied > .tip{opacity:0;transform:translate(-50%,-4px);transition-delay:0s}
+
+.dt-fill{flex:1 1 auto;min-width:8px}
+.dt-actions{display:flex;align-items:center;gap:2px;flex:none}
+/* 唯一保留的短竖线：分组用，不是描边 */
+.dt-div{width:1px;height:16px;background:var(--rule-row);flex:none;margin:0 7px}
+.dt-tag{flex:none;font-size:9.5px;font-weight:600;letter-spacing:.05em;color:var(--t2);
+  background:var(--field);border-radius:5px;padding:4px 7px;white-space:nowrap}
 .dt-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;flex:none;
-  height:29px;padding:0 12px;border-radius:9px;font-size:11px;color:var(--t1);
-  background:var(--win);border:1px solid var(--rule-row)}
-.dt-btn:hover{background:var(--hover)}
-.dt-btn.soft{background:var(--accent-soft);color:var(--accent);border-color:transparent}
-.dt-btn.soft:hover{filter:brightness(.97)}
+  height:30px;padding:0 13px;border-radius:9px;font-size:12px;font-weight:500;color:var(--t1);
+  background:linear-gradient(#fff,#fafbfc);border:0;box-shadow:var(--el-1),var(--hi);
+  transition:transform var(--d-fast) var(--ease-out),box-shadow var(--d-fast) var(--ease-out)}
+:root[data-theme="dark"] .dt-btn{background:linear-gradient(#323843,#2c313a)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .dt-btn{
+  background:linear-gradient(#323843,#2c313a)}}
+.dt-btn:hover{transform:translateY(-1px);box-shadow:var(--el-2),var(--hi)}
+.dt-btn:active:not([disabled]){transform:translateY(0);box-shadow:var(--el-1)}
+.dt-btn.soft{background:var(--accent-soft);color:var(--accent)}
+.dt-btn.soft:hover{background:var(--accent-soft)}
 .dt-ico{display:inline-flex;align-items:center;justify-content:center;flex:none;
-  width:31px;height:31px;border-radius:8px;color:var(--t2)}
+  position:relative;
+  width:30px;height:30px;border-radius:7px;color:var(--t3);
+  transition:background-color var(--d-fast) ease,color var(--d-fast) ease,
+             transform var(--d-fast) var(--ease-out)}
 .dt-ico:hover{background:var(--hover);color:var(--t1)}
+.dt-ico:active:not([disabled]){transform:scale(.96)}
+.dt-ico svg{width:16px;height:16px}
+/* 收藏了：星星填实，用书签栏那一档金色 */
+.dt-ico.pinned{color:var(--pin)}
+.dt-ico.pinned svg{fill:currentColor}
 .save-state{flex:none;font-size:10px;color:var(--ok);min-width:64px;text-align:right}
 .save-state.pending{color:var(--t3)}
 .save-state.act{color:var(--folder);cursor:pointer}
@@ -953,9 +1065,9 @@ body.solo .pane.html .htmlframe{top:0}
 
 /* 正文上方那条格式条：跟着正文滚，碰到顶栏就停住。 */
 .formatbar{display:none;align-items:center;gap:3px;flex-wrap:wrap;
-  position:sticky;top:66px;z-index:7;width:max-content;max-width:100%;
+  position:sticky;top:58px;z-index:7;width:max-content;max-width:100%;
   margin:0 0 24px;padding:5px;border-radius:11px;
-  background:var(--pop);border:1px solid var(--rule-row);box-shadow:var(--shadow)}
+  background:var(--card-face);border:0;box-shadow:var(--el-2)}
 .pane.edit:not(.src) .formatbar{display:flex}
 .formatbar button{height:28px;min-width:30px;padding:0 8px;border-radius:6px;
   display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--t2)}
@@ -977,7 +1089,7 @@ body.solo .pane.html .htmlframe{top:0}
    两处用的是同一套 .ol-* 类名和同一份 HTML。 */
 .outline{display:none;flex-direction:column;min-width:0;
   padding-right:16px;align-self:start;             /* sticky 在 grid 里必须 start，不然占满整行没得贴 */
-  position:sticky;top:70px;z-index:4;
+  position:sticky;top:62px;z-index:4;
   max-height:calc(100vh - var(--chrome-h) - var(--status-h) - var(--bnr-h, 0px) - 118px)}
 .doc-layout.ol-on > .outline{display:flex}
 .ol-head{display:flex;align-items:center;gap:6px;flex:none;padding:0 10px 6px}
@@ -1024,18 +1136,21 @@ body.solo .pane.html .htmlframe{top:0}
 .doc-toolbar .dt-ol.on{background:var(--accent-soft);color:var(--accent)}
 #outfloat{position:fixed;z-index:60;display:none;flex-direction:column;
   width:260px;max-height:60vh;padding:8px;
-  background:var(--win);border:1px solid var(--rule-row);border-radius:14px;
-  box-shadow:var(--float);animation:arrive .16s ease-out}
+  background:var(--card-face);border:0;border-radius:var(--r-lg);
+  box-shadow:var(--el-3);animation:arrive .16s ease-out}
 #outfloat.on{display:flex}
 
 /* ═══ Markdown 正文 ═══════════════════════
-   默认 17 / 1.85 / 640。中文标题 letter-spacing 为 0，层级靠字重和留白。
+   默认 17 / 1.8 / 690。中文标题 letter-spacing 为 0，层级靠字重和留白。
+   hanging-punctuation 让行首的引号书名号挂到版心外面，中文段落的左缘才是齐的；
+   text-autospace 是渐进增强，不认的浏览器忽略。
    版式三项仍能在设置和排版浮层里调。 */
-.md{color:var(--t1);margin:0 auto;max-width:var(--docw)}
+.md{color:var(--t1);margin:0 auto;max-width:var(--docw);
+  hanging-punctuation:first allow-end;text-autospace:normal}
 .md h1{font-size:1.6em;font-weight:600;letter-spacing:0;line-height:1.45;margin:1.5em 0 .6em}
-.md > h1:first-child{font-size:31px;font-weight:580;letter-spacing:0;line-height:1.45;margin:0 0 18px}
-.md h2{font-size:1.25em;font-weight:600;letter-spacing:0;margin:1.9em 0 .7em;line-height:1.6}
-.md h3{font-size:1.08em;font-weight:600;margin:1.5em 0 .6em}
+.md > h1:first-child{font-size:31px;font-weight:600;letter-spacing:0;line-height:1.45;margin:0 0 18px}
+.md h2{font-size:1.35em;font-weight:600;letter-spacing:0;margin:2.2em 0 .7em;line-height:1.55}
+.md h3{font-size:1.12em;font-weight:600;line-height:1.6;margin:1.8em 0 .5em}
 .md h4{font-size:1em;font-weight:500;margin:1.5em 0 .6em;color:var(--t2)}
 /* h5/h6 接着 h4 往下退：h5 同字号同字重、再退一级色；h6 再缩一点字号、留白也收一点。 */
 .md h5{font-size:1em;font-weight:500;margin:1.3em 0 .5em;color:var(--t3)}
@@ -1048,6 +1163,7 @@ body.solo .pane.html .htmlframe{top:0}
 .md a:hover{text-decoration:underline;text-underline-offset:3px}
 .md ul,.md ol{margin:0 0 1em;padding-left:1.5em}
 .md li{margin:3px 0;padding-left:3px}
+.md li::marker{color:var(--t3)}
 .md li ul,.md li ol{margin:.32em 0 0}
 .md li.task{list-style:none;margin-left:-1.35em;display:flex;gap:.5em;align-items:flex-start}
 .md li.task input{margin:.44em 0 0;accent-color:var(--accent);flex-shrink:0;cursor:pointer}
@@ -1055,22 +1171,22 @@ body.solo .pane.html .htmlframe{top:0}
 .md del{color:var(--t3)}
 .md hr{border:0;height:1px;background:var(--rule-row);margin:2.4em 0}
 .md blockquote{margin:23px 0;padding:12px 20px;color:var(--t2);
-  background:var(--canvas);border-radius:0 8px 8px 0;border-left:2px solid var(--quote-b)}
+  background:var(--canvas);border-radius:0 var(--r-sm) var(--r-sm) 0;border-left:2px solid var(--quote-b)}
 .md blockquote p{margin:0 0 .5em}
 .md blockquote p:last-child{margin:0}
 .md code{background:var(--canvas);padding:2px 5px;border-radius:4px;
   font:.82em/1.6 var(--mono)}
-.md pre{background:var(--canvas);border-radius:9px;padding:15px;overflow-x:auto;margin:0 0 1.15em}
+.md pre{background:var(--canvas);border-radius:var(--r-md);padding:14px;overflow-x:auto;margin:0 0 1.15em}
 .md pre code{background:none;padding:0;color:var(--t2);font-size:.84em;line-height:1.6}
-/* 表格 B：表头 600 ＋ 表头下一道淡线 ＋ 隔行浅底，无竖线，宽表在自己容器里横滚 */
+/* 表格：表头 600 ＋ 表头下一道淡线 ＋ 每行一道更淡的行线，无竖线无斑马，
+   宽表在自己容器里横滚。行线是全篇仅存的三种线之一（另两种：引用块左竖条、分段凹槽）。 */
 .tw{overflow-x:auto;margin:0 0 1.5em;max-width:100%}
 .md table{border-collapse:collapse;width:100%;font-size:.88em;font-variant-numeric:tabular-nums}
 .md th{font-size:.92em;font-weight:600;color:var(--t2);text-align:left;
   padding:0 10px 9px;white-space:nowrap;border-bottom:1px solid var(--rule-head)}
-.md td{padding:10px;color:var(--t1);vertical-align:top;line-height:1.7}
-.md tbody tr:nth-child(odd) td{background:var(--zebra)}
-.md tbody tr td:first-child{border-top-left-radius:6px;border-bottom-left-radius:6px}
-.md tbody tr td:last-child{border-top-right-radius:6px;border-bottom-right-radius:6px}
+.md td{padding:11px 10px;color:var(--t1);vertical-align:top;line-height:1.7;
+  border-bottom:1px solid var(--rule-row)}
+.md tbody tr:last-child td{border-bottom:0}
 .md img{max-width:100%;height:auto;display:block;margin:16px auto;border-radius:6px}
 .md img[src$=".svg"]{width:100%}
 :root[data-theme="dark"] .md img{background:#f6f6f6;padding:6px}
@@ -1098,7 +1214,7 @@ body.solo .pane.html .htmlframe{top:0}
 .pane.edit .md h1[data-ph]::before{content:"无标题";font-weight:500}
 .pane.edit .md p[data-ph]::before{content:"写点什么…";font-weight:400}
 .f-sans{font-family:var(--ui)}
-.f-serif{font-family:Georgia,"Songti SC","Noto Serif CJK SC",serif}
+.f-serif{font-family:ui-serif,"New York",Georgia,"Songti SC","Noto Serif CJK SC",serif}
 .f-mono{font-family:var(--mono)}
 /* 搜索命中点开：跳到命中段并闪一下 */
 @keyframes hitflash{0%,70%{background:var(--hl)}100%{background:transparent}}
@@ -1130,8 +1246,8 @@ body.solo .pane.html .htmlframe{top:0}
 
 /* 选中文字浮出的工具条 */
 #fmt{position:fixed;z-index:80;display:none;gap:2px;padding:5px 6px;
-  background:var(--pop);border:1px solid var(--rule-row);border-radius:11px;
-  box-shadow:var(--float);animation:arrive .14s ease-out}
+  background:var(--card-face);border:0;border-radius:11px;
+  box-shadow:var(--el-3);animation:arrive .14s ease-out}
 #fmt.on{display:flex}
 #fmt button{min-width:30px;height:28px;padding:0 8px;border-radius:7px;color:var(--t1);
   display:flex;align-items:center;justify-content:center;font-size:13px;white-space:nowrap;
@@ -1156,7 +1272,7 @@ body.solo .pane.html .htmlframe{top:0}
 #cmdkWrap.on{display:flex}
 .modal{width:min(560px,100%);max-height:75vh;overflow:hidden;
   display:flex;flex-direction:column;
-  background:var(--pop);border:1px solid var(--rule-row);border-radius:17px;
+  background:var(--card-face);border:0;border-radius:var(--r-xl);
   box-shadow:var(--popbig);
   animation:arrive .22s cubic-bezier(.2,.8,.2,1)}
 .search-input-row{flex:none;display:flex;align-items:center;gap:12px;
@@ -1178,8 +1294,8 @@ body.solo .pane.html .htmlframe{top:0}
 .modal-empty p{margin:0 0 20px;font-size:12px;line-height:1.7}
 
 #ctx{position:fixed;z-index:150;display:none;min-width:196px;padding:5px;
-  background:var(--pop);border:1px solid var(--rule-row);border-radius:10px;
-  box-shadow:var(--float);animation:arrive .14s ease-out}
+  background:var(--card-face);border:0;border-radius:var(--r-md);
+  box-shadow:var(--el-3);animation:arrive .14s ease-out}
 #ctx.on{display:block}
 #ctx button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;
   padding:5px 10px;border-radius:7px;font-size:13px;color:var(--t1);white-space:nowrap}
@@ -1188,8 +1304,8 @@ body.solo .pane.html .htmlframe{top:0}
 #ctx .sep{height:1px;background:var(--rule-row);margin:5px 8px}
 
 #slash{position:fixed;z-index:85;display:none;width:240px;padding:6px;
-  background:var(--pop);border:1px solid var(--rule-row);border-radius:12px;
-  box-shadow:var(--float);animation:arrive .16s ease-out}
+  background:var(--card-face);border:0;border-radius:12px;
+  box-shadow:var(--el-3);animation:arrive .16s ease-out}
 #slash.on{display:block}
 #slash .sh{font-size:11px;color:var(--t4);padding:6px 10px 4px}
 #slash button{display:flex;align-items:center;gap:10px;width:100%;text-align:left;
@@ -1201,12 +1317,12 @@ body.solo .pane.html .htmlframe{top:0}
    工具条最右那颗滑块按钮拉出来。点外面、按 Esc、翻页都会关掉。 */
 #typeWrap{position:fixed;top:calc(var(--chrome-h) + var(--bnr-h, 0px) + 10px);right:20px;z-index:110;
   width:260px;display:none;padding:19px;
-  background:var(--pop);border:1px solid var(--rule-row);border-radius:14px;
-  box-shadow:var(--float);transform-origin:top right;animation:arrive .18s ease-out}
+  background:var(--card-face);border:0;border-radius:var(--r-lg);
+  box-shadow:var(--el-3);transform-origin:top right;animation:arrive .18s ease-out}
 #typeWrap.on{display:block}
-.pop-title{font-size:13px;font-weight:550;margin:0 0 17px}
-.setting{padding:13px 0;border-top:1px solid var(--rule-row)}
-.setting:last-child{padding-bottom:0}
+.pop-title{font-size:13px;font-weight:550;margin:0}
+/* 无线条规则：行与行之间原来那道 1px 分隔换成间距，靠留白断句。 */
+.setting{padding:0;margin-top:16px}
 .setting > label{display:flex;justify-content:space-between;gap:8px;
   font-size:11px;color:var(--t2);margin:0 0 10px}
 .setting > label .v{color:var(--t3)}
@@ -1223,21 +1339,30 @@ body.solo .pane.html .htmlframe{top:0}
 body.type-on .toc{display:none!important}
 
 /* ═══ 专注阅读 ═══════════════════════════
-   工具条、书签栏、状态栏都收起来。壳里留一条标签条高度的空白拖拽条给交通灯，
-   浏览器里没有交通灯，整条一起收掉。 */
-body.focus-mode{--toolbar-h:0px; --bmbar-h:0px; --status-h:0px}
+   只剩正文：文档头上滑淡出，大纲（常驻栏和浮层）一起淡掉。
+   **大纲用 opacity 收，不用 display**——网格那一列还得占着位，
+   不然正文会往左跳半栏，「进出专注正文原地不动」就废了。
+   壳里留一条标签条高度的空白拖拽条给交通灯，里面的控件淡出；
+   浏览器里没有交通灯，整条一起收掉。
+   鼠标贴到窗口顶上 8px 内，文档头以浮层形式滑回来（body.peek）。 */
+body.focus-mode{--status-h:0px}
 body.focus-mode:not(.shell){--tabstrip-h:0px}
-body.focus-mode #toolbar,
-body.focus-mode #bmbar,
-body.focus-mode .statusbar{display:none}
 body.focus-mode:not(.shell) #tabstrip{display:none}
 body.focus-mode.shell #tabcluster,
-body.focus-mode.shell #appmark{display:none}
+body.focus-mode.shell .navgrp,
+body.focus-mode.shell .rightgrp{opacity:0;pointer-events:none;
+  transition:opacity var(--d-base) var(--ease-in)}
 body.focus-mode #chrome{box-shadow:none}
+body.focus-mode .doc-toolbar{transform:translateY(-100%);opacity:0;pointer-events:none;
+  transition:transform var(--d-base) var(--ease-in),opacity var(--d-base) var(--ease-in)}
+body.focus-mode .outline{opacity:0;pointer-events:none}
+body.focus-mode.peek .doc-toolbar{transform:none;opacity:1;pointer-events:auto;
+  box-shadow:var(--el-2);
+  transition:transform var(--d-slow) var(--ease-out),opacity var(--d-slow) var(--ease-out)}
 
-#wlpick{position:fixed;z-index:90;background:var(--pop);
-  border:1px solid var(--rule-row);border-radius:11px;
-  box-shadow:var(--float);padding:5px;display:none;animation:arrive .14s ease-out;
+#wlpick{position:fixed;z-index:90;background:var(--card-face);
+  border:0;border-radius:11px;
+  box-shadow:var(--el-3);padding:5px;display:none;animation:arrive .14s ease-out;
   max-width:420px;max-height:300px;overflow-y:auto}
 #wlpick.on{display:block}
 #wlpick button{display:block;width:100%;text-align:left;padding:6px 9px;border-radius:7px;
@@ -1251,7 +1376,7 @@ body.focus-mode #chrome{box-shadow:none}
   align-items:center;justify-content:center;padding:6vh 6vw;animation:fadeIn .18s ease-out}
 #qlwrap.on{display:flex}
 #ql{width:min(860px,94vw);max-height:86vh;display:flex;flex-direction:column;
-  background:var(--pop);border:1px solid var(--rule-row);border-radius:17px;
+  background:var(--card-face);border:0;border-radius:var(--r-xl);
   box-shadow:var(--popbig);overflow:hidden;animation:arrive .22s cubic-bezier(.2,.8,.2,1)}
 #qlh{flex:none;display:flex;align-items:center;gap:10px;padding:14px 18px 10px}
 #qlt{font-size:13px;font-weight:500;flex:1;min-width:0;
@@ -1259,34 +1384,301 @@ body.focus-mode #chrome{box-shadow:none}
 #qlb{flex:1;overflow-y:auto;padding:6px 30px 40px}
 #qlb .md{max-width:680px}
 
+/* ═══ 设置 ═══════════════════════════════
+   720×600 的弹层：左边 172px 导航栏，右边一栏滚动内容，底下一条只有改了东西
+   才冒出来的保存条。四段：阅读与外观 / 笔记库 / 高级 / 关于。
+   无线条规则照旧——卡片、芯片、输入框全靠 --el-1 托起来，不描边；
+   保留的线只有导航栏与内容区之间那道底色差，和保存条上沿那一条。 */
 #cfgWrap{position:fixed;inset:0;z-index:130;display:none;background:var(--scrim);
   -webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px);
-  align-items:flex-start;justify-content:center;padding:6vh 20px;animation:fadeIn .18s ease-out}
+  align-items:center;justify-content:center;padding:4vh 20px;animation:fadeIn .18s ease-out}
 #cfgWrap.on{display:flex}
-#viewCfg{width:min(720px,96vw);max-height:86vh;display:flex;flex-direction:column;
-  background:var(--pop);border:1px solid var(--rule-row);border-radius:17px;
-  box-shadow:var(--popbig);overflow:hidden;animation:arrive .22s cubic-bezier(.2,.8,.2,1)}
-.cfghead{flex:none;display:flex;align-items:center;gap:10px;padding:18px 22px 6px}
-.cfghead .ttl{font-size:15px;font-weight:600;flex:1}
-#cfgBody{flex:1;overflow-y:auto;padding:6px 22px 26px}
-.cfgsec{margin-top:26px}
-.cfgsec:first-child{margin-top:8px}
-.cfgh{font-size:11px;font-weight:500;color:var(--t3);margin-bottom:10px}
-.cfgrow{display:flex;align-items:center;gap:14px;min-height:32px}
-.cfgrow .k{font-size:13px;color:var(--t1);width:76px;flex:none}
-.cfgrow .v{font-size:12px;color:var(--t3);flex:none;width:64px;text-align:right;
-  font-variant-numeric:tabular-nums}
-.cfgrow input[type=range]{flex:1;accent-color:var(--accent)}
-.cfgd{font-size:11px;color:var(--t3);margin:0 0 7px;line-height:1.6}
-.cfgsec textarea{width:100%;min-height:70px;padding:9px 11px;font-size:12px;line-height:1.7;
-  background:var(--field);color:var(--t1);border:0;border-radius:8px;
-  outline:none;resize:vertical;font-family:var(--mono)}
-.cfgsec .tin{padding:5px 9px;font-size:12px;background:var(--field);border:0;
-  border-radius:7px;outline:none;color:var(--t1);width:76px}
-.kv{display:grid;grid-template-columns:76px 1fr;gap:6px 14px;font-size:12px;color:var(--t2)}
-.kv b{font-weight:400;color:var(--t3)}
-.cfgbar{display:flex;gap:10px;align-items:center;margin-top:20px}
-.cfgmsg{font-size:11px;color:var(--t3)}
+#viewCfg{width:min(720px,96vw);height:min(600px,92vh);display:flex;
+  background:var(--pop);border:0;border-radius:var(--r-xl);
+  box-shadow:var(--popbig);overflow:hidden;animation:arrive .22s var(--ease-std)}
+
+/* 左导航 */
+#viewCfg .cfg-rail{width:172px;flex:none;background:var(--side);
+  padding:16px 10px 12px;display:flex;flex-direction:column;gap:2px}
+#viewCfg .cfg-rail .rt{font-size:12px;font-weight:600;color:var(--t3);letter-spacing:.04em;padding:0 10px 12px}
+#viewCfg .cfg-navi{display:flex;align-items:center;gap:9px;width:100%;height:32px;padding:0 10px;
+  border-radius:var(--r-sm);font-size:13px;color:var(--t1);text-align:left;
+  transition:background-color var(--d-fast) ease}
+#viewCfg .cfg-navi svg{width:16px;height:16px;flex:none;color:var(--t2);stroke-width:1.5}
+#viewCfg .cfg-navi:hover{background:var(--rail-hover)}
+#viewCfg .cfg-navi.on{background:var(--sel);box-shadow:var(--selshadow);font-weight:500}
+#viewCfg .cfg-navi.on svg{color:var(--accent)}
+
+/* 右内容 */
+#viewCfg .cfg-pane{flex:1;min-width:0;display:flex;flex-direction:column;background:var(--win)}
+#viewCfg .cfg-head{flex:none;height:56px;display:flex;align-items:center;gap:10px;padding:0 16px 0 28px}
+#viewCfg .cfg-head h2{margin:0;font-size:15px;font-weight:600;flex:1}
+#cfgBody{flex:1;min-height:0;overflow-y:auto;padding:0 28px 18px}
+#viewCfg .cfg-panel{display:none}
+#viewCfg .cfg-panel.on{display:block}
+
+/* 字段行：左标签 58px ＋ 右控件 */
+#viewCfg .frow{display:flex;gap:14px;align-items:flex-start}
+#viewCfg .frow+.frow{margin-top:19px}
+#viewCfg .flab{width:58px;flex:none;font-size:13px;color:var(--t2);line-height:26px}
+#viewCfg .fctl{flex:1;min-width:0}
+#viewCfg .hint{font-size:12px;color:var(--t3);line-height:1.6;margin:6px 0 0}
+#viewCfg .sect{font-size:15px;font-weight:600;margin:0 0 11px}
+#viewCfg .sec+.sec{margin-top:22px}
+#viewCfg .lbl{font-size:13px;color:var(--t2);margin:0 0 8px;display:block}
+#viewCfg .lblrow{display:flex;align-items:baseline;gap:10px;margin:0 0 8px}
+#viewCfg .lblrow .lbl{margin:0;flex:none}
+#viewCfg .lblrow .ih{font-size:12px;color:var(--t3);min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#viewCfg .inline-field{display:flex;align-items:center;gap:12px}
+#viewCfg .inline-field .lbl{margin:0;flex:none}
+#viewCfg .inline-field .tin{width:200px}
+
+/* 主题预览卡：里面那个迷你窗口写死颜色，不跟当前主题走——
+   「深色」那张在浅色下也得是深的，不然三张一模一样。 */
+#viewCfg .tcards{display:flex;gap:12px}
+#viewCfg .tcard{width:120px;text-align:center;flex:none}
+#viewCfg .tcard .prev{display:block;width:120px;height:76px;border-radius:var(--r-md);overflow:hidden;
+  position:relative;background:#fff;box-shadow:var(--el-1);
+  transition:box-shadow var(--d-base) var(--ease-out),transform var(--d-base) var(--ease-out)}
+#viewCfg .tcard:hover .prev{transform:translateY(-1px);box-shadow:var(--el-2)}
+#viewCfg .tcard.on .prev{box-shadow:0 0 0 2px var(--accent),var(--el-1)}
+#viewCfg .tcard .nm{display:block;font-size:11px;color:var(--t2);margin-top:7px}
+#viewCfg .tcard.on .nm{color:var(--accent);font-weight:500}
+#viewCfg .mw{position:absolute;inset:0}
+#viewCfg .mw .bar{position:absolute;left:0;right:0;top:0;height:15px;display:flex;align-items:center;
+  gap:3px;padding-left:6px}
+#viewCfg .mw .bar em{width:4px;height:4px;border-radius:50%;display:block}
+#viewCfg .mw .body{position:absolute;left:0;right:0;top:15px;bottom:0;padding:10px 11px}
+#viewCfg .mw .body u{display:block;height:6px;width:52px;border-radius:3px;margin-bottom:8px}
+#viewCfg .mw .body s{display:block;height:4px;border-radius:2px;margin-bottom:5px}
+#viewCfg .mw.lt{background:#fff}
+#viewCfg .mw.lt .bar{background:#f2f4f7}
+#viewCfg .mw.lt .bar em{background:#d7dce4}
+#viewCfg .mw.lt .body u{background:#b9c2ce}
+#viewCfg .mw.lt .body s{background:#e2e7ee}
+#viewCfg .mw.dk{background:#23272f}
+#viewCfg .mw.dk .bar{background:#1e2229}
+#viewCfg .mw.dk .bar em{background:#3d434e}
+#viewCfg .mw.dk .body u{background:#6e7784}
+#viewCfg .mw.dk .body s{background:#3a4049}
+/* 类名不能叫 .split：三栏那两条分隔条已经占着这个名字（width:0）。 */
+#viewCfg .mw.half{clip-path:polygon(0 0,64% 0,36% 100%,0 100%)}
+
+/* 字体预览卡：样句用真的字体栈渲染，所见即所得 */
+#viewCfg .fcards{display:flex;gap:8px}
+#viewCfg .fcard{flex:1;min-width:0;text-align:left;padding:10px 11px 12px;border-radius:var(--r-md);
+  background:var(--card-face);box-shadow:var(--el-1);
+  transition:box-shadow var(--d-base) var(--ease-out),transform var(--d-base) var(--ease-out)}
+#viewCfg .fcard:hover{transform:translateY(-1px);box-shadow:var(--el-2)}
+#viewCfg .fcard.on{box-shadow:0 0 0 2px var(--accent),var(--el-1)}
+#viewCfg .fcard .nm{display:block;font-family:var(--ui);font-size:11px;color:var(--t2);margin-bottom:6px}
+#viewCfg .fcard.on .nm{color:var(--accent);font-weight:500}
+#viewCfg .fcard .sm{display:block;font-size:12px;line-height:1.62;color:var(--t1)}
+#viewCfg .fcard.f-mono .sm{font-size:11px;letter-spacing:-.01em}
+
+/* 字号滑杆：轨道自己画，左半段是强调色 */
+#viewCfg .srow{display:flex;align-items:center;gap:14px;height:26px}
+#viewCfg .srow .val{width:30px;flex:none;text-align:right;font-size:12px;color:var(--t1)}
+#cfgBody input[type=range]{-webkit-appearance:none;appearance:none;flex:1;min-width:0;
+  height:16px;background:none;margin:0}
+#cfgBody input[type=range]::-webkit-slider-runnable-track{height:4px;border-radius:2px;
+  background:linear-gradient(to right,var(--accent) 0 var(--pct,33%),var(--field) var(--pct,33%) 100%)}
+#cfgBody input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;height:15px;
+  border-radius:50%;background:#fff;margin-top:-5.5px;
+  box-shadow:0 1px 3px rgba(58,48,80,.26),0 0 0 .5px rgba(58,48,80,.16)}
+:root[data-theme="dark"] #cfgBody input[type=range]::-webkit-slider-thumb{background:#ccd2dc;
+  box-shadow:0 1px 4px rgba(0,0,0,.55),0 0 0 .5px rgba(0,0,0,.4)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) #cfgBody
+  input[type=range]::-webkit-slider-thumb{background:#ccd2dc;
+  box-shadow:0 1px 4px rgba(0,0,0,.55),0 0 0 .5px rgba(0,0,0,.4)}}
+#viewCfg .cfg-sample{margin:8px 0 0;color:var(--t2);line-height:1.5}
+
+/* 开关 34×20 */
+#viewCfg .swrow{display:flex;align-items:center;gap:12px}
+#viewCfg .swrow .txt{flex:1;min-width:0;font-size:13px;color:var(--t1)}
+#viewCfg .sw{width:34px;height:20px;border-radius:999px;background:var(--field);position:relative;flex:none;
+  transition:background-color var(--d-base) var(--ease-out)}
+#viewCfg .sw::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;
+  background:#fff;box-shadow:var(--el-1),0 0 0 .5px rgba(58,48,80,.10);
+  transition:transform var(--d-base) var(--ease-out)}
+#viewCfg .sw.on{background:var(--accent)}
+#viewCfg .sw.on::after{transform:translateX(14px)}
+
+/* 弹层里的次级按钮：图标＋文字要有间距，图标压成 --t2（主按钮里跟着强调色） */
+#viewCfg .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px}
+#viewCfg .btn svg{width:13px;height:13px;color:var(--t2)}
+#viewCfg .btn.key svg{color:var(--accent)}
+#viewCfg .btnt{height:28px;padding:0 8px;border-radius:7px;font-size:12px;color:var(--t2)}
+#viewCfg .btnt:hover{color:var(--t1);background:var(--hover)}
+#viewCfg .link{font-size:12px;color:var(--accent);background:none;border:0;padding:0;cursor:pointer}
+#viewCfg .link:hover{text-decoration:underline}
+#viewCfg .link[disabled]{opacity:.4;pointer-events:none}
+
+/* 文本输入：不描边，浮起来一层 */
+#cfgBody .tin{height:30px;padding:0 10px;border-radius:var(--r-sm);font-size:12.5px;
+  color:var(--t1);background:var(--win);border:0;box-shadow:var(--el-1),0 0 0 1px var(--rule-row);
+  outline:none}
+#cfgBody .tin:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+#cfgBody .tin.n{width:78px;text-align:center}
+
+/* 笔记库卡片 */
+#viewCfg .vault{display:flex;align-items:center;gap:14px;padding:14px 16px;border-radius:12px;
+  background:var(--card-face);box-shadow:var(--el-1)}
+#viewCfg .vault .fico{flex:none;width:44px;height:44px;display:flex;align-items:center;justify-content:center}
+#viewCfg .vault .meta{flex:1;min-width:0}
+#viewCfg .vault .vacts{flex:none;display:flex;flex-direction:column;gap:6px}
+#viewCfg .vault .nm{display:block;font-size:15px;font-weight:600;line-height:1.3}
+#viewCfg .vault .pth{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--t3);
+  min-width:0;margin-top:3px}
+#viewCfg .vault .pth span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#viewCfg .cpb{width:20px;height:20px;border-radius:5px;flex:none;color:var(--t4);
+  display:flex;align-items:center;justify-content:center}
+#viewCfg .cpb svg{width:12px;height:12px}
+#viewCfg .cpb:hover{background:var(--hover);color:var(--t2)}
+#viewCfg .statusrow{display:flex;align-items:center;gap:10px;margin-top:14px}
+#viewCfg .statusrow .st{flex:1;min-width:0;font-size:12px;color:var(--t2);
+  display:flex;align-items:center;gap:7px}
+#viewCfg .statusrow .st::before{content:"";width:6px;height:6px;border-radius:50%;
+  background:var(--dot);flex:none}
+#viewCfg .statusrow .st.busy::before{background:var(--folder)}
+#viewCfg .statusrow .st.off::before{background:var(--t4)}
+#viewCfg .statusrow .btn span{display:inline-flex}
+#viewCfg .statusrow .btn .spin{animation:spinning 1s linear infinite;transform-origin:50% 50%}
+@keyframes spinning{to{transform:rotate(360deg)}}
+
+/* 芯片输入 */
+#viewCfg .chipbox{display:flex;flex-wrap:wrap;gap:5px;align-items:center;min-height:38px;padding:5px 8px;
+  border-radius:var(--r-md);background:var(--win);
+  box-shadow:var(--el-1),0 0 0 1px var(--rule-row)}
+#viewCfg .chipbox:focus-within{box-shadow:var(--el-1),0 0 0 1px var(--accent),0 0 0 4px var(--accent-soft)}
+#viewCfg .chip{display:inline-flex;align-items:center;gap:3px;height:24px;padding:0 3px 0 9px;
+  border-radius:7px;background:var(--field);color:var(--t1);font-size:12px;white-space:nowrap}
+#viewCfg .chip .x{width:17px;height:17px;border-radius:5px;display:flex;align-items:center;
+  justify-content:center;color:var(--t3);opacity:0;transition:opacity var(--d-fast) ease}
+#viewCfg .chip .x svg{width:9px;height:9px;stroke-width:2}
+#viewCfg .chip:hover .x{opacity:1}
+#viewCfg .chip .x:hover{background:var(--hover);color:var(--t1)}
+#viewCfg .chip.fresh{background:var(--accent-soft);color:var(--accent)}
+#viewCfg .chipbox input{flex:1;min-width:120px;height:24px;border:0;background:none;outline:none;
+  font-size:12px;color:var(--t1)}
+#viewCfg .chipbox input::placeholder{color:var(--t4)}
+
+/* 服务端返回的「问题」：黄条，贴在对应字段上方 */
+#viewCfg .notice{display:flex;gap:9px;align-items:flex-start;padding:9px 12px;border-radius:9px;
+  background:var(--warn-bg);box-shadow:0 0 0 1px var(--warn-bd);
+  font-size:12px;line-height:1.6;color:var(--t1);margin:0 0 9px}
+#viewCfg .notice svg{width:14px;height:14px;flex:none;margin-top:2px;color:var(--warn)}
+
+/* 只读信息行 */
+#viewCfg .kvrow{display:flex;align-items:center;gap:10px;min-height:24px;font-size:12px}
+#viewCfg .kvgrid{display:grid;grid-template-columns:1fr 1fr;column-gap:16px}
+#viewCfg .kvgrid .wide{grid-column:1/3}
+#viewCfg .kvrow b{width:64px;flex:none;font-weight:400;color:var(--t3)}
+#viewCfg .kvrow>span{color:var(--t2);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* 高级的折叠头 */
+#viewCfg .disc{display:flex;align-items:center;gap:7px;font-size:12px;color:var(--accent);flex:none}
+#viewCfg .disc svg{width:12px;height:12px}
+#viewCfg .advrow{display:flex;align-items:center;gap:14px;margin:0 0 12px}
+#viewCfg .advrow .advnote{flex:1;min-width:0;font-size:12px;color:var(--t3);line-height:1.6;margin:0}
+
+/* 底部保存条：只有改过库/高级里的字段才出现 */
+#viewCfg .dirtybar{flex:none;display:none;align-items:center;gap:10px;height:52px;padding:0 20px 0 28px;
+  border-top:1px solid var(--rule-row);background:var(--win)}
+#viewCfg.dirty .dirtybar{display:flex}
+#viewCfg .dirtybar .msg{flex:1;min-width:0;font-size:12px;color:var(--t2);
+  display:flex;align-items:center;gap:8px}
+#viewCfg .dirtybar .msg::before{content:"";width:6px;height:6px;border-radius:50%;
+  background:var(--warn);flex:none}
+
+/* 关于 */
+#viewCfg .about{padding:76px 0 0;text-align:center}
+#viewCfg .about .ico{width:64px;height:64px;margin:0 auto 14px;border-radius:15px;overflow:hidden;
+  box-shadow:var(--el-2)}
+#viewCfg .about .ico img{width:64px;height:64px;display:block}
+#viewCfg .about h3{margin:0;font-size:20px;font-weight:600;letter-spacing:.01em}
+#viewCfg .about .ver{margin:5px 0 0;font-size:12px;color:var(--t3)}
+#viewCfg .about .desc{margin:12px 0 0;font-size:13px;color:var(--t2)}
+#viewCfg .about .acts{display:flex;align-items:center;justify-content:center;gap:16px;margin-top:22px}
+#viewCfg .about .swline{display:flex;align-items:center;gap:9px;font-size:12px;color:var(--t2)}
+#viewCfg .about .links{display:flex;align-items:center;justify-content:center;gap:10px;
+  margin-top:24px;font-size:12px}
+#viewCfg .about .links i{color:var(--t4);font-style:normal}
+#viewCfg .about .fine{margin:16px 0 0;font-size:11px;color:var(--t4)}
+
+/* ═══ 新用户引导 ═══════════════════════════
+   壳里才出现：整窗 --win 底，中间一张 600px 卡片，背后什么都不留。
+   浏览器模式下这一层永远不挂。 */
+#onbWrap{position:fixed;inset:0;z-index:150;display:none;background:var(--win);
+  align-items:center;justify-content:center;padding:20px;animation:fadeIn .2s ease-out}
+#onbWrap.on{display:flex}
+body.onb #chrome,body.onb #app,body.onb #banners{display:none!important}
+/* 壳里留一条标签条高度的空拖拽带给红绿灯 */
+#onbDrag{position:fixed;left:0;right:0;top:0;height:42px;z-index:151;display:none;
+  -webkit-app-region:drag}
+body.onb.shell #onbDrag{display:block}
+#onbWrap .onb-card{width:600px;max-width:100%;border-radius:var(--r-xl);background:var(--card-face);
+  box-shadow:var(--el-3);padding:36px 24px 26px;animation:arrive .3s var(--ease-out)}
+#onbWrap .onb-head{text-align:center;padding:0 14px}
+#onbWrap .onb-ico{width:72px;height:72px;margin:0 auto 18px;border-radius:17px;overflow:hidden;
+  box-shadow:var(--el-2)}
+#onbWrap .onb-ico img{width:72px;height:72px;display:block}
+#onbWrap .onb-card h1{margin:0;font-size:22px;font-weight:600;letter-spacing:.01em;line-height:1.4}
+#onbWrap .onb-sub{margin:11px 0 0;font-size:13px;color:var(--t2);line-height:1.8}
+#onbWrap .onb-foot{margin:22px 0 0;text-align:center;font-size:12px;color:var(--t3)}
+#onbWrap .onb-fine{margin:18px 0 0;text-align:center;font-size:11px;color:var(--t4)}
+#onbWrap .choices{display:flex;gap:12px;margin-top:26px;justify-content:center}
+#onbWrap .choice{width:270px;height:176px;flex:none;text-align:left;padding:18px 18px 16px;
+  display:flex;flex-direction:column;border-radius:var(--r-lg);background:var(--card-face);
+  box-shadow:var(--el-1),var(--hi);
+  transition:transform var(--d-slow) var(--ease-out),box-shadow var(--d-slow) var(--ease-out)}
+#onbWrap .choice:hover{transform:translateY(-2px);box-shadow:var(--el-3)}
+#onbWrap .choice:active{transform:translateY(0) scale(.99);transition-duration:80ms}
+#onbWrap .choice .ci{width:32px;height:32px;border-radius:9px;flex:none;margin-bottom:12px;
+  background:var(--accent-soft);color:var(--accent);
+  display:flex;align-items:center;justify-content:center}
+#onbWrap .choice .ci svg{width:18px;height:18px}
+#onbWrap .choice h2{margin:0;font-size:14px;font-weight:600;line-height:1.4}
+#onbWrap .choice p{margin:6px 0 0;font-size:12px;color:var(--t2);line-height:1.7}
+#onbWrap .choice .path{margin-top:auto;display:flex;align-items:baseline;gap:8px;font-size:11px;color:var(--t3)}
+#onbWrap .choice .path .p{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#onbWrap .choice.wait{opacity:.72;pointer-events:none}
+/* 整理中：不定进度条 */
+#onbWrap .pbar{height:6px;border-radius:3px;background:var(--accent-soft);overflow:hidden;
+  position:relative;margin-top:26px}
+#onbWrap .pbar::after{content:"";position:absolute;top:0;bottom:0;left:0;width:38%;border-radius:3px;
+  background:linear-gradient(90deg,transparent,var(--accent) 22%,var(--accent) 78%,transparent);
+  animation:sweep 1.6s linear infinite}
+@keyframes sweep{from{transform:translateX(-105%)}to{transform:translateX(255%)}}
+#onbWrap .scanrow{display:flex;align-items:baseline;justify-content:space-between;gap:14px;margin-top:16px}
+#onbWrap .scanrow .cnt{font-size:13px;color:var(--t2);flex:none;white-space:nowrap}
+#onbWrap .scanrow .cnt b{font-size:15px;font-weight:600;color:var(--t1);margin:0 2px}
+#onbWrap .scanrow .pth{font-size:11px;color:var(--t4);flex:1;min-width:0;text-align:right;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 整理好了 */
+#onbWrap .okmark{width:48px;height:48px;margin:0 auto 16px;color:var(--ok)}
+#onbWrap .okmark svg{width:48px;height:48px;stroke-width:1.5;fill:none;stroke:currentColor}
+#onbWrap .stats{display:flex;gap:10px;margin-top:26px}
+#onbWrap .stat{flex:1;min-width:0;text-align:center;padding:14px 8px 13px;border-radius:12px;
+  background:var(--card-face);box-shadow:var(--el-1)}
+#onbWrap .stat b{display:block;font-size:21px;font-weight:600;letter-spacing:.01em;line-height:1.2}
+#onbWrap .stat span{display:block;margin-top:5px;font-size:11px;color:var(--t3)}
+#onbWrap .skipnote{margin:16px 0 0;text-align:center;font-size:12px;color:var(--t3);line-height:1.7}
+/* 找不到笔记库 */
+#onbWrap .qmark{position:relative;width:56px;height:56px;margin:0 auto 16px;border-radius:15px;
+  background:var(--field);color:var(--t3);display:flex;align-items:center;justify-content:center}
+#onbWrap .qmark svg{width:28px;height:28px;stroke-width:1.5}
+#onbWrap .qmark em{position:absolute;right:-3px;bottom:-3px;width:22px;height:22px;border-radius:50%;
+  background:var(--card-face);box-shadow:var(--el-1);display:flex;align-items:center;
+  justify-content:center;font:600 12px/1 var(--ui);font-style:normal;color:var(--t2)}
+#onbWrap .oldpath{display:flex;align-items:center;justify-content:center;gap:8px;margin:18px auto 0;
+  max-width:400px;height:32px;padding:0 12px;border-radius:9px;background:var(--field);
+  font-size:12px;color:var(--t3)}
+#onbWrap .oldpath svg{width:13px;height:13px;flex:none}
+#onbWrap .oldpath span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#onbWrap .onb-btns{display:flex;align-items:center;justify-content:center;gap:10px;margin-top:24px}
+#onbWrap .onb-btns .btn{height:34px;padding:0 18px;border-radius:9px;font-size:13px}
 
 /* 分段控件与普通按钮：凹底＋当前项白块，跟样张同一套 */
 .seg{display:inline-flex;gap:2px;padding:3px;border-radius:10px;background:var(--field)}
@@ -1294,58 +1686,47 @@ body.focus-mode #chrome{box-shadow:none}
   white-space:nowrap;transition:background-color .15s ease,color .15s ease}
 .seg button:hover{color:var(--t1)}
 .seg button.on{background:var(--segon);color:var(--t1);font-weight:500;box-shadow:var(--segshadow)}
-.btn{height:28px;padding:0 13px;border-radius:8px;background:var(--field);
-  font-size:12px;color:var(--t1);transition:background-color .15s ease}
-.btn:hover{background:var(--hover)}
+/* 次级按钮：白底渐变 ＋ 顶部高光，不描边；主按钮 .key 换成淡紫底板 ＋ 强调色字 */
+.btn{height:28px;padding:0 13px;border-radius:var(--r-sm);border:0;
+  background:linear-gradient(#fff,#fafbfc);
+  font-size:12px;color:var(--t1);box-shadow:var(--el-1),var(--hi);
+  transition:transform var(--d-fast) var(--ease-out),box-shadow var(--d-fast) var(--ease-out)}
+:root[data-theme="dark"] .btn{background:linear-gradient(#323843,#2c313a)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .btn{
+  background:linear-gradient(#323843,#2c313a)}}
+.btn:hover{transform:translateY(-1px);box-shadow:var(--el-2),var(--hi)}
+.btn:active:not([disabled]){transform:translateY(0);box-shadow:var(--el-1)}
 .btn[disabled]{opacity:.4;pointer-events:none}
-.btn.key{background:var(--accent);color:var(--on-accent)}
-.btn.key:hover{opacity:.88;background:var(--accent)}
+.btn.key{background:var(--accent-soft);color:var(--accent)}
+.btn.key:hover{background:var(--accent-soft)}
 
 /* ═══ 顶部横幅：断线 / 升级 / 冲突 ═══════════
    界面里唯一允许出现的一行字，说的是「现在能不能用、你要做什么」，不是旁白。 */
 #banners{position:fixed;top:0;left:0;right:0;z-index:160}
 .bnr{display:none;align-items:center;justify-content:center;gap:12px;
   height:33px;padding:0 14px;font-size:11px;color:var(--t2);
-  background:var(--pop);border-bottom:1px solid var(--rule-row);
-  box-shadow:var(--segshadow);animation:arrive .18s ease-out}
+  background:var(--card-face);border:0;
+  box-shadow:var(--el-1);animation:arrive .18s ease-out}
 .bnr.on{display:flex}
 .bnr::before{content:"";width:6px;height:6px;border-radius:50%;flex:none;
   background:var(--accent);opacity:.75}
 #offline.bnr::before{background:var(--t3)}
 #conflict.bnr::before{background:var(--folder)}
-.bnr .btn{height:22px;padding:0 10px;font-size:11px;
-  background:var(--field);color:var(--t1)}
-.bnr .btn:hover{background:var(--hover)}
+.bnr .btn{height:22px;padding:0 10px;font-size:11px}
 body.bnr-on #app{padding-top:calc(var(--chrome-h) + var(--bnr-h))}
 body.bnr-on #chrome{top:var(--bnr-h)}
 
-/* ═══ 底部状态栏 ═══════════════════════════
-   左边一颗点报服务状态，右边按当前在看什么给一句提示。不是旁白，是状态。 */
-.statusbar{
-  position:fixed;left:0;right:0;bottom:0;z-index:18;
-  height:var(--status-h);
-  display:flex;align-items:center;justify-content:space-between;gap:10px;
-  padding:0 19px;border-top:1px solid var(--rule-row);
-  background:var(--win);color:var(--t3);font-size:9px;
-  user-select:none;-webkit-user-select:none;
-}
-body.solo .statusbar{display:none}
-.statusbar > span:first-child{display:flex;align-items:center;gap:6px;min-width:0}
-.status-dot{width:4px;height:4px;border-radius:50%;background:var(--dot);flex:none;
-  transition:background-color .2s ease}
-.status-dot.scan{background:var(--folder)}
-.status-dot.off{background:var(--t4)}
-#statusText,#statusDetail{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-#statusDetail{max-width:60%;text-align:right}
+/* 底部状态栏 5.4 起取消：服务状态并进开始页眉行那枚小圆点（.scan），
+   「双击正文即可编辑」这类提示并进首次提示卡，字数本来就在文档 meta 行里。 */
 
 /* ═══ 轻提示 ═══════════════════════════════
    一句话、两秒、不挡手。持久性的话走顶部横幅，不走这里。
    带动作按钮的那一版（notify(t,{action})，「已移到废纸篓 · 撤销」）多停几秒，
    而且只有它 pointer-events:auto——平时这张卡片飘在正文上，不该拦鼠标。 */
 #toast{
-  position:fixed;bottom:calc(var(--status-h) + 35px);left:50%;
+  position:fixed;bottom:calc(var(--status-h) + 46px);left:50%;
   transform:translate(-50%,8px);
-  background:var(--pop);border:1px solid var(--rule-row);box-shadow:var(--float);
+  background:var(--card-face);border:0;box-shadow:var(--el-3);
   border-radius:12px;font-size:12px;color:var(--t1);padding:11px 18px;
   z-index:200;pointer-events:none;opacity:0;
   transition:opacity .18s ease,transform .18s ease;
@@ -1371,19 +1752,12 @@ body.solo .statusbar{display:none}
   body.lists-on #side{position:fixed;left:0;top:var(--chrome-h);bottom:var(--status-h);width:var(--sbw);z-index:60;
     box-shadow:var(--popbig);display:none}
   body.lists-on.sideover #side{display:flex}
-  /* 地址栏那颗 ⌘K 先让位，正文别被挤窄 */
-  .ob-kbd{display:none}
   .section-head .section-meta{display:none}
 }
 @media(max-width:700px){
   body.lists-on #app{grid-template-columns:0 0 0 0 1fr}
   body.lists-on #listpane{position:fixed;left:0;top:var(--chrome-h);bottom:var(--status-h);width:var(--lcw);z-index:55;
     box-shadow:var(--popbig)}
-  .statusbar{padding:0 12px;font-size:8px}
-  #statusDetail{max-width:60%}
-  #toolbar{padding:0 9px;gap:2px}
-  .omnibox{margin:0 2px 0 5px;padding:0 9px}
-  #bmbar{padding:0 10px 6px}
   .modal-footer span:last-child{display:none}
 }
 
@@ -1398,9 +1772,10 @@ body.solo #chrome{display:none!important}
 @media print{
   html,body{height:auto;overflow:visible;background:#fff;color:#000}
   #side,#listpane,.split,.tabbar,.outline,#outfloat,.listbtn,.editstatus,
-  #chrome,#obdrop,#bmdrop,.statusbar,#toast,
+  #chrome,#toast,
   .doc-toolbar,.formatbar,.doc-end,.editor-hint,
-  #banners,#ctx,#fmt,#wlpick,#tabpick,#cmdkWrap,#qlwrap,#cfgWrap,#slash,#typeWrap{display:none!important}
+  #banners,#ctx,#fmt,#wlpick,#tabpick,#cmdkWrap,#qlwrap,#cfgWrap,#slash,#typeWrap,
+  #onbWrap,#onbDrag{display:none!important}
   #app{display:block!important;padding-top:0!important;height:auto!important}
   #docpane{position:static;overflow:visible}
   #panes{position:static}
@@ -1419,6 +1794,17 @@ body.solo #chrome{display:none!important}
 
 <div id="chrome">
   <div id="tabstrip">
+    <div class="navgrp">
+      <button type="button" class="navb" id="navBack" title="后退 ⌘[" aria-label="后退" disabled>
+        <i data-ic="left" data-sz="16"></i>
+      </button>
+      <button type="button" class="navb" id="navFwd" title="前进 ⌘]" aria-label="前进" disabled>
+        <i data-ic="right" data-sz="16"></i>
+      </button>
+      <button type="button" class="navb" id="navHome" title="回到开始页" aria-label="回到开始页">
+        <i data-ic="home" data-sz="16"></i>
+      </button>
+    </div>
     <div id="tabcluster">
       <div class="tabbar" id="tabbar"></div>
       <button type="button" id="tabplus" title="新标签页 ⌘T" aria-label="新标签页">
@@ -1426,46 +1812,23 @@ body.solo #chrome{display:none!important}
       </button>
     </div>
     <div id="tabflex" aria-hidden="true"></div>
-    <button type="button" id="appmark" title="AM·Note · 回到开始页" aria-label="回到开始页">
-      <img src="/icon-192.png" width="24" height="24" alt="">
-    </button>
-  </div>
-  <div id="toolbar">
-    <button type="button" class="navb" id="navBack" title="后退 ⌘[" aria-label="后退" disabled>
-      <i data-ic="left" data-sz="16"></i>
-    </button>
-    <button type="button" class="navb" id="navFwd" title="前进 ⌘]" aria-label="前进" disabled>
-      <i data-ic="right" data-sz="16"></i>
-    </button>
-    <button type="button" class="navb" id="navHome" title="回到开始页" aria-label="回到开始页">
-      <i data-ic="home" data-sz="16"></i>
-    </button>
-    <div class="omnibox" id="omnibox">
-      <span class="ob-icon" id="obicon"><i data-ic="search" data-sz="14"></i></span>
-      <span class="ob-field">
-        <span class="ob-path" id="obpath" hidden><span></span></span>
-        <input id="omni" type="text" placeholder="搜索笔记，或输入文件名" spellcheck="false" autocomplete="off" aria-label="搜索笔记，或输入文件名" aria-autocomplete="list">
-      </span>
-      <span class="ob-chip" id="obchip" hidden></span>
-      <kbd class="ob-kbd" aria-hidden="true">⌘ K</kbd>
+    <div class="rightgrp">
+      <button type="button" class="topsearch" id="topSearch" title="搜索 ⌘K" aria-label="搜索">
+        <i data-ic="search" data-sz="13"></i>
+        <span class="lbl">搜索</span>
+        <kbd aria-hidden="true">⌘K</kbd>
+      </button>
+      <button type="button" class="navb" id="navCfgTop" title="设置 ⌘," aria-label="设置">
+        <i data-ic="gear" data-sz="16"></i>
+      </button>
+      <button type="button" id="appmark" title="AM·Note · 回到开始页" aria-label="回到开始页">
+        <img src="/icon-192.png" width="24" height="24" alt="">
+      </button>
     </div>
-    <button type="button" class="navb" id="navBm" title="书签栏 ⌘⇧B" aria-label="书签栏">
-      <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M6 5.5h12v15l-6-3.2L6 20.5z"/></svg>
-    </button>
-    <button type="button" class="navb" id="navType" title="阅读与外观" aria-label="阅读与外观">
-      <i data-ic="sliders" data-sz="16"></i>
-    </button>
     <div class="loadbar" id="loadbar"></div>
   </div>
-  <div id="bmbar"></div>
 </div>
-<footer class="statusbar">
-  <span><i class="status-dot" id="statusDot"></i><span id="statusText">就绪</span></span>
-  <span id="statusDetail"></span>
-</footer>
 <div id="toast" role="status" aria-live="polite"></div>
-<div id="obdrop" class="obdrop" role="listbox"></div>
-<div id="bmdrop" class="drop"></div>
 
 <div id="banners">
   <div class="bnr" id="upgrade">
@@ -1557,14 +1920,31 @@ body.solo #chrome{display:none!important}
 </div>
 
 <div id="cfgWrap">
-  <div id="viewCfg">
-    <div class="cfghead">
-      <span class="ttl">设置</span>
-      <button class="iba" id="cfgClose" title="关闭"><i data-ic="close"></i></button>
+  <div id="viewCfg" role="dialog" aria-modal="true" aria-label="设置">
+    <nav class="cfg-rail" id="cfgRail" aria-label="设置分类">
+      <div class="rt">设置</div>
+      <button type="button" class="cfg-navi" data-tab="reading"><i data-ic="text-size"></i>阅读与外观</button>
+      <button type="button" class="cfg-navi" data-tab="library"><i data-ic="folder"></i>笔记库</button>
+      <button type="button" class="cfg-navi" data-tab="advanced"><i data-ic="sliders"></i>高级</button>
+      <button type="button" class="cfg-navi" data-tab="about"><i data-ic="info"></i>关于</button>
+    </nav>
+    <div class="cfg-pane">
+      <div class="cfg-head">
+        <h2 id="cfgTitle">阅读与外观</h2>
+        <button class="iba" id="cfgClose" title="关闭 Esc" aria-label="关闭"><i data-ic="close" data-sz="14"></i></button>
+      </div>
+      <div id="cfgBody"></div>
+      <div class="dirtybar">
+        <span class="msg">有未保存的更改</span>
+        <button type="button" class="btn key" id="cfgSave">保存并重新整理</button>
+        <button type="button" class="btnt" id="cfgDrop">放弃</button>
+      </div>
     </div>
-    <div id="cfgBody"></div>
   </div>
 </div>
+
+<div id="onbDrag" aria-hidden="true"></div>
+<div id="onbWrap" role="dialog" aria-modal="true" aria-label="欢迎使用 AM·Note"></div>
 <script>
 const DATA = /*__DATA__*/null/*__DATA__*/;
 const EMBED = window.__EMBED__ || null;
@@ -1649,23 +2029,31 @@ function bnr(id, on){
    Mac 的约定是重开就回到离开时的样子。存储键名沿用 tp-state，不改。
    lists（列表与边栏收放）只在当次会话内保持，不进 localStorage：
    打开文档默认纯正文，重开回纯正文。 */
-const DEF_ST={sbw:224, lcw:320, side:true, toc:true, bookmarks:true, recents:[],
+const DEF_ST={sbw:224, lcw:320, side:true, toc:true, bookmarks:false, recents:[],
   pins:[],              /* 已收藏：库根相对路径。文件没了就在 setTree 里剔掉 */
   homeFilter:'all',     /* 开始页/文件夹页/已收藏页的类型筛：all | md | html */
-  homeView:'grid'};     /* 卡片网格 grid ｜ 单列列表 list */
+  homeView:'grid',      /* 卡片网格 grid ｜ 单列列表 list */
+  tips:false,           /* 开始页那张「第一次来？」提示卡，只有全新档案才为 true */
+  cfgTab:'reading',     /* 设置弹层上次停在哪一段 */
+  cfgAdv:false};        /* 「高级」那段的折叠区展没展开 */
+/* 整个键不存在＝这台机器第一次打开门户。只认「没有 tp-state」这一种情况：
+   老用户哪怕把每个值都改回默认，键也还在，提示卡不会突然冒出来。 */
+const FRESH_PROFILE = (()=>{ try{ return localStorage.getItem('tp-state')===null }catch(e){ return false } })();
 let ST=Object.assign({}, DEF_ST, (()=>{ try{ return JSON.parse(localStorage.getItem('tp-state')||'{}') }catch(e){ return {} } })());
 let stSaveT=null;
 function saveST(){ clearTimeout(stSaveT); stSaveT=setTimeout(()=>{
   try{ localStorage.setItem('tp-state', JSON.stringify(ST)); }catch(e){}
 },300); }
+if(FRESH_PROFILE){ ST.tips=true; saveST(); }
 function applyST(){
   document.documentElement.style.setProperty('--sbw', ST.sbw+'px');
   document.documentElement.style.setProperty('--lcw', ST.lcw+'px');
   /* toc 这个键以前存的是「右侧目录气泡钉不钉住」，默认关；现在是左侧大纲，默认开。
      语义换了，老值不能直接沿用，迁一次就够，之后听用户的。 */
   if(!ST.tocv){ ST.toc=true; ST.tocv=2; saveST(); }
-  if(ST.bookmarks===undefined) ST.bookmarks=true;
-  document.body.classList.toggle('nobm', ST.bookmarks===false);
+  /* 书签栏 5.4 起整条下线。老档案里可能还存着 true，一次性抹平，
+     免得 state().bookmarks 跟壳菜单的勾对不上。 */
+  if(ST.bookmarks!==false){ ST.bookmarks=false; saveST(); }
 }
 /* 库根绝对路径。从 /__status 拿——分享、拖出去的 file:// URI、
    报给壳的当前文件路径都要它。拿不到就是空串，那几件事静默不做。 */
@@ -1732,6 +2120,20 @@ async function openExternal(rel){
     if(!r.ok) tell('打不开', r.错误||'');
   }catch(e){ tell('打不开','服务没应答'); }
 }
+/* 在访达里打开库根。服务端现在还要求非空路径（Phase B 放宽 /__reveal），
+   被拒了就退回「当前这份文档」那条老路，两条都不行才出一句提示。 */
+async function revealVault(){
+  if(IS_HTTP){
+    try{
+      const r=await (await fetch('/__reveal',{method:'POST',
+        headers:hdrs(), body:JSON.stringify({路径:''})})).json();
+      if(r && r.ok) return;
+    }catch(e){}
+  }
+  const t=(typeof active==='function') ? active() : null;
+  if(t && t.path && !t.ext){ revealPath(t.path); return; }
+  flash('这个版本还打不开库根，先从访达里自己进去');
+}
 async function revealPath(path){
   if(!path || !IS_HTTP) return;
   try{
@@ -1753,10 +2155,17 @@ async function copyText(t){
     }catch(e2){ return false; }
   }
 }
-function clipPath(rel){
-  if(!rel) return;
-  if(!LIBROOT){ flash('还没连上服务'); return; }
-  copyText('file://'+LIBROOT+'/'+rel).then(ok=>flash(ok?'路径已拷贝':'拷不了'));
+/* opt.text 直接给整串（库外文档用绝对路径），opt.msg 换掉回执文案。
+   不带 opt 的调用一个字都没变——菜单、⌥⌘C、右键都还是老样子。 */
+function clipPath(rel, opt){
+  opt=opt||{};
+  let txt=opt.text||'';
+  if(!txt){
+    if(!rel) return;
+    if(!LIBROOT){ flash('还没连上服务'); return; }
+    txt='file://'+LIBROOT+'/'+rel;
+  }
+  copyText(txt).then(ok=>flash(ok ? (opt.msg||'路径已拷贝') : '拷不了'));
 }
 /* 一句话的回执，两秒多自己消失。窗口底部居中一张小卡片。
    持久的事（断线、升级、冲突）走顶部横幅 bnr()，不走这里。
@@ -1795,9 +2204,9 @@ function hideToast(){
 function flash(t){ notify(t); }
 
 /* ── 阅读版式 ─────────────────────────────
-   默认 17 / 1.85 / 640。prefsGen 2 把仍停在上一版默认 15/1.80/680 的迁过来；
-   自己调过的不动。 */
-const DEF_PREF = {font:'f-sans', fs:17, lh:195, w:690, theme:'auto'};
+   默认 17 / 1.8 / 690。每一代默认值变了就加一条 prefsGen：只把「值还停在上一代
+   默认」的人迁过来，自己调过的一律不动。 */
+const DEF_PREF = {font:'f-sans', fs:17, lh:180, w:690, theme:'auto'};
 const RESETTABLE = ['font','fs','lh','w'];
 const PREF = Object.assign({}, DEF_PREF,
   (()=>{ try{ return JSON.parse(localStorage.getItem('tp-pref')||'{}') }catch(e){ return {} } })());
@@ -1818,6 +2227,12 @@ const savePref = () => { try{ localStorage.setItem('tp-pref', JSON.stringify(PRE
   if(PREF.prefsGen < 3){
     if(+PREF.fs===17 && +PREF.lh===185 && +PREF.w===640){ PREF.lh=195; PREF.w=690; }
     PREF.prefsGen = 3;
+  }
+  // 4：行高默认 1.95 → 1.8。只看行高这一项：还停在 195（上一代的默认，
+  // 也就是没动过行高）的迁到 180；自己拖过滑杆的（任何别的值）原样留着。
+  if(PREF.prefsGen < 4){
+    if(+PREF.lh===195) PREF.lh=180;
+    PREF.prefsGen = 4;
   }
   savePref();
 })();
@@ -1843,16 +2258,28 @@ function applyPref(){
   if(SHELL) post({type:'theme', value:PREF.theme});
   syncPrefControls();
 }
-/* 版式与外观的控件住在设置页里，页没开就没有这些节点 */
+/* 版式与外观的控件住在设置页「阅读与外观」那一段里，页没开就没有这些节点。
+   行距／栏宽是三档预设：值不在三档里（老档案自己拖过滑杆）就一档都不亮，
+   也不去改它——用户按了哪一档才算他要换。 */
 function syncPrefControls(){
-  const fs=$('#fs');
+  const fs=$('#cfgFs');
   if(!fs){ syncPopControls(); return; }
-  fs.value=PREF.fs; $('#lh').value=PREF.lh; $('#w').value=PREF.w;
-  $('#vfs').textContent=PREF.fs+'px';
-  $('#vlh').textContent=(PREF.lh/100).toFixed(2);
-  $('#vw').textContent=PREF.w+'px';
-  $$('.seg[data-k=font] button').forEach(b=>b.classList.toggle('on',b.dataset.v===PREF.font));
-  $$('.seg[data-k=theme] button').forEach(b=>b.classList.toggle('on',b.dataset.v===PREF.theme));
+  fs.value=PREF.fs;
+  fs.style.setProperty('--pct', (((PREF.fs-15)/6)*100).toFixed(1)+'%');
+  $('#cfgFsV').textContent=PREF.fs;
+  const smp=$('#cfgFsSample'); if(smp) smp.style.fontSize=PREF.fs+'px';
+  $$('#cfgBody [data-tc]').forEach(b=>b.classList.toggle('on', b.dataset.tc===PREF.theme));
+  $$('#cfgBody [data-fc]').forEach(b=>b.classList.toggle('on', b.dataset.fc===PREF.font));
+  $$('#cfgBody .seg[data-k] button').forEach(b=>{
+    const k=b.parentElement.dataset.k;
+    b.classList.toggle('on', String(PREF[k])===String(b.dataset.v));
+  });
+  const tc=$('#cfgToc');
+  if(tc){
+    const on=ST.toc!==false;
+    tc.classList.toggle('on', on);
+    tc.setAttribute('aria-checked', on?'true':'false');
+  }
   const rb=$('#rstPref');
   if(rb) rb.disabled = RESETTABLE.every(k=>PREF[k]===DEF_PREF[k]);
   syncPopControls();
@@ -2403,7 +2830,7 @@ function scrollYOf(box, el){
   return box.scrollTop + el.getBoundingClientRect().top - box.getBoundingClientRect().top;
 }
 /* 开始页 / 搜索页 / 文件夹页 / 已收藏页，四种都画在这个标签自己的 .pagebox 里。
-   除了搜索页，其余三种是灰底白卡（--canvas），打开的笔记仍然整面白（--win）。 */
+   5.4 起四种都是纯白 --win，卡片靠阴影浮起来；--canvas 只留给引用块和内凹控件。 */
 function isPageKind(k){ return k==='start'||k==='search'||k==='folder'||k==='pins'; }
 function paintPage(t, opt){
   const p=paneOf(t); if(!p) return;
@@ -2411,7 +2838,6 @@ function paintPage(t, opt){
   const k=kindOfTab(t);
   const quiet=!!(opt&&opt.quiet);
   const y=quiet ? box.scrollTop : 0;
-  box.classList.toggle('canvas', k!=='search');
   if(k==='search') paintSerp(t, box);
   else if(k==='folder') paintFolder(t, box);
   else if(k==='pins') paintPins(t, box);
@@ -2490,14 +2916,41 @@ function cardText(i){
   if(t && s.slice(0,t.length)===t) s=s.slice(t.length).trim();
   return s.slice(0,140);
 }
-function greetingHtml(ico, eyebrow, title, sub){
+/* 眉行、大标题、副标，右边一颗「＋ 新建随手记」。
+   opts.scan＝眉行右边挂一枚服务状态点（原底部状态栏那一格，只有开始页要）。 */
+function greetingHtml(ico, eyebrow, title, sub, opts){
+  const scan = (opts&&opts.scan)
+    ? `<span class="ey-sep"></span><span class="scan" data-scan><i></i><span class="tx">${esc(scanChipText())}</span></span>`
+    : '';
   return `<div class="home-greeting">
     <div>
-      <div class="eyebrow">${ico} ${esc(eyebrow)}</div>
+      <div class="eyebrow">${ico} ${esc(eyebrow)}${scan}</div>
       <h1>${esc(title)}</h1>
       <p class="home-sub">${esc(sub)}</p>
     </div>
-    <button type="button" class="hbtn" data-act="newnote">${icon('plus',15)}<span class="lbl">新建随手记</span></button>
+    <button type="button" class="hbtn key hero-new" data-act="newnote">${icon('plus',16)}<span class="lbl">新建随手记</span></button>
+  </div>`;
+}
+/* 顶层文件夹芯片行：数据跟书签栏是同一份（TREE.目录），点开文件夹页，⌘ 点开新标签。
+   末尾那枚是「已收藏」。5.4 起书签栏由它取代。 */
+function startChipsHtml(){
+  const dirs=(TREE&&TREE.目录)||[];
+  return `<div class="dirchips">${dirs.map(d=>
+      `<button type="button" class="dirchip" data-folder="${esc(d.名称)}" title="${esc(d.名称)}">${icon('folder',13)}<span>${esc(d.显示名||d.名称)}</span></button>`
+    ).join('')}<button type="button" class="dirchip fav" data-act="pins" title="已收藏">${icon('star',13)}<span>已收藏</span></button></div>`;
+}
+/* 首次提示卡。只有全新档案（从没写过 tp-state）第一次进来时出，点「知道了」就不再来。 */
+function tipsCardHtml(){
+  if(ST.tips!==true) return '';
+  const row=(ic,txt)=>`<div class="tc-col"><span class="tc-ico">${icon(ic,14)}</span><p>${txt}</p></div>`;
+  return `<div class="tipcard">
+    <div class="tc-head"><h3>第一次来？三件事就够了</h3>
+      <button type="button" class="tc-x" data-act="tipsok">知道了</button></div>
+    <div class="tc-cols">
+      ${row('search','<kbd>⌘K</kbd> 找任何一篇笔记')}
+      ${row('edit','双击正文即可编辑，边写边存')}
+      ${row('focus','专注模式，屏幕上只剩正文')}
+    </div>
   </div>`;
 }
 function sectionHead(label, n){
@@ -2531,9 +2984,15 @@ function cardsHtml(list, fallback){
   if(!list.length) return fallback;
   return `<div class="cards${homeList()?' list':''}">${list.map(cardHtml).join('')}</div>`;
 }
-function emptyHtml(title, text){
-  return `<div class="empty">${icon('folder',30)}<h2>${esc(title)}</h2><p>${esc(text)}</p>
-    <button type="button" class="hbtn" data-act="newnote">${icon('plus',15)}<span class="lbl">新建随手记</span></button></div>`;
+/* opts.big＝空库那一版，占满问候区以下整片空白并居中；opts.buttons＝换掉默认那颗按钮。 */
+function emptyHtml(title, text, opts){
+  const o=opts||{};
+  const btns=o.buttons
+    || `<button type="button" class="hbtn key" data-act="newnote">${icon('plus',15)}<span class="lbl">新建随手记</span></button>`;
+  return `<div class="empty${o.big?' big':''}">
+    <div class="empty-mark">${icon(o.mark||'new-note',30)}</div>
+    <h2>${esc(title)}</h2><p>${text}</p>
+    <div class="empty-btns">${btns}</div></div>`;
 }
 function resumeHtml(i){
   const ex=cardText(i) || '写下来的想法，下次还可以接着想。';
@@ -2555,10 +3014,13 @@ function paintStart(box){
   if(!box) return;
   const tip=`<p class="home-tip">${icon('search',13)} 想找以前写过的内容？按 <kbd>⌘ K</kbd> 搜一搜。</p>`;
   if(!items.length){
+    // 空库：⌘K 也搜不到东西，底下那行提示和文件夹芯片一起收起来
+    const btns=`<button type="button" class="hbtn key" data-act="newnote">${icon('edit',15)}<span class="lbl">写下第一篇</span></button>
+      <button type="button" class="hbtn" data-act="revealvault">${icon('folder',15)}<span class="lbl">在访达中打开这个文件夹</span></button>`;
     box.innerHTML=`<div class="home">
-      ${greetingHtml(icon('leaf',13),'我的笔记','今天，想记下什么？','把 md / html 放进这个文件夹，就会出现在这里。')}
-      ${emptyHtml('这里还空着','写下第一个想法，或者先把已有的笔记搬进来。')}
-      ${tip}</div>`;
+      ${greetingHtml(icon('leaf',13),'我的笔记','今天，想记下什么？','笔记库已经就位，就差第一篇。',{scan:true})}
+      ${emptyHtml('这里还空着','把 Markdown 或网页放进笔记库，它们会自动出现在这里。<br>文件留在原地，不上传，不改格式。',{big:true, buttons:btns})}
+      </div>`;
     return;
   }
   const all=pageDocs('start');
@@ -2570,8 +3032,10 @@ function paintStart(box){
     ? `<button type="button" class="see-all" data-folder="">${icon('folder',14)}<span>看全部 ${all.length} 篇</span></button>`
     : '';
   box.innerHTML=`<div class="home">
-    ${greetingHtml(icon('leaf',13),'我的笔记','今天，想记下什么？','从上次的思路，轻松继续。')}
+    ${greetingHtml(icon('leaf',13),'我的笔记','今天，想记下什么？','从上次的思路，轻松继续。',{scan:true})}
+    ${startChipsHtml()}
     ${last?resumeHtml(last):''}
+    ${tipsCardHtml()}
     ${sectionHead('最近打开', shown.length)}
     ${cardsHtml(shown, emptyHtml('这一类还没有','换个类型看看，或者写点新的。'))}
     ${more}
@@ -2690,80 +3154,15 @@ function goAppHome(){
   navigate(makeEntry('start', {title:'开始'}));
 }
 
-function omniIconFor(kind){
-  if(kind==='search') return icon('search',13);
-  if(kind==='folder') return icon('folder',13);
-  if(kind==='pins') return icon('star',13);
-  if(kind==='html') return icon('globe',13);
-  if(kind==='note') return icon('pencil',13);
-  return icon('doc-text',13);
-}
+/* 5.4 起标签条上只剩「能不能前进后退」要跟着当前标签走；
+   路径去了文档头的芯片，MD/HTML 小标签去了文档头的 .dt-tag。 */
 function syncChrome(){
   if(SOLO) return;
   const t=active();
-  const back=$('#navBack'), fwd=$('#navFwd'), bm=$('#navBm');
+  const back=$('#navBack'), fwd=$('#navFwd');
   if(back) back.toggleAttribute('disabled', !canBack(t));
-  if(fwd) fwd.toggleAttribute('disabled', !canForward(t));
-  if(bm) bm.classList.toggle('on', ST.bookmarks!==false);
-  const omni=$('#omni'), chip=$('#obchip'), ico=$('#obicon');
-  const path=currentPath(t);
-  if(omni && document.activeElement!==omni){
-    omni.value=path;
-  }
-  const k=kindOfTab(t);
-  if(chip){
-    if(k==='html'){ chip.hidden=false; chip.textContent='HTML'; }
-    else if(k==='md' && t && !t.ext && String(t.path||'').startsWith(NOTE_DIR+'/')){ chip.hidden=false; chip.textContent='笔记'; }
-    else if(k==='md'){ chip.hidden=false; chip.textContent='MD'; }
-    else { chip.hidden=true; }
-  }
-  if(ico) ico.innerHTML=omniIconFor(k==='start'?'search':k);
-  const bmpin=$('#bmPinned'); if(bmpin) bmpin.classList.toggle('on', k==='pins');
-  paintIdlePath(path, document.activeElement===omni);
-  requestAnimationFrame(()=>paintIdlePath(path, document.activeElement===$('#omni')));
-  syncStatusBar();
-}
-function pathTextWidth(s){
-  let probe=pathTextWidth._el;
-  if(!probe){
-    probe=document.createElement('span');
-    probe.setAttribute('aria-hidden','true');
-    probe.style.cssText='position:absolute;left:-9999px;top:0;white-space:nowrap;visibility:hidden;pointer-events:none';
-    document.body.appendChild(probe);
-    pathTextWidth._el=probe;
-  }
-  const src=$('#obpath')||document.body;
-  const cs=getComputedStyle(src);
-  probe.style.fontSize=cs.fontSize;
-  probe.style.fontFamily=cs.fontFamily;
-  probe.style.fontWeight=cs.fontWeight;
-  probe.style.fontStyle=cs.fontStyle;
-  probe.style.letterSpacing=cs.letterSpacing;
-  probe.textContent=s;
-  return probe.offsetWidth;
-}
-function paintIdlePath(path, focused){
-  const idle=$('#obpath'); if(!idle) return;
-  const inner=idle.querySelector('span'); if(!inner) return;
-  idle.hidden=!!focused || !path;
-  if(idle.hidden){ inner.textContent=''; return; }
-  const room=idle.clientWidth;
-  const fits=s=> !room || pathTextWidth(s)<=room+1;
-  if(fits(path)){ inner.textContent=path; return; }
-  const parts=String(path).split('/').filter(Boolean);
-  for(let n=Math.max(1, parts.length-1); n>=1; n--){
-    const s='…/'+parts.slice(-n).join('/');
-    if(fits(s)){ inner.textContent=s; return; }
-  }
-  const name=parts[parts.length-1]||path;
-  let lo=1, hi=name.length, best='…'+name;
-  while(lo<=hi){
-    const mid=(lo+hi)>>1;
-    const s='…'+name.slice(-mid);
-    if(fits(s)){ best=s; lo=mid+1; }
-    else hi=mid-1;
-  }
-  inner.textContent=best;
+  if(fwd)  fwd.toggleAttribute('disabled', !canForward(t));
+  syncScanChip();
 }
 
 function tabFolder(t){
@@ -3114,12 +3513,12 @@ function wireDocBar(p, t){
     const b=e.target.closest('[data-dt]'); if(!b) return;
     const a=b.dataset.dt;
     if(t.id!==curTab) showTab(t.id);
-    if(a==='folder'){
-      const f=b.dataset.folder||'';
-      navigate(makeEntry('folder',{folder:f, title:f?f.split('/').pop():'库根', path:f?f+'/':'/'}),
-               {newTab:e.metaKey||e.ctrlKey});
-    }
+    if(a==='path') pathChipClick(e, b, t);
     else if(a==='outline') AMN.toggleToc();
+    else if(a==='pin'){ togglePin(t.path); drawDocBar(t); }
+    else if(a==='reveal') revealPath(t.path);
+    else if(a==='share') shareDoc(t);
+    else if(a==='newwin') openSolo(t.path);
     else if(a==='focus') toggleFocus();
     else if(a==='more') docMoreMenu(e, t);
     else if(a==='edit') startEdit();
@@ -3151,61 +3550,140 @@ function wireOutline(p, t){
   });
 }
 
-/* 面包屑：库内是「文件夹 › 文件名」，点文件夹进那一页；
-   库外文档拿绝对路径的最后两段，改不了也没有文件夹页可去。 */
-function docCrumb(t){
+/* ── 路径芯片 ─────────────────────────────
+   库内是「文件夹 › … › 文件名」，每个文件夹段带 data-folder（⌘ 单击开那一页）；
+   库外文档只取绝对路径的最后两段，没有文件夹页可去，拷的是绝对路径。
+   段数据挂在 data-segs 上，宽度不够时 fitPathChip 从最左边起收成一枚 …——
+   跟旧地址栏那套省略逻辑同一个套路，只是量的是芯片自己那一格。 */
+function pathSegs(t){
   if(t.ext){
-    const segs=String(t.abs||t.path||'').split('/').filter(Boolean);
-    const two=segs.slice(Math.max(0, segs.length-2));
-    const dir=two.length>1?two[0]:'';
-    return icon('folder',13)
-      + (dir?`<span>${esc(dir)}</span><span class="sep">›</span>`:'')
-      + `<span class="now">${esc(two[two.length-1]||'')}</span>`;
+    const all=String(t.abs||t.path||'').split('/').filter(Boolean);
+    return all.slice(Math.max(0, all.length-2)).map(x=>({t:x}));
   }
-  const rel=String(t.path||'');
-  const dir=dirOf(rel);
-  const name=rel.split('/').pop() || t.title || '';
-  return icon('folder',13)
-    + `<button type="button" data-dt="folder" data-folder="${esc(dir)}" title="打开文件夹">${esc(dir||'库根')}</button>`
-    + `<span class="sep">›</span><span class="now">${esc(name)}</span>`;
+  const parts=String(t.path||'').split('/').filter(Boolean);
+  if(parts.length<2) return [{t:'库根', f:''}, {t:parts[0]||String(t.title||'')}];
+  const acc=[];
+  return parts.map((x,i)=>{
+    if(i<parts.length-1){ acc.push(x); return {t:x, f:acc.join('/')}; }
+    return {t:x};
+  });
+}
+function pathFull(t){ return t.ext ? String(t.abs||t.path||'') : String(t.path||''); }
+function pathChipHtml(t){
+  return `<button type="button" class="pathchip has-tip" data-dt="path" aria-label="拷贝路径"`
+    + ` data-segs="${esc(JSON.stringify(pathSegs(t)))}">`
+    + `<span class="fi">${icon('folder',14)}</span>`
+    + `<span class="pc-body"></span>`
+    + `<span class="cp"><span class="ic-copy">${icon('copy',13)}</span>`
+    +   `<span class="ic-done">${icon('check',13)}</span></span>`
+    + `<span class="tip"><b>${esc(pathFull(t))}</b>点击拷贝路径</span></button>`;
+}
+function fitPathChip(chip){
+  if(!chip) return;
+  const body=chip.querySelector('.pc-body'); if(!body) return;
+  let segs=[]; try{ segs=JSON.parse(chip.dataset.segs||'[]'); }catch(e){}
+  if(!segs.length) return;
+  const paint=(from, tight)=>{
+    let h = from>0 ? `<span class="pc-seg">…</span><span class="pc-sep">›</span>` : '';
+    segs.slice(from).forEach((sg,i,arr)=>{
+      const last=i===arr.length-1;
+      h+=`<span class="pc-seg${last?' now':''}"${sg.f!=null?` data-folder="${esc(sg.f)}"`:''}>${esc(sg.t)}</span>`;
+      if(!last) h+=`<span class="pc-sep">›</span>`;
+    });
+    body.classList.toggle('tight', !!tight);
+    body.innerHTML=h;
+  };
+  for(let from=0; from<segs.length; from++){
+    paint(from, from===segs.length-1);            // 最后一轮放开文件名，让它自己打省略号
+    if(!body.clientWidth) return;                 // 还没上屏，量不出来，下一帧再说
+    if(body.scrollWidth<=body.clientWidth+1) return;
+  }
+}
+function refitPaths(){ $$('#panes .pane.on .pathchip').forEach(fitPathChip); }
+/* 单击整枚芯片＝拷贝路径（跟菜单「拷贝路径」一字不差）：尾部那枚图标换成对勾，
+   底色染 1.2s，宽度一动不动。⌘ 单击文件夹段还是「在新标签打开那个文件夹」。 */
+function pathChipClick(e, chip, t){
+  const seg=e.target.closest('[data-folder]');
+  if(seg && (e.metaKey||e.ctrlKey)){
+    const f=seg.dataset.folder||'';
+    navigate(makeEntry('folder',{folder:f, title:f?f.split('/').pop():'库根', path:f?f+'/':'/'}),
+             {newTab:true});
+    return;
+  }
+  if(t.ext) clipPath('', {text:pathFull(t), msg:'已拷贝路径'});
+  else clipPath(t.path, {msg:'已拷贝路径'});
+  chip.classList.remove('is-copied');
+  void chip.offsetWidth;
+  chip.classList.add('is-copied');
+  clearTimeout(pathChipClick._t);
+  pathChipClick._t=setTimeout(()=>{
+    $$('.pathchip.is-copied').forEach(c=>c.classList.remove('is-copied'));
+  }, 1200);
+}
+function shareDoc(t){
+  if(!t || t.ext) return;
+  if(SHELL) post({type:'share', path:LIBROOT+'/'+t.path});
+  else notify('分享要在 AM·Note 里用。');
 }
 
+/* 文档头（Row 2，48px）：
+   [≡] 大纲 ｜ 路径芯片 ｜——｜ ☆ 访达 分享 新窗 ｜ 分隔 ｜ ⤢ 专注 ｜ ⋯ ｜ ✎ 编辑
+   编辑态右边换成「保存状态 ｜ </> ｜ ✓ 完成」，图标簇整组收起来；
+   HTML 页没有编辑按钮，尾巴上挂一枚 HTML 标签；库外文档只读，图标簇也不给
+   （访达／分享／新窗都要库内相对路径，库外那几份服务端一条都不认）。 */
+function dtIco(act, lbl, name, cls){
+  const bare=String(lbl).split('\u3000')[0];
+  return `<button type="button" class="dt-ico has-tip${cls||''}" data-dt="${act}"`
+    + ` aria-label="${esc(bare)}">${icon(name,16)}<span class="tip">${esc(lbl)}</span></button>`;
+}
 function drawDocBar(t){
   const p=t && paneOf(t); if(!p) return;
   const bar=p.querySelector('.doc-toolbar'); if(!bar) return;
   const k=kindOfTab(t);
   if(isPageKind(k)){ bar.innerHTML=''; bar.dataset.sig=''; return; }
   const src=p.classList.contains('src');
+  const pinned=!t.ext && isPinned(t.path);
   const sig=[k, t.path, t.title, t.ext?1:0, t.editing?1:0, src?1:0,
-             canEditPath(t.path)?1:0, FOCUS?1:0].join('|');
+             canEditPath(t.path)?1:0, FOCUS?1:0, pinned?1:0].join('|');
   if(bar.dataset.sig===sig){ paintSaveState(t); return; }
   bar.dataset.sig=sig;
   const fLbl=FOCUS?'退出专注阅读':'专注阅读';
-  const bFocus=`<button type="button" class="dt-ico" data-dt="focus" title="${fLbl}" aria-label="${fLbl}">${icon('focus',16)}</button>`;
+  const bFocus=dtIco('focus', fLbl, 'focus');
+  const bMore=dtIco('more', '更多', 'more');
+  const cluster=`<div class="dt-actions">`
+    + dtIco('pin',    pinned?'取消收藏':'收藏', 'star', pinned?' pinned':'')
+    + dtIco('reveal', '在访达中显示\u3000⇧⌘R', 'folder')
+    + dtIco('share',  '分享…', 'share')
+    + dtIco('newwin', '在新窗口打开', 'newwin')
+    + `</div>`;
   let right;
   if(t.editing){
-    const sLbl=src?'回到排版':'Markdown 源码';
+    const sLbl=src?'回到排版':'看 Markdown 源码';
     right=`<span class="save-state" data-dt="savestate"></span>`
-      + `<button type="button" class="dt-ico" data-dt="src" title="${sLbl}" aria-label="${sLbl}">${icon(src?'doc':'source',16)}</button>`
+      + dtIco('src', sLbl, src?'doc':'source')
       + `<button type="button" class="dt-btn soft" data-dt="done">${icon('check',14)} 完成</button>`;
   }else if(k==='html'){
-    right=`<span class="dt-tag">HTML 页面</span>`+bFocus;
+    right=cluster+`<span class="dt-div"></span>`+bFocus+bMore
+      + `<span class="dt-tag">HTML</span>`;
   }else if(t.ext){
-    right=`<span class="dt-tag">只读</span>`+bFocus;
+    right=bFocus+`<span class="dt-tag">只读</span>`;
   }else{
-    right=bFocus
-      + `<button type="button" class="dt-ico" data-dt="more" title="更多" aria-label="更多">${icon('more',16)}</button>`
+    right=cluster+`<span class="dt-div"></span>`+bFocus+bMore
       + (canEditPath(t.path)
           ? `<button type="button" class="dt-btn soft" data-dt="edit">${icon('edit',14)} 编辑</button>` : '');
   }
   /* 大纲那颗常挂着，露不露交给 syncToc——标题数在编辑时随时会变，
      每变一次就重画整条顶栏太吵，sig 也会跟着来回抖。 */
   const olBtn = k==='md'
-    ? `<button type="button" class="dt-ico dt-ol" data-dt="outline" title="大纲　⌥⌘I" aria-label="大纲" hidden>`
+    ? `<button type="button" class="dt-ico dt-ol has-tip" data-dt="outline" aria-label="大纲" hidden>`
       + `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round">`
-      + `<path d="M4 6.5h16"/><path d="M8 12h12"/><path d="M12 17.5h8"/></svg></button>`
+      + `<path d="M4 6.5h16"/><path d="M8 12h12"/><path d="M12 17.5h8"/></svg>`
+      + `<span class="tip">大纲\u3000⌥⌘I</span></button>`
     : '';
-  bar.innerHTML=olBtn+`<div class="breadcrumb">${docCrumb(t)}</div>${right}`;
+  bar.innerHTML=olBtn + pathChipHtml(t) + `<div class="dt-fill"></div>` + right;
+  const chip=bar.querySelector('.pathchip');
+  fitPathChip(chip);
+  requestAnimationFrame(()=>fitPathChip(chip));
   const hint=p.querySelector('.editor-hint');
   if(hint) hint.textContent = !t.editing ? ''
     : (src ? '直接改 Markdown，随时切回排版。'
@@ -3279,21 +3757,21 @@ function docMoreMenu(e, t){
      见 state().canTrash）。正在改的这一份说不要就是不要了，trashDoc 会先把
      编辑态连同自动保存的定时器一起收干净，不会有 /__save 再把它写回来。 */
   const del = !t.ext && canTrashPath(t.path);
+  const dir = dirOf(String(t.path||''));
   popMenu(e, [
-    {id:'reveal',  label:'在访达中显示'},
+    {id:'type',    label:'阅读与外观…'},
     {id:'copyurl', label:'拷贝路径'},
-    {id:'share',   label:'分享…'},
-    {sep:true},
-    {id:'newwin',  label:'在新窗口打开'},
+    {id:'folder',  label:'打开所在文件夹'},
+    {id:'print',   label:'打印…'},
     ...(del ? [{sep:true},{id:'trash', label:'移到废纸篓'}] : []),
   ], id=>{
-    if(id==='reveal') revealPath(t.path);
+    if(id==='type') openType();
     else if(id==='copyurl') clipPath(t.path);
-    else if(id==='share'){
-      if(SHELL) post({type:'share', path:LIBROOT+'/'+t.path});
-      else notify('分享要在 AM·Note 里用。');
+    else if(id==='folder'){
+      navigate(makeEntry('folder',
+        {folder:dir, title:dir?dir.split('/').pop():'库根', path:dir?dir+'/':'/'}));
     }
-    else if(id==='newwin') openSolo(t.path);
+    else if(id==='print') AMN.print();
     else if(id==='trash') trashDoc(t.path);
   });
 }
@@ -3438,7 +3916,10 @@ function growAllEd(){
 }
 
 /* ── 专注阅读 ────────────────────────────
-   工具条、书签栏、状态栏收起来；壳里留一条标签条高度的空白拖拽条给交通灯。
+   只剩正文：文档头上滑淡出，大纲（常驻栏＋浮层）一起淡掉，正文位置一动不动
+   （大纲是 opacity 收的，网格那一列还占着位）。壳里留一条标签条高度的空白
+   拖拽条给交通灯，里面的控件淡出；浏览器里整条收掉。
+   鼠标贴到窗口顶上 8px 内，文档头以浮层滑回来，离开那一带就收。
    进出都报一句，Esc 退出也报。state() 不加新键。 */
 let FOCUS=false;
 function setFocus(on){
@@ -3446,12 +3927,22 @@ function setFocus(on){
   if(next===FOCUS) return;
   FOCUS=next;
   document.body.classList.toggle('focus-mode', FOCUS);
+  document.body.classList.remove('peek');
   closeType();
+  closeOlFloat();
   TABS.forEach(x=>drawDocBar(x));
-  requestAnimationFrame(()=>{ layoutTabs(); syncProg(); });
+  requestAnimationFrame(()=>{ layoutTabs(); syncProg(); refitPaths(); });
   notify(FOCUS ? '已进入专注阅读 · 按 Esc 返回' : '已回到浏览模式');
 }
 function toggleFocus(){ setFocus(!FOCUS); }
+/* 顶边召回：壳里标签条还占着 42px，判据从那条下面算起。 */
+addEventListener('mousemove', e=>{
+  if(!FOCUS) return;
+  const strip=document.body.classList.contains('shell') ? 42 : 0;
+  if(e.clientY<=8) document.body.classList.add('peek');
+  else if(e.clientY>strip+60) document.body.classList.remove('peek');
+}, {passive:true});
+document.addEventListener('mouseleave', ()=>{ document.body.classList.remove('peek'); });
 
 function newPane(t){
   const p=document.createElement('div');
@@ -3481,6 +3972,9 @@ function newPane(t){
     if(act){
       if(act.dataset.act==='focusomni'){ focusOmnibox({pulse:true}); return; }
       if(act.dataset.act==='newnote'){ newNote(); return; }
+      if(act.dataset.act==='pins'){ openPins(e.metaKey||e.ctrlKey); return; }
+      if(act.dataset.act==='revealvault'){ revealVault(); return; }
+      if(act.dataset.act==='tipsok'){ ST.tips=false; saveST(); repaintPages(); return; }
     }
     const pin=e.target.closest('[data-pin]');
     if(pin){ e.preventDefault(); e.stopPropagation(); togglePin(pin.dataset.pin); return; }
@@ -3973,7 +4467,9 @@ function syncToc(){
       b.hidden=!ready;
       b.classList.toggle('on', OL_ON || (!wide && olFloatOn()));
       const lbl = wide ? (OL_ON?'隐藏大纲':'显示大纲') : '大纲';
-      b.title=lbl+'　⌥⌘I'; b.setAttribute('aria-label', lbl);
+      b.removeAttribute('title');                 // 气泡自己画，别再叠一层原生的
+      b.setAttribute('aria-label', lbl);
+      const tp=b.querySelector('.tip'); if(tp) tp.textContent=lbl+'\u3000⌥⌘I';
     }
   }
   if(!ready || wide) closeOlFloat();          // 栏宽回来了，大纲就在左边，浮层没用了
@@ -5062,7 +5558,7 @@ function settleImg(md){
 /* ── 正文栏右上角那行淡字 ───────────────
    只报状态，不讲解怎么用：正在编辑 / 保存中 / 已保存 HH:MM / 有 N 处存不进 · 点看。 */
 function syncStatusLine(){
-  syncStatusBar();
+  syncScanChip();
   const m=$('#edMsg'); if(!m) return;
   const t=active();
   paintSaveState(t);
@@ -5583,7 +6079,7 @@ function setTree(t){
     修改时间:d.改于||0, 日期:ymd(d.改于), 预览:d.预览||''}));
   prepItems(); syncNotePv(); prunePins();
   buildNav(); render();
-  drawBmBar(); syncStatusBar();
+  syncScanChip();
   TABS.forEach(t=>{
     const k=kindOfTab(t);
     if(isPageKind(k)) paintPage(t);
@@ -5945,7 +6441,6 @@ function render(){
   pushState();
   const at=active();
   if(at && kindOfTab(at)==='search') paintSerp(at);
-  if(omniOn()) paintOmni();
 }
 
 /* 往下滚动续加，不加按钮 */
@@ -6142,26 +6637,15 @@ function setKw(v){
   post({type:'search', text:kw});
 }
 function clearQ(focus){ setKw(''); render(); if(focus) focusSearch(); }
-/* 跳到地址栏（⌥⌘K / 壳菜单 AMN.focusSearch）。列表栏里那只搜索框还在，但默认去 omnibox。 */
+/* 5.4 起搜索只有一个入口：⌘K 面板。地址栏（#omnibox）连同书签栏整条删了，
+   ⌘L／⌥⌘K／开始页直接打字／点搜索胶囊都落到这里。
+   名字留着不改：壳菜单指着 AMN.focusOmnibox / AMN.focusSearch，页内也到处在调。
+   opts.seed 预填一段文字；opts.select 决定预填的是全选（AMN.search）还是
+   把光标放在末尾（开始页敲第一个字那条路，接着敲第二个字才不会把第一个顶掉）。 */
 function focusSearch(){ focusOmnibox(); }
 function focusOmnibox(opts){
   opts=opts||{};
-  const el=$('#omni'); if(!el) return;
-  const wrap=$('#omnibox');
-  el.focus();
-  if(opts.seed){
-    omniUser=true;
-    el.value=opts.seed;
-    el.setSelectionRange(opts.seed.length, opts.seed.length);
-  }else{
-    el.select();
-  }
-  if(wrap && opts.pulse){
-    wrap.classList.remove('pulse');
-    void wrap.offsetWidth;
-    wrap.classList.add('pulse');
-  }
-  if(opts.suggest!==false) showOmni();
+  openQuick(opts.seed||'', {select:!!opts.select});
 }
 ['#q2'].forEach(sel=>{
   const el=$(sel); if(!el) return;
@@ -6177,226 +6661,25 @@ function focusOmnibox(opts){
 });
 $('#qclear2').onclick=()=>clearQ(true);
 
-/* ── 地址栏 ／ 书签栏 ─────────────────────
-   地址栏搜本地文件，不是网址。空着聚焦给最近打开和根目录文件夹。
-   拼音上屏那一下的 Enter 要放过去（isComposing / 229），跟下面列表框同一条规矩。 */
-let omniRows=[], omniIdx=0, omniUser=false, omniTimer=null;
-/* 冷启动时 #omni 会拿到初始焦点。focus 里无条件展开建议，开始页一进来
-   就被下拉盖掉上半截，非按 Esc 不可。所以只有用户真动过手（点过或敲过键）
-   之后，focus 才顺带展开。⌘L／点地址栏／开始页直接打字都走 focusOmnibox()，
-   那条路自己会调 showOmni()，不受这道闸限制。 */
-let omniGesture=false;
-addEventListener('pointerdown', ()=>{ omniGesture=true; }, true);
-addEventListener('keydown',     ()=>{ omniGesture=true; }, true);
-function omniOn(){ const d=$('#obdrop'); return !!(d && d.classList.contains('on')); }
-function hideOmni(restore){
-  const d=$('#obdrop'); if(d) d.classList.remove('on');
-  const wrap=$('#omnibox'); if(wrap) wrap.classList.remove('focus');
-  omniRows=[]; omniIdx=0;
-  if(restore){
-    omniUser=false;
-    const el=$('#omni'); if(el) el.value=currentPath();
-  }
-}
-function omniSuggest(q){
-  q=String(q||'').trim();
-  const rows=[];
-  if(q){
-    rows.push({kind:'search', title:'在库中搜索「'+q+'」', path:'搜索', q});
-    const ql=q.toLowerCase();
-    const parts=ql.split(/\s+/).filter(Boolean);
-    ((TREE&&TREE.目录)||[]).forEach(d=>{
-      const hay=(d.名称+' '+(d.显示名||'')).toLowerCase();
-      if(parts.every(x=>hay.includes(x))) rows.push({kind:'folder', title:d.显示名||d.名称, path:d.名称+'/', folder:d.名称});
-    });
-    docsMatching(q).slice(0,10).forEach(i=>rows.push({kind:kindOf(i), title:cleanTitle(i), path:i.路径, item:i}));
-  }else{
-    rows.push({kind:'label', title:'最近打开'});
-    const seen=new Set();
-    const rec=[];
-    (ST.recents||[]).forEach(r=>{ if(r&&r.路径&&!seen.has(r.路径)){ seen.add(r.路径); rec.push(r); } });
-    if(ST.lastPath && !seen.has(ST.lastPath)){
-      const it=items.find(i=>i.路径===ST.lastPath);
-      rec.unshift(it||{路径:ST.lastPath, 标题:ST.lastPath.split('/').pop(), 类型:/\.html?$/i.test(ST.lastPath)?'html':'md'});
-    }
-    rec.slice(0,8).forEach(r=>{
-      const it=items.find(i=>i.路径===r.路径) || r;
-      rows.push({kind:kindOf(it)==='html'?'html':'md', title:cleanTitle(it), path:it.路径, item:it});
-    });
-    rows.push({kind:'label', title:'文件夹'});
-    ((TREE&&TREE.目录)||[]).forEach(d=>rows.push({kind:'folder', title:d.显示名||d.名称, path:d.名称+'/', folder:d.名称}));
-    rows.push({kind:'pins', title:'已收藏', path:(ST.pins||[]).length+' 篇'});
-    rows.push({kind:'note', title:'新建随手记', path:NOTE_DIR+'/'});
-  }
-  return rows;
-}
-function paintOmni(){
-  const d=$('#obdrop'), wrap=$('#omnibox'), input=$('#omni');
-  if(!d || !wrap || !input) return;
-  const q=omniUser ? input.value : '';
-  omniRows=omniSuggest(q);
-  const pickable=omniRows.map((r,i)=>r.kind==='label'?-1:i).filter(i=>i>=0);
-  if(!pickable.includes(omniIdx)) omniIdx=pickable[0]||0;
-  d.innerHTML=omniRows.map((r,i)=>{
-    if(r.kind==='label') return `<div class="lab">${esc(r.title)}</div>`;
-    return `<button type="button" class="obrow${i===omniIdx?' on':''}" data-i="${i}" role="option">
-      <span class="ico">${omniIconFor(r.kind)}</span>
-      <span class="t">${esc(r.title)}</span>
-      <span class="p">${esc(r.path||'')}</span>
-    </button>`;
-  }).join('') || `<div class="lab">开始输入以搜索本地文件</div>`;
-  d.querySelectorAll('.obrow').forEach(b=>{
-    b.onmousedown=e=>{ e.preventDefault(); pickOmni(+b.dataset.i, e.metaKey||e.ctrlKey); };
-  });
-  const rect=wrap.getBoundingClientRect();
-  d.style.width=Math.max(240, rect.width)+'px';
-  d.style.left=Math.max(8, Math.min(rect.left, innerWidth-rect.width-8))+'px';
-  d.style.top=(rect.bottom+6)+'px';
-  d.classList.add('on');
-  wrap.classList.add('focus');
-  const on=d.querySelector('.obrow.on');
-  if(on) on.scrollIntoView({block:'nearest'});
-}
-function showOmni(){
-  hideBmDrop();
-  paintOmni();
-}
-function pickOmni(i, newTab){
-  const r=omniRows[i]; if(!r || r.kind==='label') return;
-  hideOmni(false);
-  const input=$('#omni'); if(input) input.blur();
-  omniUser=false;
-  if(r.kind==='note'){ newNote(); return; }
-  if(r.kind==='pins'){ openPins(newTab); return; }
-  if(r.kind==='search'){
-    const q=r.q||'';
-    setKw(q);
-    navigate(makeEntry('search', {q, title:q, path:'搜索: '+q}), {newTab});
-  }else if(r.kind==='folder'){
-    navigate(makeEntry('folder', {folder:r.folder, title:r.title, path:r.folder+'/'}), {newTab});
-  }else if(r.item){
-    openDoc(r.item, {newTab});
-  }
-}
-function moveOmni(dir){
-  const ids=omniRows.map((r,i)=>r.kind==='label'?-1:i).filter(i=>i>=0);
-  if(!ids.length) return;
-  let p=ids.indexOf(omniIdx); if(p<0) p=0;
-  p=(p+dir+ids.length)%ids.length;
-  omniIdx=ids[p];
-  paintOmni();
-}
-
-(function wireOmni(){
-  const input=$('#omni'), wrap=$('#omnibox');
-  if(!input || !wrap) return;
-  input.addEventListener('focus', ()=>{
-    wrap.classList.add('focus');
-    input.select();
-    omniUser=false;
-    if(omniGesture) showOmni();          // 冷启动那次初始焦点不展开
-  });
-  input.addEventListener('input', ()=>{
-    omniUser=true;
-    const q=input.value.trim();
-    if(q){ setKw(q); ftKick(); }
-    showOmni();
-  });
-  input.addEventListener('keydown', e=>{
-    if(e.isComposing || e.keyCode===229) return;
-    if(e.key==='ArrowDown'){ e.preventDefault(); if(!omniOn()) showOmni(); else moveOmni(1); }
-    else if(e.key==='ArrowUp'){ e.preventDefault(); if(omniOn()) moveOmni(-1); }
-    else if(e.key==='Enter'){
-      e.preventDefault();
-      if(omniOn() && omniRows[omniIdx] && omniRows[omniIdx].kind!=='label') pickOmni(omniIdx, e.metaKey||e.ctrlKey);
-      else if(omniUser && input.value.trim()){
-        const q=input.value.trim();
-        hideOmni(false); input.blur(); omniUser=false;
-        setKw(q);
-        navigate(makeEntry('search', {q, title:q, path:'搜索: '+q}), {newTab:e.metaKey||e.ctrlKey});
-      }
-    }else if(e.key==='Escape'){
-      e.preventDefault(); e.stopPropagation();
-      hideOmni(true); input.blur();
-    }
-  });
-  input.addEventListener('blur', ()=>{
-    setTimeout(()=>{
-      if(omniOn()) return;
-      wrap.classList.remove('focus');
-      omniUser=false;
-      syncChrome();
-    }, 120);
-  });
-})();
-
-function bmDropOn(){ const d=$('#bmdrop'); return !!(d && d.classList.contains('on')); }
-function hideBmDrop(){
-  const d=$('#bmdrop'); if(d){ d.classList.remove('on'); d.innerHTML=''; }
-  $$('#bmbar .bm.open').forEach(b=>b.classList.remove('open'));
-}
-function drawBmBar(){
-  const bar=$('#bmbar'); if(!bar) return;
-  const dirs=(TREE&&TREE.目录)||[];
-  bar.innerHTML=dirs.map(d=>
-    `<button type="button" class="bm" data-folder="${esc(d.名称)}" title="${esc(d.名称)}">${icon('folder',13)}<span class="lbl">${esc(d.显示名||d.名称)}</span></button>`
-  ).join('')
-  + `<button type="button" class="bm pin" id="bmPinned" title="已收藏">${icon('star',13)}<span class="lbl">已收藏</span></button>`;
-  bar.querySelectorAll('.bm[data-folder]').forEach(b=>{
-    b.onclick=e=>{
-      if(e.metaKey||e.ctrlKey){
-        hideBmDrop();
-        navigate(makeEntry('folder', {folder:b.dataset.folder, title:b.dataset.folder, path:b.dataset.folder+'/'}));
-      }else showBmMenu(b.dataset.folder, b);
-    };
-  });
-  const pin=$('#bmPinned');
-  if(pin){
-    pin.classList.toggle('on', kindOfTab(active())==='pins');
-    pin.onclick=e=>{ hideBmDrop(); openPins(e.metaKey||e.ctrlKey); };
-  }
-}
-function showBmMenu(name, anchor){
-  hideOmni(false); hideBmDrop();
-  const d=$('#bmdrop'); if(!d || !anchor) return;
-  anchor.classList.add('open');
-  const files=filesInFolder(name);
-  d.innerHTML=`<div class="lab">${esc(name)}</div>`
-    + (files.map(i=>`<button type="button" data-open="${esc(i.路径)}" data-kind="${esc(kindOf(i))}"><span class="t">${esc(cleanTitle(i))}</span><span class="p">${kindOf(i)==='html'?'HTML':'MD'}</span></button>`).join('')
-       || `<button type="button" disabled>没有文件</button>`)
-    + `<div class="sep"></div><button type="button" data-openfolder="${esc(name)}">打开文件夹…</button>`;
-  d.querySelectorAll('[data-open]').forEach(b=>b.onclick=e=>{
-    hideBmDrop();
-    const it=items.find(i=>i.路径===b.dataset.open) || {路径:b.dataset.open, 标题:b.dataset.open.split('/').pop(), 类型:b.dataset.kind||'md'};
-    openDoc(it, {newTab:e.metaKey||e.ctrlKey});
-  });
-  const of=d.querySelector('[data-openfolder]');
-  if(of) of.onclick=()=>{
-    hideBmDrop();
-    navigate(makeEntry('folder', {folder:name, title:name, path:name+'/'}));
-  };
-  const r=anchor.getBoundingClientRect();
-  d.style.minWidth='240px';
-  d.style.left=Math.max(8, Math.min(r.left, innerWidth-260))+'px';
-  d.style.top=(r.bottom+6)+'px';
-  d.classList.add('on');
-}
+/* ── 书签栏的去处 ─────────────────────────
+   5.4 起 #bmbar（书签栏）和 #omnibox（地址栏）整条删了：文件夹入口搬到开始页
+   问候区下面那行芯片，路径搬到文档头的芯片，搜索只剩 ⌘K 面板。
+   壳菜单里「书签栏 ⌘⇧B」那一项还指着 AMN.toggleBookmarks，所以这个名字得留着——
+   点了报一句就完事，state().bookmarks 恒 false，菜单上的勾永远不打。 */
 function toggleBookmarks(){
-  ST.bookmarks = ST.bookmarks===false;
-  document.body.classList.toggle('nobm', ST.bookmarks===false);
-  saveST();
-  const bm=$('#navBm'); if(bm) bm.classList.toggle('on', ST.bookmarks!==false);
+  if(ST.bookmarks!==false){ ST.bookmarks=false; saveST(); }
+  notify('文件夹入口已并入开始页');
 }
 
 (function wireChromeBtns(){
   const back=$('#navBack'), fwd=$('#navFwd'), home=$('#navHome'), plus=$('#tabplus'),
-        bm=$('#navBm'), mark=$('#appmark'), ty=$('#navType');
+        mark=$('#appmark'), sp=$('#topSearch'), cfg=$('#navCfgTop');
   if(back) back.onclick=()=>goHist(-1);
   if(fwd) fwd.onclick=()=>goHist(1);
   if(home) home.onclick=()=>{ navigate(makeEntry('start', {title:'开始'})); home.blur(); };
   if(plus) plus.onclick=()=>{ newTab(); plus.blur(); };
-  if(bm) bm.onclick=toggleBookmarks;
-  if(ty) ty.onclick=()=>{ typeOn() ? closeType() : openType(); };
+  if(sp) sp.onclick=()=>{ sp.blur(); AMN.quickOpen(); };
+  if(cfg) cfg.onclick=()=>{ cfg.blur(); openCfg(); };
   if(mark) mark.onclick=()=>goAppHome();
 })();
 
@@ -6415,7 +6698,9 @@ function toggleBookmarks(){
 });
 
 /* ── ⌘K 直达 ────────────────────────────
-   上面是动作，下面是笔记。认标题与文件名，按「前缀 / 包含 ＋ 最近改动」排序。 */
+   5.4 起这是唯一的搜索入口。有输入时第一行是「在全部笔记中搜索“…”」——
+   走的正是原来地址栏回车那条路（setKw ＋ 搜索页），⌘回车开新标签；
+   下面照旧是动作和笔记，排序没动。 */
 let ckList=[], ckSel=0;
 const CK_ACTS=[
   {id:'tab', title:'新建标签页', kbd:'⌘T', go(){ newTab(); }},
@@ -6427,10 +6712,17 @@ const CK_ACTS=[
   {id:'finder', title:'在访达中显示', kbd:'⇧⌘R', go(){ AMN.reveal(); }},
   {id:'home', title:'回到开始页', kbd:'', go(){ navigate(makeEntry('start', {title:'开始'})); }},
 ];
-function openQuick(){
+/* seed 预填一段文字。opt.select 为真＝全选（AMN.search），否则光标停在末尾
+   （开始页敲第一个字那条路：接着敲第二个字不能把第一个顶掉）。 */
+function openQuick(seed, opt){
+  opt=opt||{};
   $('#cmdkWrap').classList.add('on');
-  const el=$('#ck'); el.value=''; ckSel=0; ckRender();
-  setTimeout(()=>{ el.focus(); el.select(); }, 0);
+  const el=$('#ck'); el.value=seed||''; ckSel=0; ckRender();
+  setTimeout(()=>{
+    el.focus();
+    if(seed && !opt.select) el.setSelectionRange(seed.length, seed.length);
+    else el.select();
+  }, 0);
 }
 function closeQuick(){ $('#cmdkWrap').classList.remove('on'); }
 const quickOn = () => $('#cmdkWrap').classList.contains('on');
@@ -6456,18 +6748,27 @@ function ckNotes(q){
     .slice(0,12).map(x=>x.i);
 }
 function ckItems(q){
-  q=String(q||'').trim().toLowerCase();
-  const acts=CK_ACTS.filter(a=>!q || a.title.toLowerCase().includes(q))
+  const raw=String(q||'').trim();
+  const low=raw.toLowerCase();
+  const head=raw ? [{kind:'q', q:raw}] : [];
+  const acts=CK_ACTS.filter(a=>!low || a.title.toLowerCase().includes(low))
     .map(a=>({kind:'act', a}));
-  const notes=ckNotes(q).map(i=>({kind:'note', i}));
-  return acts.concat(notes);
+  const notes=ckNotes(raw).map(i=>({kind:'note', i}));
+  return head.concat(acts, notes);
 }
 /* 动作行前面那颗图标，只是长相，不进 CK_ACTS。 */
 const CK_ICON={tab:'plus', new:'new-note', win:'newwin', lists:'sidebar',
   edit:'pencil', type:'sliders', finder:'folder', home:'home'};
+/* 全库搜索：跟原来地址栏回车一字不差——setKw ＋ 一张搜索结果页。 */
+function runSearch(q, newTab){
+  q=String(q||'').trim(); if(!q) return;
+  setKw(q);
+  navigate(makeEntry('search', {q, title:q, path:'搜索: '+q}), {newTab:!!newTab});
+}
 function runCk(it, newTab){
   closeQuick();
   if(!it) return;
+  if(it.kind==='q'){ runSearch(it.q, newTab); return; }
   if(it.kind==='act'){ it.a.go(); return; }
   openDoc(it.i, newTab?{newTab:true}:null);
 }
@@ -6495,6 +6796,11 @@ function ckRender(){
   const acts=ckList.filter(x=>x.kind==='act');
   const notes=ckList.filter(x=>x.kind==='note');
   let html='';
+  const qrow=ckList.find(x=>x.kind==='q');
+  if(qrow){
+    html+=row(ckList.indexOf(qrow), icon('search',17),
+      '在全部笔记中搜索“'+esc(qrow.q)+'”', '', '<span class="enter">↩</span>');
+  }
   if(acts.length){
     html+=`<div class="search-label">动作</div>`;
     acts.forEach(it=>{
@@ -6514,8 +6820,8 @@ function ckRender(){
         esc(bits.join(' · ')), '<span class="enter">↵</span>');
     });
   }
-  if(!ckList.length){
-    html=`<div class="modal-empty"><h2>还没找到这篇笔记</h2>`
+  if(!ckList.length || (ckList.length===1 && qrow)){
+    html+=`<div class="modal-empty"><h2>还没找到这篇笔记</h2>`
       + `<p>换一个短一点的词试试。</p>`
       + `<button type="button" class="hbtn" id="ckNew">${icon('plus',15)}<span>先记下这个想法</span></button></div>`;
   }
@@ -6566,11 +6872,27 @@ function drawType(){
   box.querySelector('#popFs').oninput=e=>setPref('fs', +e.target.value);
   box.querySelector('#popLh').oninput=e=>setPref('lh', +e.target.value);
 }
+/* 原来挂在地址栏那颗滑块按钮下面，那颗按钮 5.4 起没了。
+   现在从文档头的 ⋯ 菜单和 ⌘K 的「阅读与外观」进，浮层就贴 ⋯ 那颗按钮下方；
+   开始页上没有 ⋯（也没有文档头），退回 CSS 里那个「顶栏下、贴右缘」的位置。 */
 function openType(){
   drawType();
   $('#typeWrap').classList.add('on');
   document.body.classList.add('type-on');
+  placeType();
   syncPrefControls();
+}
+function placeType(){
+  const box=$('#typeWrap'); if(!box || !box.classList.contains('on')) return;
+  const t=active(), p=t&&paneOf(t);
+  const anchor=p && p.querySelector('[data-dt="more"]');
+  if(anchor && anchor.offsetParent){
+    const r=anchor.getBoundingClientRect();
+    box.style.top=(r.bottom+8)+'px';
+    box.style.right=Math.max(12, Math.round(innerWidth-r.right))+'px';
+  }else{
+    box.style.top=''; box.style.right='';
+  }
 }
 function closeType(){
   $('#typeWrap').classList.remove('on');
@@ -6763,10 +7085,22 @@ async function openFreshNote(rel, 日){
   await startEdit({fresh:true});
 }
 
-/* ── 设置：版式 ｜ 外观 ｜ 库 ｜ 关于 ───── */
-let CFG=null;
-const lines = a => (a||[]).join('\n');
-const unlines = s => s.split('\n').map(x=>x.trim()).filter(Boolean);
+/* ── 设置：阅读与外观 ｜ 笔记库 ｜ 高级 ｜ 关于 ─────────────────
+   一个 720×600 的弹层，左边四段导航，右边一栏内容。
+   两类设置在这里并排放着，存的地方完全不同，改的方式也不同：
+     · 阅读与外观 → localStorage 的 PREF / ST，**即时生效，没有保存按钮**；
+     · 笔记库与高级 → 服务端 .amnote/config.json，改完底部才冒出保存条，
+       按「保存并重新整理」才写盘（POST /__config → /__rescan）。
+   分界线就是 CFG_FORM：只有它里面的六个键才算「未保存的更改」。 */
+let CFG=null;                 // 上一次 /__config 的整包（含 状态 / 问题 / 说明）
+let CFG_FORM=null;            // 六个可编辑键的工作副本，界面改的是它
+let CFG_BASE='';              // 载入时那一刻的快照，用来判断脏不脏
+let cfgBusy=false;            // 「重新整理」转着的时候
+const CFG_KEYS=['跳过目录关键词','噪声目录','噪声文件','通用标题','端口范围','随手记目录'];
+const CFG_TABS={reading:'阅读与外观', library:'笔记库', advanced:'高级', about:'关于'};
+const REPO='https://github.com/Qiululu667/amnote';
+const LINKS=[['GitHub 项目',REPO],['使用说明',REPO+'#readme'],['反馈问题',REPO+'/issues']];
+
 function openCfg(){ $('#cfgWrap').classList.add('on'); loadCfg(); }
 function closeCfg(){ $('#cfgWrap').classList.remove('on'); }
 const cfgOn = () => $('#cfgWrap').classList.contains('on');
@@ -6776,111 +7110,406 @@ async function loadCfg(){
     const r=await fetch('/__config',{cache:'no-store'}); if(!r.ok) throw 0;
     CFG=await r.json();
   }catch(e){ CFG=null; }
+  const c=(CFG&&CFG.配置)||{};
+  CFG_FORM={
+    跳过目录关键词: (c.跳过目录关键词||[]).slice(),
+    噪声目录: (c.噪声目录||[]).slice(),
+    噪声文件: (c.噪声文件||[]).slice(),
+    通用标题: (c.通用标题||[]).slice(),
+    端口范围: [ (c.端口范围||[])[0]||'', (c.端口范围||[])[1]||'' ],
+    随手记目录: c.随手记目录||'',
+  };
+  CFG_BASE=JSON.stringify(CFG_FORM);
   renderCfg();
 }
+/* 服务没起时六个键全是空的，那就不该拿「空」去覆盖人家配置文件。 */
+const cfgReady = () => !!(CFG && CFG.配置);
+function cfgDirty(){ return cfgReady() && JSON.stringify(CFG_FORM)!==CFG_BASE; }
+function syncCfgDirty(){ $('#viewCfg').classList.toggle('dirty', cfgDirty()); }
 
-function renderCfg(){
-  const c=(CFG&&CFG.配置)||{}, st=(CFG&&CFG.状态)||{};
-  $('#cfgBody').innerHTML = `
-  <section class="cfgsec">
-    <div class="cfgh">版式</div>
-    <div class="cfgrow"><span class="k">字体</span>
-      <span class="seg" data-k="font">
-        <button data-v="f-sans">无衬线</button>
-        <button data-v="f-serif">衬线</button>
-        <button data-v="f-mono">等宽</button>
-      </span></div>
-    <div class="cfgrow"><span class="k">字号</span>
-      <input type="range" id="fs" min="12" max="21" step="1"><span class="v num" id="vfs"></span></div>
-    <div class="cfgrow"><span class="k">行距</span>
-      <input type="range" id="lh" min="150" max="220" step="5"><span class="v num" id="vlh"></span></div>
-    <div class="cfgrow"><span class="k">栏宽</span>
-      <input type="range" id="w" min="560" max="1000" step="10"><span class="v num" id="vw"></span></div>
-    <div class="cfgbar"><button class="btn" id="rstPref">恢复默认版式</button></div>
-  </section>
+/* ── 小零件 ───────────────────────────── */
+function chipsHtml(key, ph){
+  const arr=(CFG_FORM&&CFG_FORM[key])||[];
+  return `<div class="chipbox" data-chips="${key}">`
+    + arr.map((v,i)=>`<span class="chip">${esc(v)}<button type="button" class="x" data-ci="${i}"
+        aria-label="删除 ${esc(v)}">${icon('close',9)}</button></span>`).join('')
+    + `<input type="text" spellcheck="false" placeholder="${esc(ph||'输入名称后按回车')}"
+        aria-label="添加：${esc(key)}"></div>`;
+}
+/* 服务端那份「问题」是一句句人话，键名夹在「」里。按键名认领，认不到的
+   归到 unmatched，由调用方摆在整段的最上面。 */
+function noticeFor(key){
+  const ps=(CFG&&CFG.问题)||[];
+  return ps.filter(t=>String(t).indexOf('「'+key+'」')>=0).map(noticeHtml).join('');
+}
+function noticeHtml(t){
+  return `<div class="notice">${icon('info',14)}<span>${esc(t)}</span></div>`;
+}
+function looseNotices(){
+  const ps=(CFG&&CFG.问题)||[];
+  return ps.filter(t=>!CFG_KEYS.some(k=>String(t).indexOf('「'+k+'」')>=0))
+           .map(noticeHtml).join('');
+}
+const hasAdvProblem = () => ['噪声目录','噪声文件','通用标题','端口范围']
+  .some(k=>((CFG&&CFG.问题)||[]).some(t=>String(t).indexOf('「'+k+'」')>=0));
+/* 「2026-09-05 23:56:22」→ 时间戳。给 fmtWhen 用。 */
+function tsOf(s){
+  const t=Date.parse(String(s||'').replace(' ','T'));
+  return isNaN(t) ? 0 : t/1000;
+}
+const baseName = p => String(p||'').replace(/\/+$/,'').split('/').pop() || '/';
 
-  <section class="cfgsec">
-    <div class="cfgh">外观</div>
-    <div class="cfgrow"><span class="k">主题</span>
-      <span class="seg" data-k="theme">
-        <button data-v="auto">跟随</button>
-        <button data-v="light">浅</button>
-        <button data-v="dark">深</button>
-      </span></div>
-  </section>
+/* ── 四段内容 ─────────────────────────── */
+function panelReading(){
+  const mini = k => `<span class="mw ${k}"><span class="bar"><em></em><em></em><em></em></span>`
+    + `<span class="body"><u></u><s style="width:100%"></s><s style="width:88%"></s>`
+    + `<s style="width:66%"></s></span></span>`;
+  const tcard = (v,label,inner) => `<button type="button" class="tcard" data-tc="${v}">`
+    + `<span class="prev">${inner}</span><span class="nm">${label}</span></button>`;
+  const fcard = (v,label) => `<button type="button" class="fcard ${v}" data-fc="${v}">`
+    + `<span class="nm">${label}</span><span class="sm">永远相信美好的事情即将发生 Aa 123</span></button>`;
+  const seg = (k,arr) => `<span class="seg" data-k="${k}">` + arr.map(x=>
+      `<button type="button" data-v="${x[0]}">${x[1]}</button>`).join('') + `</span>`;
+  return `<section class="cfg-panel on" data-cfgpanel="reading">
+    <div class="frow"><span class="flab">主题</span><div class="fctl"><div class="tcards">
+      ${tcard('auto','跟随系统', mini('dk')+mini('lt half'))}
+      ${tcard('light','浅色', mini('lt'))}
+      ${tcard('dark','深色', mini('dk'))}
+    </div></div></div>
 
-  <section class="cfgsec">
-    <div class="cfgh">库</div>
-    <div class="kv">
-      <b>库根</b><span>${esc(st.库根||'')}</span>
-    </div>
-    <div class="cfgd" style="margin-top:8px">换一个文件夹：菜单栏「库」→「选择文件夹…」</div>
-    <div class="cfgbar">
-      <button class="btn" id="cfgRescan">重扫全库</button>
-      <span class="cfgmsg" id="cfgMsg"></span>
-    </div>
-    <div class="cfgd" style="margin-top:16px">目录名里含这些字样的整个不扫。一行一个。</div>
-    <textarea id="skipTokens">${esc(lines(c.跳过目录关键词))}</textarea>
-    <div class="cfgd" style="margin-top:12px">噪声目录：门户不收，但仍算库里的文件。写全、完全相同才算。</div>
-    <textarea id="noiseDir">${esc(lines(c.噪声目录))}</textarea>
-    <div class="cfgd" style="margin-top:12px">噪声文件</div>
-    <textarea id="noiseFile">${esc(lines(c.噪声文件))}</textarea>
-    <div class="cfgd" style="margin-top:12px">通用标题：这些标题太通用，列表里会一堆同名，前面自动补上所在项目名。</div>
-    <textarea id="generic">${esc(lines(c.通用标题))}</textarea>
-    <div class="cfgd" style="margin-top:12px">端口：服务从第一个数开始试，占用了就往后挪。</div>
-    <div class="cfgrow" style="gap:8px">
-      <input type="text" class="tin" id="portA" value="${esc((c.端口范围||[])[0]||'')}">
-      <span class="cfgd" style="margin:0">到</span>
-      <input type="text" class="tin" id="portB" value="${esc((c.端口范围||[])[1]||'')}">
-    </div>
-    <div class="cfgbar">
-      <button class="btn key" id="cfgSave">保存并重扫</button>
-      <button class="btn" id="cfgReload">放弃改动</button>
-    </div>
-  </section>
+    <div class="frow"><span class="flab">阅读字体</span><div class="fctl"><div class="fcards">
+      ${fcard('f-sans','系统黑体')}${fcard('f-serif','宋体')}${fcard('f-mono','等宽')}
+    </div></div></div>
 
-  <section class="cfgsec">
-    <div class="cfgh">关于</div>
-    <div class="kv">
-      <b>端口</b><span>${esc(st.端口||'')}</span>
-      <b>库根</b><span>${esc(st.库根||'')}</span>
-      <b>上次扫描</b><span>${esc(st.上次扫描||'')}</span>
-      <b>收录</b><span>${(st.索引||{}).收录||0} 份${(st.索引||{}).状态?` · ${esc(st.索引.状态)}`:''}</span>
-      <b>门禁</b><span>${TOKEN_OK?'已启用':'未启用'}</span>
-      <b>配置</b><span>${CFG?(CFG.文件存在?'config.json':'代码里的默认值'):'读不到，服务没起'}</span>
+    <div class="frow"><span class="flab">字号</span><div class="fctl">
+      <div class="srow">
+        <input type="range" id="cfgFs" min="15" max="21" step="1" value="${PREF.fs}" aria-label="正文字号">
+        <span class="val num" id="cfgFsV">${PREF.fs}</span></div>
+      <p class="cfg-sample" id="cfgFsSample">把想到的写下来，剩下的交给以后。</p>
+    </div></div>
+
+    <div class="frow"><span class="flab">行距</span><div class="fctl">
+      ${seg('lh',[[160,'紧凑 1.6'],[180,'舒适 1.8'],[200,'宽松 2.0']])}</div></div>
+
+    <div class="frow"><span class="flab">栏宽</span><div class="fctl">
+      ${seg('w',[[620,'窄 620'],[690,'标准 690'],[820,'宽 820']])}</div></div>
+
+    <div class="frow"><span class="flab">大纲</span><div class="fctl"><div class="swrow">
+      <span class="txt">打开文档时默认显示大纲</span>
+      <button type="button" class="sw" id="cfgToc" role="switch" aria-checked="false"
+        aria-label="打开文档时默认显示大纲"></button>
+    </div></div></div>
+
+    <div class="frow"><span class="flab"></span><div class="fctl">
+      <button type="button" class="link" id="rstPref">恢复默认</button></div></div>
+  </section>`;
+}
+
+function panelLibrary(){
+  const st=(CFG&&CFG.状态)||{};
+  const root=st.库根||LIBROOT||'';
+  const idx=st.索引||{};
+  const last=st.上次扫描 ? fmtWhen(tsOf(st.上次扫描)) : '';
+  const stCls = cfgBusy||SRV_STATE==='scan' ? 'busy' : (SRV_STATE==='off' ? 'off' : '');
+  const stTxt = cfgBusy ? '正在整理…'
+    : (root ? `收录 ${idx.收录||0} 篇${last?' · 上次整理 '+esc(last):''}` : '服务没起');
+  const swap = SHELL
+    ? `<button type="button" class="btn" data-cfga="choose">更换文件夹…</button>`
+    : '';
+  return `<section class="cfg-panel on" data-cfgpanel="library">
+    ${looseNotices()}
+    <div class="sec">
+      <h3 class="sect">当前笔记库</h3>
+      <div class="vault">
+        <span class="fico" aria-hidden="true">${folderMark(40)}</span>
+        <span class="meta">
+          <span class="nm">${esc(baseName(root)||'（未连上）')}</span>
+          <span class="pth"><span title="${esc(root)}">${esc(root)}</span>
+            <button type="button" class="cpb" data-cfga="copyroot" title="拷贝路径"
+              aria-label="拷贝路径">${icon('copy',12)}</button></span>
+        </span>
+        <span class="vacts">
+          <button type="button" class="btn" data-cfga="reveal">在访达中显示</button>
+          ${swap}
+        </span>
+      </div>
+      ${SHELL?'':'<p class="hint">浏览器模式下用 --root 指定文件夹。</p>'}
+      <div class="statusrow">
+        <span class="st ${stCls}" id="cfgStat">${stTxt}</span>
+        <button type="button" class="btn" id="cfgRescan"${cfgBusy?' disabled':''}>
+          <span class="${cfgBusy?'spin':''}">${icon('refresh',13)}</span>${cfgBusy?'整理中…':'重新整理'}</button>
+      </div>
+    </div>
+
+    ${!cfgReady() ? offlineNotice() : `
+    <div class="sec">
+      <h3 class="sect">随手记</h3>
+      ${noticeFor('随手记目录')}
+      <div class="inline-field">
+        <label class="lbl" for="cfgNoteDir">随手记存放在</label>
+        <input class="tin" id="cfgNoteDir" spellcheck="false" value="${esc(CFG_FORM.随手记目录)}">
+      </div>
+      <p class="hint">新建的随手记会放进笔记库里的这个文件夹。</p>
+    </div>
+
+    <div class="sec">
+      <h3 class="sect">整理范围</h3>
+      ${noticeFor('跳过目录关键词')}
+      <div class="lblrow"><span class="lbl">不收录这些文件夹</span>
+        <span class="ih">文件夹名里含有这些字样，整个文件夹就跳过</span></div>
+      ${chipsHtml('跳过目录关键词','例如 备份、node_modules')}
+    </div>`}
+  </section>`;
+}
+/* 服务没起时 /__config 是读不到的，六个键全空。这时候不摆输入框——
+   摆了也存不进去，一旦让人改，「保存」就成了拿空值覆盖人家的配置。 */
+function offlineNotice(){
+  return `<div class="sec">${noticeHtml('服务没起，读不到配置文件。重开一次 AM·Note 再来改。')}</div>`;
+}
+
+function panelAdvanced(){
+  /* 有一条「问题」落在这一段的字段上就强制展开——黄条藏在折叠区里等于没说。
+     这时候不画折叠钮：它按下去也收不起来（下一次渲染又被 hasAdvProblem 顶开），
+     一颗按不动的按钮比没有按钮更糟。 */
+  const forced = hasAdvProblem() && cfgReady();
+  const open = (ST.cfgAdv===true || forced) && cfgReady();
+  const st=(CFG&&CFG.状态)||{};
+  const cfgFile=(st.库根||LIBROOT) ? (st.库根||LIBROOT)+'/.amnote/config.json' : '';
+  const notes=Object.values((CFG&&CFG.说明)||{})
+    .filter(v=>typeof v==='string' && v)
+    .map(v=>`<p class="hint" style="margin-top:0">${esc(v)}</p>`).join('');
+  const body = !cfgReady() ? offlineNotice() : (!open ? '' : `
+    ${notes}
+    <div class="sec" style="margin-top:0">
+      ${noticeFor('噪声目录')}
+      <div class="lblrow"><span class="lbl">完全同名才跳过的文件夹</span>
+        <span class="ih">名字一模一样才跳过，写一半不算</span></div>
+      ${chipsHtml('噪声目录')}
+    </div>
+    <div class="sec">
+      ${noticeFor('噪声文件')}
+      <div class="lblrow"><span class="lbl">跳过的文件</span>
+        <span class="ih">这些文件不出现在开始页，也搜不到</span></div>
+      ${chipsHtml('噪声文件')}
+    </div>
+    <div class="sec">
+      ${noticeFor('通用标题')}
+      <div class="lblrow"><span class="lbl">这些标题前自动补上文件夹名</span>
+        <span class="ih">太常见的标题，补上文件夹名好认</span></div>
+      ${chipsHtml('通用标题')}
+    </div>
+    <div class="sec">
+      <div class="lblrow"><span class="lbl">本机服务端口</span>
+        <span class="ih">一般不用改。改了以后要重新打开 AM·Note 才生效</span></div>
+      ${noticeFor('端口范围')}
+      <div style="display:flex;align-items:center;gap:9px">
+        <input class="tin n num" id="cfgPortA" inputmode="numeric" aria-label="起始端口"
+          value="${esc(CFG_FORM.端口范围[0])}">
+        <span style="font-size:12px;color:var(--t3)">到</span>
+        <input class="tin n num" id="cfgPortB" inputmode="numeric" aria-label="结束端口"
+          value="${esc(CFG_FORM.端口范围[1])}">
+      </div>
+    </div>
+    <div class="sec">
+      <h3 class="sect">服务信息</h3>
+      <div class="kvgrid">
+        <div class="kvrow"><b>端口</b><span class="num">${esc(st.端口||'—')}</span></div>
+        <div class="kvrow"><b>门禁</b><span>${TOKEN_OK?'已开启':'未开启'}</span></div>
+        <div class="kvrow wide"><b>配置文件</b>
+          <span title="${esc(cfgFile)}">${esc(cfgFile||'读不到，服务没起')}</span>
+          ${cfgFile?`<button type="button" class="cpb" data-cfga="copycfg" title="拷贝"
+            aria-label="拷贝配置文件路径">${icon('copy',12)}</button>`:''}</div>
+      </div>
+      <p class="hint">${CFG.文件存在?'这些值来自配置文件。':'还没有配置文件，用的是内置默认值，保存后才会写出来。'}</p>
+    </div>`);
+  return `<section class="cfg-panel on" data-cfgpanel="advanced">
+    <div class="advrow">
+      <p class="advnote">这些是给爱折腾的人准备的。不动它们，AM·Note 也能好好用。</p>
+      ${forced ? '<span class="disc" style="color:var(--t3)">有一处配置要处理</span>'
+        : (cfgReady()?`<button type="button" class="disc" id="cfgAdvT">${icon(open?'chevron-up':'chevron-down',12)}${open?'收起':'显示高级选项'}</button>`:'')}
+    </div>
+    ${body}
+  </section>`;
+}
+
+function panelAbout(){
+  const ver = SHELL ? ('版本 '+(window.__AMN_SHELL_VERSION__||'—')) : '浏览器模式';
+  const auto = window.__AMN_AUTO_UPDATE__ !== false;
+  const acts = SHELL ? `<div class="acts">
+      <button type="button" class="btn key" style="height:30px;padding:0 14px"
+        data-cfga="update">检查更新</button>
+      <span class="swline">自动检查更新
+        <button type="button" class="sw${auto?' on':''}" id="cfgAuto" role="switch"
+          aria-checked="${auto?'true':'false'}" aria-label="自动检查更新"></button></span>
+    </div>` : '';
+  const links = LINKS.map(x=>`<button type="button" class="link" data-url="${esc(x[1])}">${x[0]}</button>`)
+    .join('<i>·</i>');
+  return `<section class="cfg-panel on" data-cfgpanel="about">
+    <div class="about">
+      <div class="ico"><img src="/icon-192.png" width="64" height="64" alt="AM·Note"></div>
+      <h3>AM·Note</h3>
+      <p class="ver num">${esc(ver)}</p>
+      <p class="desc">把一个文件夹变成你的笔记本。</p>
+      ${acts}
+      <div class="links">${links}</div>
+      <p class="fine">MIT 开源协议</p>
     </div>
   </section>`;
+}
 
-  $$('#viewCfg .seg button').forEach(b=>b.onclick=()=>setPref(b.parentElement.dataset.k, b.dataset.v));
-  ['fs','lh','w'].forEach(k=>{ const el=$('#'+k); if(el) el.oninput=e=>setPref(k, +e.target.value); });
-  $('#rstPref').onclick=()=>{ RESETTABLE.forEach(k=>PREF[k]=DEF_PREF[k]); savePref(); applyPref(); };
-  $('#cfgSave').onclick=saveCfg;
-  $('#cfgRescan').onclick=async()=>{ await doRescan(); loadCfg(); };
-  $('#cfgReload').onclick=()=>loadCfg();
+/* ── 画一遍 ───────────────────────────── */
+function renderCfg(){
+  const tab = CFG_TABS[ST.cfgTab] ? ST.cfgTab : 'reading';
+  ST.cfgTab = tab;
+  $$('#cfgRail .cfg-navi').forEach(b=>{
+    const on=b.dataset.tab===tab;
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-current', on?'page':'false');
+  });
+  $('#cfgTitle').textContent=CFG_TABS[tab];
+  const body=$('#cfgBody');
+  body.innerHTML = tab==='reading' ? panelReading()
+    : tab==='library' ? panelLibrary()
+    : tab==='advanced' ? panelAdvanced()
+    : panelAbout();
+  body.scrollTop=0;
+  wireCfg(tab);
+  syncCfgDirty();
   syncPrefControls();
 }
 
-function collectCfg(){
-  return {
-    跳过目录关键词: unlines($('#skipTokens').value),
-    噪声目录: unlines($('#noiseDir').value),
-    噪声文件: unlines($('#noiseFile').value),
-    通用标题: unlines($('#generic').value),
-    端口范围: [parseInt($('#portA').value,10)||0, parseInt($('#portB').value,10)||0],
-  };
+function wireCfg(tab){
+  const body=$('#cfgBody');
+  // 「访达 / 更换文件夹 / 检查更新 / 拷路径」四段里都可能有，统一先贴一遍
+  body.querySelectorAll('[data-cfga]').forEach(b=>b.onclick=()=>cfgAction(b.dataset.cfga));
+  if(tab==='reading'){
+    $$('#cfgBody [data-tc]').forEach(b=>b.onclick=()=>setPref('theme', b.dataset.tc));
+    $$('#cfgBody [data-fc]').forEach(b=>b.onclick=()=>setPref('font', b.dataset.fc));
+    const fs=$('#cfgFs'); if(fs) fs.oninput=e=>setPref('fs', +e.target.value);
+    $$('#cfgBody .seg[data-k] button').forEach(b=>b.onclick=()=>
+      setPref(b.parentElement.dataset.k, +b.dataset.v));
+    const tc=$('#cfgToc');
+    if(tc) tc.onclick=()=>{ ST.toc = !(ST.toc!==false); saveST(); syncToc(); syncPrefControls(); };
+    const rb=$('#rstPref');
+    if(rb) rb.onclick=()=>{ RESETTABLE.forEach(k=>PREF[k]=DEF_PREF[k]); savePref(); applyPref(); };
+    return;
+  }
+  if(tab==='about'){
+    const sw=$('#cfgAuto');
+    if(sw) sw.onclick=()=>{
+      const on=!sw.classList.contains('on');
+      sw.classList.toggle('on', on); sw.setAttribute('aria-checked', on?'true':'false');
+      post({type:'setAutoUpdate', on:on});
+    };
+    $$('#cfgBody [data-url]').forEach(b=>b.onclick=()=>openLink(b.dataset.url));
+    return;
+  }
+  // 笔记库 / 高级：芯片、文本框、端口，改的都是 CFG_FORM
+  $$('#cfgBody .chipbox').forEach(box=>wireChips(box));
+  const nd=$('#cfgNoteDir');
+  if(nd) nd.oninput=()=>{ CFG_FORM.随手记目录=nd.value.trim(); syncCfgDirty(); };
+  ['cfgPortA','cfgPortB'].forEach((id,i)=>{
+    const el=$('#'+id); if(!el) return;
+    el.oninput=()=>{ const v=parseInt(el.value,10); CFG_FORM.端口范围[i]=isNaN(v)?'':v; syncCfgDirty(); };
+  });
+  const rs=$('#cfgRescan');
+  if(rs) rs.onclick=cfgRescan;
+  const ad=$('#cfgAdvT');
+  if(ad) ad.onclick=()=>{ ST.cfgAdv = ST.cfgAdv!==true; saveST(); renderCfg(); };
 }
+
+/* 芯片输入：回车／逗号成片，× 删，空输入按退格删最后一枚。 */
+function wireChips(box){
+  const key=box.dataset.chips, inp=box.querySelector('input');
+  const add=v=>{
+    v=String(v||'').trim().replace(/[,，]+$/,'').trim();
+    if(!v) return;
+    if(CFG_FORM[key].indexOf(v)>=0){ inp.value=''; return; }
+    CFG_FORM[key]=CFG_FORM[key].concat([v]);
+    const sp=document.createElement('span');
+    sp.className='chip fresh';
+    sp.appendChild(document.createTextNode(v));
+    const x=document.createElement('button');
+    x.type='button'; x.className='x'; x.setAttribute('aria-label','删除 '+v);
+    x.innerHTML=icon('close',9);
+    x.dataset.ci=String(CFG_FORM[key].length-1);
+    sp.appendChild(x);
+    box.insertBefore(sp, inp);
+    inp.value='';
+    rewireChip(box);
+    syncCfgDirty();
+  };
+  box.querySelectorAll('.chip .x').forEach(x=>x.onclick=()=>dropChip(box, x));
+  inp.onkeydown=e=>{
+    if(e.key==='Enter' || e.key===',' || e.key==='，'){ e.preventDefault(); add(inp.value); }
+    else if(e.key==='Backspace' && !inp.value){
+      const last=[...box.querySelectorAll('.chip .x')].pop();
+      if(last){ e.preventDefault(); dropChip(box, last); }
+    }
+  };
+  inp.onblur=()=>{ if(inp.value.trim()) add(inp.value); };
+  box.onclick=e=>{ if(e.target===box) inp.focus(); };
+}
+function dropChip(box, x){
+  const key=box.dataset.chips, i=+x.dataset.ci;
+  CFG_FORM[key]=CFG_FORM[key].filter((_,n)=>n!==i);
+  x.closest('.chip').remove();
+  rewireChip(box);
+  syncCfgDirty();
+}
+/* 删掉一枚之后后面的下标全变了，重新贴一遍。 */
+function rewireChip(box){
+  box.querySelectorAll('.chip .x').forEach((x,i)=>{
+    x.dataset.ci=String(i);
+    x.onclick=()=>dropChip(box, x);
+  });
+}
+
+function openLink(u){
+  if(!/^https:\/\//i.test(u||'')) return;
+  if(SHELL) post({type:'openURL', url:u});
+  else window.open(u,'_blank','noopener');
+}
+
+function cfgAction(a){
+  if(a==='reveal'){ SHELL ? post({type:'revealVault'}) : revealVault(); return; }
+  if(a==='choose'){ post({type:'chooseVault'}); return; }
+  if(a==='update'){ post({type:'checkUpdate'}); return; }
+  if(a==='copyroot'){
+    const root=((CFG&&CFG.状态)||{}).库根||LIBROOT;
+    if(root) clipPath('', {text:root}); return;
+  }
+  if(a==='copycfg'){
+    const root=((CFG&&CFG.状态)||{}).库根||LIBROOT;
+    if(root) clipPath('', {text:root+'/.amnote/config.json'}); return;
+  }
+}
+
+async function cfgRescan(){
+  if(cfgBusy) return;
+  cfgBusy=true; renderCfg();
+  try{ await doRescan(); }
+  finally{ cfgBusy=false; }
+  await loadCfg();
+}
+
 async function saveCfg(){
-  const msg=$('#cfgMsg'), btn=$('#cfgSave');
-  btn.disabled=true; if(msg) msg.textContent='写入中';
+  if(!cfgDirty()) return;
+  const btn=$('#cfgSave'); if(btn) btn.disabled=true;
+  const pa=parseInt(CFG_FORM.端口范围[0],10), pb=parseInt(CFG_FORM.端口范围[1],10);
+  const payload=Object.assign({}, CFG_FORM, {端口范围:[pa||0, pb||0]});
   try{
     const r=await (await fetch('/__config',{method:'POST', headers:hdrs(),
-      body:JSON.stringify(collectCfg())})).json();
-    if(!r.ok){ tell('没保存成功', r.错误||''); btn.disabled=false; return; }
-    await doRescan();
+      body:JSON.stringify(payload)})).json();
+    if(!r.ok){ tell('没保存成功', r.错误||''); if(btn) btn.disabled=false; return; }
+    flash('已保存，正在重新整理');
+    cfgBusy=true; renderCfg();
+    try{ await doRescan(); } finally{ cfgBusy=false; }
     await loadCfg();
-    const m2=$('#cfgMsg'); if(m2) m2.textContent='已保存并重扫';
-  }catch(e){ tell('没保存成功','服务没应答'); }
-  finally{ const b2=$('#cfgSave'); if(b2) b2.disabled=false; }
+  }catch(e){
+    tell('没保存成功','服务没应答');
+    if(btn) btn.disabled=false;
+  }
 }
 
 /* 重扫＝让服务把全库正文重新同步一遍。v17 起是 POST，要带口令。 */
@@ -6923,32 +7552,24 @@ function setState(s, tip){
   if(d) d.classList.toggle('off', s!=='ok');
   const nv=$('#navCfg'); if(nv) nv.title=tip||'';
   bnr('offline', s==='off');
-  syncStatusBar();
+  syncScanChip();
 }
 
-/* ── 底部状态栏 ─────────────────────────
-   左边：服务状态 + 收录了多少篇。右边：当前这一屏在干什么。 */
-function statusDetailText(){
-  const t=(typeof active==='function') ? active() : null;
-  if(!t) return '按 ⌘ K 找一篇笔记';
-  if(t.editing) return t.ext ? '库外文档只读' : '边写边存 · ⌘ S 立刻存一次';
-  const k=(typeof kindOfTab==='function') ? kindOfTab(t) : 'start';
-  if(k==='md') return canEditPath(t.path) && !t.ext ? '双击正文开始编辑 · ⌘ E 也可以' : '这一份只读';
-  if(k==='html') return 'HTML 页面 · 在库里原样打开';
-  if(k==='search') return '点一条打开 · ⌘ 点开新标签';
-  if(k==='folder') return '点一张卡片打开 · ⌘ 点开新标签';
-  if(k==='pins') return '收藏起来的都在这儿 · 点 ★ 取消收藏';
-  return '按 ⌘ K 搜一搜，或者写点新的';
+/* ── 服务状态 ───────────────────────────
+   底部状态栏 5.4 起取消，这一格搬进开始页眉行那枚小圆点：
+   绿＝就绪 · N 篇，琥珀＝扫描中，灰＝服务没起。开始页画一次，之后状态变了就地改字。 */
+function scanChipText(){
+  if(SRV_STATE==='off') return '服务没起';
+  if(SRV_STATE==='scan') return '扫描中…';
+  return '就绪 · '+items.length+' 篇';
 }
-function syncStatusBar(){
-  const dot=$('#statusDot'), txt=$('#statusText'), det=$('#statusDetail');
-  if(!dot || !txt) return;
-  dot.classList.toggle('scan', SRV_STATE==='scan');
-  dot.classList.toggle('off', SRV_STATE==='off');
-  if(SRV_STATE==='off') txt.textContent='服务没起';
-  else if(SRV_STATE==='scan') txt.textContent='扫描中…';
-  else txt.textContent = items.length ? ('就绪 · '+items.length+' 篇') : '就绪';
-  if(det) det.textContent=statusDetailText();
+function syncScanChip(){
+  $$('[data-scan]').forEach(el=>{
+    el.classList.toggle('scan-busy', SRV_STATE==='scan');
+    el.classList.toggle('scan-off', SRV_STATE==='off');
+    const t=el.querySelector('.tx');
+    if(t) t.textContent=scanChipText();
+  });
 }
 
 async function syncStatus(){
@@ -7014,6 +7635,12 @@ $$('.kindseg [data-kind]').forEach(b=>b.onclick=()=>setKind(b.dataset.kind));
 $('#navCfg').onclick=openCfg;
 $('#cfgClose').onclick=closeCfg;
 $('#cfgWrap').onclick=e=>{ if(e.target.id==='cfgWrap') closeCfg(); };
+$$('#cfgRail .cfg-navi').forEach(b=>b.onclick=()=>{
+  if(ST.cfgTab===b.dataset.tab) return;
+  ST.cfgTab=b.dataset.tab; saveST(); renderCfg();
+});
+$('#cfgSave').onclick=saveCfg;
+$('#cfgDrop').onclick=loadCfg;
 $('#qlclose').onclick=closeQL;
 $('#qlopen').onclick=()=>{ const i=qlItem; closeQL(); if(i) openDoc(i); };
 $('#qlwrap').onclick=e=>{ if(e.target.id==='qlwrap') closeQL(); };
@@ -7028,17 +7655,16 @@ $('#outfloat').addEventListener('click', e=>{
 addEventListener('pointerdown', e=>{
   if(!e.target.closest('#ctx')) closeCtx();
   if(!e.target.closest('#tabpick') && !e.target.closest('#tabmore')) closeTabPick();
-  if(!e.target.closest('#obdrop') && !e.target.closest('#omnibox') && !e.target.closest('[data-act="focusomni"],#appmark')) hideOmni(true);
-  if(!e.target.closest('#bmdrop') && !e.target.closest('#bmbar')) hideBmDrop();
   if(olFloatOn() && !e.target.closest('#outfloat') && !e.target.closest('[data-dt="outline"]')){
     closeOlFloat(); syncToc();
   }
-  if(typeOn() && !e.target.closest('#typeWrap') && !e.target.closest('#navType')) closeType();
+  if(typeOn() && !e.target.closest('#typeWrap') && !e.target.closest('[data-dt="more"]')) closeType();
 }, true);
-addEventListener('resize', ()=>{ layoutTabs(); growAllEd(); syncToc(); if(tabPickOn()) openTabPick(); });
+addEventListener('resize', ()=>{ layoutTabs(); growAllEd(); syncToc(); refitPaths(); placeType();
+  if(tabPickOn()) openTabPick(); });
 if(window.ResizeObserver){
   const pane=$('#docpane');
-  if(pane) new ResizeObserver(()=>{ layoutTabs(); growAllEd(); syncToc(); }).observe(pane);
+  if(pane) new ResizeObserver(()=>{ layoutTabs(); growAllEd(); syncToc(); refitPaths(); }).observe(pane);
   const strip=$('#tabstrip');
   if(strip) new ResizeObserver(()=>layoutTabs()).observe(strip);
 }
@@ -7070,15 +7696,19 @@ window.AMN = {
   toggleBookmarks(){ toggleBookmarks(); },
   back(){ goHist(-1); },
   forward(){ goHist(1); },
+  /* 三条都通向 ⌘K 面板（5.4 起唯一的搜索入口）：search 带预填文字并全选，
+     回车就是面板第一行「在全部笔记中搜索…」。 */
   search(t){
     const q=String(t||'');
-    const el=$('#omni'); if(el) el.value=q;
     setKw(q); render();
-    if(q) navigate(makeEntry('search', {q, title:q, path:'搜索: '+q}));
+    focusOmnibox({seed:q, select:true});
   },
   focusSearch(){ focusOmnibox(); },
   focusOmnibox(){ focusOmnibox(); },
-  searchEnter(){ if(hits.length) openDoc(hits[0], {jump:terms()}); },
+  searchEnter(){
+    if(quickOn()){ const it=ckList[ckSel]; if(it){ runCk(it); return; } }
+    if(hits.length) openDoc(hits[0], {jump:terms()});
+  },
   quickOpen(){ quickOn() ? closeQuick() : openQuick(); },
   enterEdit(){ const t=active(); if(t && !t.editing) startEdit(); },
   toggleEdit(){ const t=active(); if(!t) return; t.editing ? finishEdit() : startEdit(); },
@@ -7094,8 +7724,6 @@ window.AMN = {
   trashDoc(){ const t=active(); if(t && !t.ext && !t.editing) trashDoc(t.path); },
   print(){ try{ window.print(); }catch(e){} },
   escape(){
-    if(omniOn()){ hideOmni(true); return; }
-    if(bmDropOn()){ hideBmDrop(); return; }
     if($('#ctx').classList.contains('on')){ closeCtx(); return; }
     if(tabPickOn()){ closeTabPick(); return; }
     if(olFloatOn()){ closeOlFloat(); syncToc(); return; }
@@ -7128,7 +7756,7 @@ window.AMN = {
       tabCount:TABS.length,
       canBack:canBack(t),
       canForward:canForward(t),
-      bookmarks:ST.bookmarks!==false,
+      bookmarks:false,               /* 书签栏 5.4 起下线，这一位恒假 */
       dirty:!!dirty(t), editing:!!(t&&t.editing),
       canEdit:hasDocNow(t) && !t.ext && kindOfTab(t)==='md' && canEditPath(t.path),
       /* 第 14 个键（v23）。编辑态一律为假：⌘⌫ 在编辑器里是「删到行首」，
@@ -7239,6 +7867,174 @@ addEventListener('drop', e=>{
   tell('打不开','库外的文件只能读 .md：'+path);
 });
 
+/* ── 新用户引导 ─────────────────────────
+   四张卡片，一台很小的状态机，**只在壳里跑**（浏览器模式一律不挂）：
+
+     __AMN_VAULT_STATE__ === 'first-run'  → welcome  欢迎，两张选择卡
+     __AMN_VAULT_STATE__ === 'missing'    → missing  找不到上次的笔记库
+     __AMN_ONBOARDING__  === true         → scanning 正在整理 → done 整理好了
+     其余（ok 且没有 onboarding 标记）     → 什么都不画
+
+   welcome / missing 那两张按下去只是 post 一条消息给壳，**不等回音**：
+   壳弹的是 NSOpenPanel，用户按取消、或者又选了同一个库根，壳就不会重载，
+   页面得留在原地还能再点。所以按钮只进「正在打开…」这个软状态，卡片不锁死。
+   scanning → done 靠 /__status 轮询：状态回到「就绪」就换卡片。 */
+const ONB_STATE = SHELL ? String(window.__AMN_VAULT_STATE__||'ok') : 'ok';
+const ONB_PATH  = SHELL ? String(window.__AMN_VAULT_PATH__||'') : '';
+let onbStep=null, onbTimer=null, onbFound=0;
+
+function onbNeeded(){
+  if(!SHELL || SOLO) return null;
+  if(ONB_STATE==='first-run') return 'welcome';
+  if(ONB_STATE==='missing') return 'missing';
+  if(window.__AMN_ONBOARDING__===true) return 'scanning';
+  return null;
+}
+function onbCard(inner){ return `<div class="onb-card">${inner}</div>`; }
+function onbHead(icoHtml, h1, sub){
+  return `<div class="onb-head">${icoHtml}<h1>${h1}</h1><p class="onb-sub">${sub}</p></div>`;
+}
+const onbAppIco = `<div class="onb-ico"><img src="/icon-192.png" width="72" height="72" alt="AM·Note"></div>`;
+
+function onbHtml(step){
+  if(step==='welcome') return onbCard(
+    onbHead(onbAppIco,'欢迎使用 AM·Note','把一个文件夹变成你的笔记本。文件留在原地，不上传，不改格式。')
+    + `<div class="choices">
+        <button type="button" class="choice" data-onb="create">
+          <span class="ci">${icon('new-note',18)}</span>
+          <h2>新建一个笔记库</h2>
+          <p>在「文稿」里创建 AM·Note 文件夹，附一篇示例笔记。</p>
+          <span class="path"><span class="p">~/Documents/AM·Note</span></span>
+        </button>
+        <button type="button" class="choice" data-onb="choose">
+          <span class="ci">${icon('folder',18)}</span>
+          <h2>使用已有文件夹</h2>
+          <p>选择一个已经放着 Markdown / 网页的文件夹。</p>
+          <span class="path"><span class="p">支持子文件夹，原样保留</span></span>
+        </button>
+      </div>
+      <p class="onb-foot">以后随时可以在 设置 › 笔记库 里更换。</p>`);
+
+  if(step==='missing') return onbCard(
+    onbHead(`<div class="qmark">${icon('folder',28)}<em>?</em></div>`,
+            '找不到上次的笔记库','这个文件夹被移动、改名或者删掉了。')
+    + `<div class="oldpath">${icon('folder',13)}<span title="${esc(ONB_PATH)}">${esc(ONB_PATH||'（没记下路径）')}</span></div>
+       <div class="onb-btns">
+         <button type="button" class="btn key" data-onb="choose">重新选择位置…</button>
+         <button type="button" class="btn" data-onb="create">新建一个笔记库</button>
+       </div>
+       <p class="onb-fine">文件不会丢，只是 AM·Note 找不到那个文件夹了。</p>`);
+
+  if(step==='scanning') return onbCard(
+    onbHead(onbAppIco,'正在整理你的笔记…','读一遍文件夹里的 Markdown 和网页，不会改动任何文件。')
+    + `<div class="pbar" role="progressbar" aria-label="正在整理"></div>
+       <div class="scanrow">
+         <span class="cnt">已找到 <b class="num" id="onbCnt">${onbFound}</b> 篇</span>
+         <span class="pth" title="${esc(ONB_PATH||LIBROOT)}">${esc(ONB_PATH||LIBROOT)}</span>
+       </div>
+       <p class="onb-foot">这一步只做一次，之后打开就是秒开。</p>`);
+
+  // done
+  const docs=(TREE&&TREE.文档)||[];
+  const md=docs.filter(d=>String(d.类型||'md')!=='html').length;
+  const html=docs.length-md;
+  const dirs=((TREE&&TREE.目录)||[]).length;
+  const ok=`<div class="okmark"><svg viewBox="0 0 24 24" aria-hidden="true">`
+    + `<path d="M3.2,12 A8.8,8.8 0 1,0 20.8,12 A8.8,8.8 0 1,0 3.2,12" stroke-linecap="round"/>`
+    + `<path d="M7.6,12.3 L10.7,15.4 L16.4,8.9" stroke-linecap="round" stroke-linejoin="round"/></svg></div>`;
+  const skipped=onbSkipped();
+  return onbCard(
+    onbHead(ok,'整理好了','你的笔记库已经可以用了。')
+    + `<div class="stats">
+        <div class="stat"><b class="num">${md}</b><span>篇 Markdown</span></div>
+        <div class="stat"><b class="num">${html}</b><span>个网页</span></div>
+        <div class="stat"><b class="num">${dirs}</b><span>个文件夹</span></div>
+      </div>
+      ${skipped?`<p class="skipnote">跳过了 ${esc(skipped)}（可在设置里调整）</p>`:''}
+      <div class="onb-btns"><button type="button" class="btn key" data-onb="go">开始使用</button></div>`);
+}
+/* 「跳过了 …」这一行报的是**真的被整个跳掉的顶层文件夹**，不是配置里的关键词：
+   静态服务对库根出的是目录清单，从那儿拿到磁盘上真有的顶层文件夹名，再拿
+   「跳过目录关键词」按服务端同一套判据（包含即命中，见 fulltext.should_skip）
+   比一遍。点开头的（.git/.amnote/.claude）是机器的事，不跟用户报账。
+   任何一步取不到就整行不出——规范允许省略，但不允许写一句可能是假的。 */
+let ONB_SKIP_NAMES=[];
+function onbSkipped(){ return ONB_SKIP_NAMES.slice(0,4).join('、'); }
+async function onbLoadSkips(){
+  ONB_SKIP_NAMES=[];
+  if(!IS_HTTP) return;
+  try{
+    const cr=await fetch('/__config',{cache:'no-store'}); if(!cr.ok) return;
+    const kw=(((await cr.json()).配置)||{}).跳过目录关键词||[];
+    if(!kw.length) return;
+    const lr=await fetch('/',{cache:'no-store'}); if(!lr.ok) return;
+    const doc=new DOMParser().parseFromString(await lr.text(),'text/html');
+    const dirs=[...doc.querySelectorAll('a[href]')]
+      .map(a=>a.getAttribute('href')||'')
+      .filter(h=>h.slice(-1)==='/' && h.indexOf('..')<0)
+      .map(h=>{ try{ return decodeURIComponent(h.slice(0,-1)); }catch(e){ return h.slice(0,-1); } })
+      .filter(n=>n && n[0]!=='.');
+    ONB_SKIP_NAMES=dirs.filter(n=>kw.some(k=>k && k[0]!=='.' && n.indexOf(k)>=0));
+  }catch(e){}
+}
+
+function onbShow(step){
+  onbStep=step;
+  document.body.classList.add('onb');
+  const w=$('#onbWrap');
+  w.classList.add('on');
+  w.innerHTML=onbHtml(step);
+  w.querySelectorAll('[data-onb]').forEach(b=>b.onclick=()=>onbClick(b));
+}
+function onbHide(){
+  onbStep=null;
+  clearTimeout(onbTimer); onbTimer=null;
+  document.body.classList.remove('onb');
+  const w=$('#onbWrap');
+  w.classList.remove('on'); w.innerHTML='';
+}
+function onbClick(b){
+  const a=b.dataset.onb;
+  if(a==='go'){ onbHide(); ST.tips=true; saveST(); repaintPages(); return; }
+  if(a!=='choose' && a!=='create') return;
+  // 壳可能根本不会重载（用户按了取消、或又选了同一个库根），所以只给一层
+  // 「正在打开…」的软提示：这一张卡片变淡、不可点，另一张照样能点。
+  post({type: a==='choose' ? 'chooseVault' : 'createVault'});
+  b.classList.add('wait');
+  const p=b.querySelector('.path .p') || b;
+  const old=p.textContent;
+  p.textContent='正在打开…';
+  setTimeout(()=>{ b.classList.remove('wait'); p.textContent=old; }, 2500);
+}
+/* 整理中：每 500ms 问一次 /__status，收录数往上跳；状态回到「就绪」就换卡片。 */
+async function onbPoll(){
+  if(onbStep!=='scanning') return;
+  let done=false;
+  try{
+    const r=await fetch('/__status',{cache:'no-store'});
+    if(r.ok){
+      const s=await r.json();
+      onbFound=(s.索引||{}).收录||0;
+      const el=$('#onbCnt'); if(el) el.textContent=onbFound;
+      done = s.状态!=='扫描中';
+    }
+  }catch(e){}
+  if(onbStep!=='scanning') return;
+  if(done){
+    try{ await loadTree(); }catch(e){}
+    await onbLoadSkips();
+    if(onbStep==='scanning') onbShow('done');
+    return;
+  }
+  onbTimer=setTimeout(onbPoll, 500);
+}
+function onbBoot(){
+  const step=onbNeeded();
+  if(!step) return;
+  onbShow(step);
+  if(step==='scanning') onbTimer=setTimeout(onbPoll, 120);
+}
+
 /* ═══ 起步 ═══════════════════════════════ */
 if(EMBED){
   const t=makeTab(makeEntry('md', {path:EMBED.路径, title:EMBED.标题}));
@@ -7259,7 +8055,6 @@ if(EMBED){
     openStartTab();
   }
   loadTree().then(()=>{
-    drawBmBar();
     if(!SOLO && !TABS.length) openStartTab();
     const at=active();
     if(at && isPageKind(kindOfTab(at))) paintPage(at);
@@ -7273,6 +8068,7 @@ paintIcons(document);
 applyST();
 applyPref();
 syncToc();
+onbBoot();
 post({type:'ready'});
 </script>
 </body>

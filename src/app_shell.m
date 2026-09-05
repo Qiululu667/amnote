@@ -65,9 +65,11 @@
 //    一个都不通就直接告诉用户去 xcode-select --install。
 // 7. 视觉无边框（20260829 加）。窗口仍保留系统圆角、阴影、拖动、
 //    缩放和交通灯；只收掉视觉噪声：内容铺到标题栏背后、标题栏不画分界线、
-//    标题字符串藏起来以免压在标签上。网页在 shell 模式给交通灯预留 52px，
-//    这两个数是一对；改标题栏高度时要同步看 `body.shell #app/#hub`。**网页主题和原生
-//    标题栏也必须同步**：门户发 `{type:'theme', value:'auto|light|dark'}`，壳给窗口设置
+//    标题字符串藏起来以免压在标签上。网页在 shell 模式给交通灯让出左边 80px
+//    （`--tab-left`），顶栏本身是 42px 标签条 + 48px 文档头（5.4 起，地址栏和
+//    书签栏那两条撤了），跟壳里的 kChromeH = 90 是一对；改顶栏高度时要同步看
+//    `body.shell #app/#hub`。**网页主题和原生标题栏也必须同步**：
+//    门户发 `{type:'theme', value:'auto|light|dark'}`，壳给窗口设置
 //    Aqua / DarkAqua / 跟随系统。漏掉这条会让白色标题和白色按钮落在浅色网页上，近乎消失。
 // 8. 冷启动时 application:openURLs: 会在 applicationDidFinishLaunching: 之前到达。
 //    _pendingOpens 必须在 init 里建好；didFinishLaunching 里不许换成新数组，
@@ -110,7 +112,9 @@ static const CGFloat kSoloW = 1020, kSoloH = 940;
 static const CGFloat kSoloMinW = 480, kSoloMinH = 400;
 
 static const CGFloat kFindBarH = 38;
-static const CGFloat kChromeH = 52;
+/// 网页顶栏总高：42px 标签条 + 48px 文档头（5.4 起，地址栏和书签栏撤了）。
+/// 只有查找栏拿它定位——查找栏要吊在文档头下面，不能盖住标签。
+static const CGFloat kChromeH = 90;
 
 /// 菜单校验不许同步等 JS。做法是定时把 AMN.state() 的结果抓回来缓存，
 /// validateMenuItem: 只读缓存。0.5 秒是「按下菜单前状态已经对了」的够用值。
@@ -257,6 +261,84 @@ static void prepareVault(NSString *path) {
                                                     error:nil];
 }
 
+/// 占位空根。还没选过库、或上次那个文件夹没了的时候，服务先起在这儿：
+/// 窗口照常出来，欢迎 / 找不到库那两张卡由网页按 __AMN_VAULT_STATE__ 自己画
+/// （design-spec §8）。**绝不写进 defaults**——写了下次启动就把占位当成真库，
+/// 「找不到上次的笔记库」永远不会再提示。
+static NSString *placeholderRoot(void) {
+    NSString *p = [supportDir() stringByAppendingPathComponent:@"Welcome"];
+    [[NSFileManager defaultManager] createDirectoryAtPath:p
+                              withIntermediateDirectories:YES
+                                               attributes:nil
+                                                    error:nil];
+    prepareVault(p);
+    return p;
+}
+
+/// 服务实际起在哪个目录：选过库就是库根，没有就是占位空根。
+static NSString *serviceRoot(void) {
+    NSString *v = locateRoot();
+    return v.length ? v : placeholderRoot();
+}
+
+/// 注入给网页的库状态：ok / first-run / missing。
+/// missing ＝ defaults 里还留着上次那个路径，但目录已经不在了。
+static NSString *vaultState(void) {
+    if (locateRoot().length) return @"ok";
+    NSString *saved = [NSUserDefaults.standardUserDefaults stringForKey:kVaultKey];
+    return saved.length ? @"missing" : @"first-run";
+}
+
+/// 注入给网页的库路径：ok 是当前库根，missing 是上次那个（网页要灰字显示它），
+/// first-run 没有路径就给空串。占位空根不是库，永远不往外说。
+static NSString *vaultDisplayPath(void) {
+    NSString *v = locateRoot();
+    if (v.length) return v;
+    NSString *saved = [NSUserDefaults.standardUserDefaults stringForKey:kVaultKey];
+    return saved.length ? saved : @"";
+}
+
+/// 「新建一个笔记库」的默认位置 ~/Documents/AM·Note（中间是 U+00B7，跟 app 名一致）。
+static NSString *defaultNewVaultPath(void) {
+    NSArray *docs = NSSearchPathForDirectoriesInDomains(NSDocumentDirectory,
+                                                        NSUserDomainMask, YES);
+    NSString *dir = docs.count ? docs[0]
+                               : [NSHomeDirectory() stringByAppendingPathComponent:@"Documents"];
+    return [dir stringByAppendingPathComponent:@"AM·Note"];
+}
+
+/// 目录里已经有 .md 就别再塞欢迎信——用户选的是自己的老文件夹，
+/// 不该凭空多出一份没要过的文件。
+static BOOL dirHasMarkdown(NSString *dir) {
+    for (NSString *n in [NSFileManager.defaultManager contentsOfDirectoryAtPath:dir error:NULL]) {
+        if ([n.pathExtension.lowercaseString isEqualToString:@"md"]) return YES;
+    }
+    return NO;
+}
+
+/// 包成 JS 字面量再拼进注入脚本。库路径里可能有引号和反斜杠，
+/// 直接拼会把整段脚本拼坏——脚本一坏，网页连 __AMN_SHELL__ 都读不到。
+static NSString *jsString(NSString *v) {
+    if (!v) return @"\"\"";
+    NSMutableString *o = [NSMutableString stringWithString:@"\""];
+    for (NSUInteger i = 0; i < v.length; i++) {
+        unichar c = [v characterAtIndex:i];
+        switch (c) {
+            case '"':  [o appendString:@"\\\""]; break;
+            case '\\': [o appendString:@"\\\\"];  break;
+            case '\n': [o appendString:@"\\n"];   break;
+            case '\r': [o appendString:@"\\r"];   break;
+            case '\t': [o appendString:@"\\t"];   break;
+            case '<':  [o appendString:@"\\u003C"]; break;   // 别让路径里的 </script> 提前收尾
+            default:
+                if (c < 0x20 || c == 0x2028 || c == 0x2029) [o appendFormat:@"\\u%04X", c];
+                else [o appendFormat:@"%C", c];
+        }
+    }
+    [o appendString:@"\""];
+    return o;
+}
+
 // ── 更新用的纯函数。不碰 UI，方便核对版本和包是不是自己的。
 
 static BOOL amnAutoCheckOn(void) {
@@ -268,6 +350,13 @@ static BOOL amnAutoCheckOn(void) {
 static NSString *amnShortVersion(void) {
     NSString *v = NSBundle.mainBundle.infoDictionary[@"CFBundleShortVersionString"];
     return v.length ? v : @"0";
+}
+
+/// 「5.4.0 (27)」。注入给网页显示在设置里，跟「关于 AM·Note」是同一份信息。
+static NSString *amnFullVersion(void) {
+    NSString *b = NSBundle.mainBundle.infoDictionary[@"CFBundleVersion"];
+    return b.length ? [NSString stringWithFormat:@"%@ (%@)", amnShortVersion(), b]
+                    : amnShortVersion();
 }
 
 /// 去掉 v 前缀和 -beta 这类尾巴，只留 1.2.3。
@@ -873,6 +962,7 @@ static void applySeamlessChrome(NSWindow *window) {
 
     NSStatusItem   *_statusItem;    // 服务常驻期间的唯一入口
     BOOL            _quitting;      // 正在走退出流程，别再起新的定时器
+    BOOL            _onboarding;    // 本次启动刚选定/新建了库，下一次注入带 __AMN_ONBOARDING__
     WKUserContentController *_ucc;  // 拆 web 时要从它上面把 amn handler 摘掉
 
     NSURLSession              *_updSession;
@@ -910,10 +1000,7 @@ static void applySeamlessChrome(NSWindow *window) {
     [self buildMenu];
     [self buildWindow];
     [self buildStatusItem];
-    if (![self ensureVault]) {
-        [NSApp terminate:nil];
-        return;
-    }
+    [self ensureVault];
     [self startService];
 
     // N-8 的兜底：网页要是既不 didFinish 也不报错，到点了照样把窗口放出来
@@ -923,35 +1010,27 @@ static void applySeamlessChrome(NSWindow *window) {
     [self scheduleAutoUpdateCheck];
 }
 
-/// 第一次打开还没选过库：主线程弹说明 + 只选文件夹的面板。取消就退出。
-- (BOOL)ensureVault {
+/// 库根准备。**5.4 起不再弹「选择一个文件夹 / 退出」**：那个框一取消 app 就没了，
+/// 用户连界面都没见过。改成没有库时先把服务起在占位空根上，窗口照常出来，
+/// 欢迎 / 找不到库的卡片由网页按 __AMN_VAULT_STATE__ 画（design-spec §8）。
+- (void)ensureVault {
     NSString *v = locateRoot();
-    if (v.length) {
-        prepareVault(v);
-        return YES;
-    }
-    return [self chooseVaultRequired:YES];
+    if (v.length) { prepareVault(v); return; }
+    (void)placeholderRoot();
 }
 
-/// required=YES：第一次，取消／点退出都返回 NO，调用方退出 app。
-/// required=NO：菜单换库，取消则保持当前库。
-- (BOOL)chooseVaultRequired:(BOOL)required {
-    if (required) {
-        NSAlert *a = [NSAlert new];
-        a.messageText = @"选择一个文件夹";
-        a.informativeText = @"AM·Note 会索引你选的文件夹。文件留在原地，不会上传到网上。";
-        [a addButtonWithTitle:@"选择文件夹"];
-        [a addButtonWithTitle:@"退出"];
-        if ([a runModal] != NSAlertFirstButtonReturn) return NO;
-    }
-
+/// 只选文件夹的面板。选了就存进 defaults 并返回 YES；取消返回 NO——
+/// **取消不再退出 app**，没有库的时候取消只是回到网页那张欢迎卡。
+/// noVault=YES：现在还没有可用的库（首启 / 库丢了），面板文案换一句。
+- (BOOL)chooseVaultRequired:(BOOL)noVault {
     NSOpenPanel *p = [NSOpenPanel openPanel];
     p.canChooseFiles = NO;
     p.canChooseDirectories = YES;
     p.allowsMultipleSelection = NO;
     p.canCreateDirectories = YES;
     p.prompt = @"选择文件夹";
-    p.message = @"AM·Note 会索引你选的文件夹。文件留在原地，不会上传到网上。";
+    p.message = noVault ? @"AM·Note 会索引你选的文件夹。文件留在原地，不会上传到网上。"
+                        : @"换一个文件夹。AM·Note 只索引你选的这一个，文件都留在原地。";
     NSString *cur = locateRoot();
     if (cur.length) p.directoryURL = [NSURL fileURLWithPath:cur];
 
@@ -964,17 +1043,90 @@ static void applySeamlessChrome(NSWindow *window) {
     return YES;
 }
 
+/// 「库 → 选择文件夹…」，以及网页发来的 {type:'chooseVault'}（欢迎卡上那颗按钮）。
 - (void)mChooseVault:(id)s {
     [NSApp activateIgnoringOtherApps:YES];
     NSString *old = locateRoot();
-    if (![self chooseVaultRequired:NO]) return;
+    if (![self chooseVaultRequired:(old.length == 0)]) return;   // 取消：保持现状
     NSString *now = locateRoot();
     if (old.length && now.length && [normPath(old) isEqualToString:normPath(now)]) return;
+    [self switchToVault];
+}
 
+/// 换库：停服务 → 拆网页 → 起新服务 → 重载。重载那一次注入 __AMN_ONBOARDING__=true，
+/// 网页据此走「整理中 → 整理好 → 三条提示」（design-spec §8 Step 2/3）。
+/// 标记是一次性的，页面加载完就抹掉（clearOnboardingFlag）。
+- (void)switchToVault {
+    _onboarding = YES;
     [_svc stop];
     _svc = nil;
     [self detachWebView];
     [self startService];
+}
+
+/// 新建库时放进去的那一篇。只在库里一篇 .md 都没有时才写，
+/// 内容就是 design-spec §8 Step 3 那三条提示，外加「文件留在原地」。
+static NSString *const kWelcomeNote =
+    @"# 欢迎使用 AM·Note\n"
+     "\n"
+     "这是 AM·Note 给你放的第一篇笔记。改它、删它都行。\n"
+     "\n"
+     "## 三件事就够了\n"
+     "\n"
+     "- **⌘K 找任何一篇笔记**：不记得放在哪儿也没关系，标题和正文一起搜。\n"
+     "- **双击正文即可编辑**：不用按保存，改动会存回原来那个文件。\n"
+     "- **⤢ 专注模式**：其余都收起来，屏幕上只剩正文。\n"
+     "\n"
+     "## 文件都留在原地\n"
+     "\n"
+     "这个文件夹里的 Markdown 和网页还在原处。AM·Note 只是读它们、建索引："
+     "不上传、不改格式、不搬家。用访达、Git、iCloud 怎么管都行，"
+     "换别的编辑器打开还是同一份文件。\n"
+     "\n"
+     "想写下一篇：⌘T 开个新标签页，或者直接在这个文件夹里新建一个 .md。\n";
+
+/// 网页那张欢迎卡上的「新建一个笔记库」。path 省略就用 ~/Documents/AM·Note。
+/// 目录不在就建；库里一篇 md 都没有才放欢迎信（用户选的老文件夹不该凭空多东西）。
+/// 建好之后跟选库走同一条路：存 defaults → 重启服务 → 重载（带引导标记）。
+- (void)createVaultAtPath:(NSString *)raw {
+    NSString *path = raw.length ? normPath(raw.stringByExpandingTildeInPath)
+                                : normPath(defaultNewVaultPath());
+    if (![path hasPrefix:@"/"]) {
+        [self vaultAlert:@"这个位置不对" detail:raw ?: @""];
+        return;
+    }
+    NSFileManager *fm = NSFileManager.defaultManager;
+    NSError *err = nil;
+    if (![fm createDirectoryAtPath:path withIntermediateDirectories:YES
+                        attributes:nil error:&err]) {
+        [self vaultAlert:@"建不出这个文件夹"
+                  detail:err.localizedDescription.length ? err.localizedDescription : path];
+        return;
+    }
+    if (!dirHasMarkdown(path)) {
+        NSString *note = [path stringByAppendingPathComponent:@"欢迎.md"];
+        if (![fm fileExistsAtPath:note]) {
+            [kWelcomeNote writeToFile:note atomically:YES
+                             encoding:NSUTF8StringEncoding error:NULL];
+        }
+    }
+    NSString *old = locateRoot();
+    prepareVault(path);
+    saveVault(path);
+    // 已经在用这个库了：文件写好就够，别再停一次服务把页面闪掉
+    if (old.length && [normPath(old) isEqualToString:path]) return;
+    [self switchToVault];
+}
+
+/// 库出错时的小提示。跟 failReason: 不一样——那个会把整页换成错误屏，
+/// 这里只是一次没成功，欢迎卡还得留在后面让人再试一次。
+- (void)vaultAlert:(NSString *)title detail:(NSString *)detail {
+    NSAlert *a = [NSAlert new];
+    a.messageText = title;
+    a.informativeText = detail.length ? detail : @"";
+    [a addButtonWithTitle:@"好"];
+    if (_win.isVisible) [a beginSheetModalForWindow:_win completionHandler:nil];
+    else [a runModal];
 }
 
 /// 起服务。失败走 failReason:detail:，那里可以「重试」——重试就是再调一次这个方法。
@@ -988,11 +1140,13 @@ static void applySeamlessChrome(NSWindow *window) {
             });
             return;
         }
-        NSString *vault = locateRoot();
+        // 没选过库也照样起得来：serviceRoot() 会退到占位空根，
+        // 窗口正常显示，欢迎卡由网页画。这里只剩「连占位目录都建不出来」这一种失败。
+        NSString *vault = serviceRoot();
         if (!vault.length) {
             dispatch_async(dispatch_get_main_queue(), ^{
-                [self failReason:@"还没有选择文件夹"
-                          detail:@"请用菜单「库 → 选择文件夹…」选一个文件夹。"];
+                [self failReason:@"建不出笔记库目录"
+                          detail:@"请用菜单「库 → 选择文件夹…」选一个可写的文件夹。"];
             });
             return;
         }
@@ -1020,6 +1174,40 @@ static void applySeamlessChrome(NSWindow *window) {
     [self startTimers];
 }
 
+/// document-start 注入的那一段（impl-brief §3）。**必须早于门户自己的初始化**：
+/// 页面要靠 __AMN_VAULT_STATE__ 决定第一屏画欢迎卡还是画开始页。
+///
+/// 用户脚本是建 WKWebView 时定死的，所以这几个值只能在这儿算。换库走的是
+/// detachWebView + attachWebView，新建那一块会重新算一遍，值自然是新的。
+- (WKUserScript *)shellUserScript {
+    NSString *src = [NSString stringWithFormat:
+        @"window.__AMN_SHELL__ = true; window.__AMN_SHELL_VER__ = 2;\n"
+         "window.__AMN_SHELL_VERSION__ = %@;\n"
+         "window.__AMN_VAULT_STATE__ = %@;\n"
+         "window.__AMN_VAULT_PATH__ = %@;\n"
+         "window.__AMN_ONBOARDING__ = %@;\n"
+         "window.__AMN_AUTO_UPDATE__ = %@;",
+        jsString(amnFullVersion()),
+        jsString(vaultState()),
+        jsString(vaultDisplayPath()),
+        _onboarding ? @"true" : @"false",
+        amnAutoCheckOn() ? @"true" : @"false"];
+    return [[WKUserScript alloc] initWithSource:src
+                                  injectionTime:WKUserScriptInjectionTimeAtDocumentStart
+                               forMainFrameOnly:YES];
+}
+
+/// __AMN_ONBOARDING__ 是一次性的：页面加载完就抹掉，⌘R 重载不该再走一遍
+/// 「整理中 → 整理好」。用户脚本改不了，只能整份换掉——独立文稿窗跟主窗共用
+/// 同一个 controller，但换进去的还是同一段壳标志，对它们没有影响。
+- (void)clearOnboardingFlag {
+    if (!_onboarding) return;
+    _onboarding = NO;
+    if (!_ucc) return;
+    [_ucc removeAllUserScripts];
+    [_ucc addUserScript:[self shellUserScript]];
+}
+
 /// 建一块 WKWebView 挂进窗口并载入门户。首次启动走这条，关窗后重开也走这条
 /// （关窗口把上一块拆掉了，见设计约束 4）。
 - (void)attachWebView {
@@ -1032,13 +1220,9 @@ static void applySeamlessChrome(NSWindow *window) {
     // UA 尾巴给门户认，让它知道自己跑在原生壳里（可以据此收掉「安装到 Dock」那类 PWA 专属入口）
     cfg.applicationNameForUserAgent = @"AMNoteShell/1";
 
-    // 壳标志。门户据此隐藏自己那条搜索栏和已经搬到原生工具栏的按钮。
-    // atDocumentStart：门户的初始化代码一跑就能读到，不能晚于它。
-    WKUserScript *flag = [[WKUserScript alloc]
-        initWithSource:@"window.__AMN_SHELL__ = true; window.__AMN_SHELL_VER__ = 2;"
-         injectionTime:WKUserScriptInjectionTimeAtDocumentStart
-      forMainFrameOnly:YES];
-    [cfg.userContentController addUserScript:flag];
+    // 壳标志。门户据此隐藏自己那条搜索栏和已经搬到原生工具栏的按钮，
+    // 并按库状态决定画不画欢迎 / 找不到库覆盖层。
+    [cfg.userContentController addUserScript:[self shellUserScript]];
     // userContentController 对 handler 是强引用，这里等于 web → cfg → controller → self
     // 一个环。AppDelegate 本来就活到进程结束（gDelegate 强持有），不额外做弱代理。
     // 但关窗口要把这一整块拆掉，所以留个引用，detachWebView 里从它上面摘 handler——
@@ -1631,14 +1815,12 @@ static void applySeamlessChrome(NSWindow *window) {
 
 - (BOOL)stateFlag:(NSString *)key {
     if (!_stateOK) {
-        // state() 拿不到时一律当假，只有两条例外：
-        // hasDoc 可以看 doc 消息；书签栏默认开着，缺字段时勾号不该先灭掉。
+        // state() 拿不到时一律当假，只有一条例外：hasDoc 可以看 doc 消息。
+        // （书签栏那条后门 5.4 撤了：菜单项没了，没人再问 bookmarks。）
         if ([key isEqualToString:@"hasDoc"]) return _docURL != nil;
-        if ([key isEqualToString:@"bookmarks"]) return YES;
         return NO;
     }
     id v = _state[key];
-    if (v == nil && [key isEqualToString:@"bookmarks"]) return YES;
     return [v respondsToSelector:@selector(boolValue)] ? [v boolValue] : NO;
 }
 
@@ -1714,6 +1896,44 @@ static void applySeamlessChrome(NSWindow *window) {
         [self sharePath:p];
         return;
     }
+
+    // ── 5.4 新增（impl-brief §3）。这几条都不回执：换库/新建库最后是整页重载，
+    // 新的一轮注入就是答复；其余三条要么开系统面板，要么只写一个 defaults。
+    if ([type isEqualToString:@"chooseVault"]) { [self mChooseVault:nil]; return; }
+    if ([type isEqualToString:@"createVault"]) {
+        NSString *path = [m[@"path"] isKindOfClass:NSString.class] ? m[@"path"] : nil;
+        [self createVaultAtPath:path];
+        return;
+    }
+    if ([type isEqualToString:@"checkUpdate"]) { [self mCheckUpdate:nil]; return; }
+    if ([type isEqualToString:@"setAutoUpdate"]) {
+        id on = m[@"on"];
+        if (![on isKindOfClass:NSNumber.class]) return;
+        [NSUserDefaults.standardUserDefaults setBool:[on boolValue] forKey:kAutoCheckKey];
+        return;
+    }
+    if ([type isEqualToString:@"openURL"]) {
+        NSString *u = [m[@"url"] isKindOfClass:NSString.class] ? m[@"url"] : nil;
+        [self openExternalURLString:u];
+        return;
+    }
+    if ([type isEqualToString:@"revealVault"]) {
+        NSString *root = locateRoot();
+        if (!root.length) return;      // 占位空根不是用户的库，不往访达里领
+        [NSWorkspace.sharedWorkspace
+            activateFileViewerSelectingURLs:@[[NSURL fileURLWithPath:root]]];
+        return;
+    }
+}
+
+/// 外链只放 https。网页拿它开 GitHub / 说明 / 反馈这几条；
+/// 放开 file: 或别的 scheme 等于把「用默认程序打开任意东西」交给页面。
+- (void)openExternalURLString:(NSString *)str {
+    if (!str.length) return;
+    NSURL *u = [NSURL URLWithString:str];
+    if (!u.host.length) return;
+    if (![u.scheme.lowercaseString isEqualToString:@"https"]) return;
+    [NSWorkspace.sharedWorkspace openURL:u];
 }
 
 /// 拷贝路径。剪贴板是界面的事，写在壳里：NSPasteboard 收的是 NSString，
@@ -2001,11 +2221,12 @@ static void applySeamlessChrome(NSWindow *window) {
     [edit addItem:NSMenuItem.separatorItem];
     // ⌘K 从「跳到搜索框」改成「快速直达」浮层（设计约束 1）。原来那个动作让位到 ⌥⌘K。
     [[edit addItemWithTitle:@"快速直达" action:@selector(mQuickOpen:) keyEquivalent:@"k"] setTarget:self];
-    NSMenuItem *focusQ = [edit addItemWithTitle:@"跳到搜索框"
+    NSMenuItem *focusQ = [edit addItemWithTitle:@"搜索正文"
                                          action:@selector(mFocusSearch:) keyEquivalent:@"k"];
     focusQ.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagOption;
     focusQ.target = self;
-    [[edit addItemWithTitle:@"聚焦地址栏" action:@selector(mFocusOmnibox:) keyEquivalent:@"l"] setTarget:self];
+    // 地址栏 5.4 撤了，⌘L 保留但改名「搜索」——它跟 ⌥⌘K 一样打开 ⌘K 面板。
+    [[edit addItemWithTitle:@"搜索" action:@selector(mFocusOmnibox:) keyEquivalent:@"l"] setTarget:self];
     [edit addItem:NSMenuItem.separatorItem];
     [[edit addItemWithTitle:@"在本页查找" action:@selector(showFind:) keyEquivalent:@"f"] setTarget:self];
     editItem.submenu = edit;
@@ -2017,10 +2238,7 @@ static void applySeamlessChrome(NSWindow *window) {
     [[view addItemWithTitle:@"后退" action:@selector(mBack:) keyEquivalent:@"["] setTarget:self];
     [[view addItemWithTitle:@"前进" action:@selector(mForward:) keyEquivalent:@"]"] setTarget:self];
     [view addItem:NSMenuItem.separatorItem];
-    NSMenuItem *bm = [view addItemWithTitle:@"显示书签栏"
-                                     action:@selector(mToggleBookmarks:) keyEquivalent:@"b"];
-    bm.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
-    bm.target = self;
+    // 「显示书签栏 ⇧⌘B」5.4 撤了：那条书签栏没了，文件夹入口并进开始页的芯片行。
     // 改名「显示列表」：新版切的是「纯正文 ↔ 边栏＋列表＋正文」整块，不只是最左那一栏。
     NSMenuItem *sb = [view addItemWithTitle:@"显示列表"
                                      action:@selector(mLists:) keyEquivalent:@"s"];
@@ -2121,10 +2339,6 @@ static void applySeamlessChrome(NSWindow *window) {
         item.state = on ? NSControlStateValueOn : NSControlStateValueOff;
         return _stateOK;
     }
-    if (a == @selector(mToggleBookmarks:)) {
-        item.state = [self stateFlag:@"bookmarks"] ? NSControlStateValueOn : NSControlStateValueOff;
-        return _stateOK;
-    }
     if (a == @selector(mBack:))     return [self stateFlag:@"canBack"];
     if (a == @selector(mForward:))  return [self stateFlag:@"canForward"];
     if (a == @selector(mCopyPath:)) return [self stateFlag:@"hasDoc"];
@@ -2197,7 +2411,6 @@ static void applySeamlessChrome(NSWindow *window) {
 - (void)mQuickOpen:(id)s  { [self amn:@"quickOpen" args:nil]; }
 - (void)mFocusSearch:(id)s { [self amn:@"focusSearch" args:nil]; }
 - (void)mFocusOmnibox:(id)s { [self amn:@"focusOmnibox" args:nil]; }
-- (void)mToggleBookmarks:(id)s { [self amn:@"toggleBookmarks" args:nil]; }
 - (void)mBack:(id)s      { [self amn:@"back" args:nil]; }
 - (void)mForward:(id)s   { [self amn:@"forward" args:nil]; }
 - (void)mEnterEdit:(id)s  { [self amn:@"enterEdit" args:nil]; }
@@ -2286,12 +2499,12 @@ static void applySeamlessChrome(NSWindow *window) {
     NSAlert *a = [NSAlert new];
     a.messageText = @"快捷键";
     a.informativeText =
-        @"⌘T 新建标签页（开始页）\n⌘N 新建窗口\n⌘L 聚焦地址栏\n⌘⇧B 显示/隐藏书签栏\n"
+        @"⌘T 新建标签页（开始页）\n⌘N 新建窗口\n⌘L 搜索\n"
          "⌘[ / ⌘] 后退 / 前进\n⌥⌘C 拷贝路径\n⇧⌘R 在访达中显示\n⌥⌘O 把这份放到独立阅读窗\n"
          "⌘E 进入编辑\n⌘S 存储\n⌘⌫ 移到废纸篓\n⌘W 关闭标签／仅剩起始页时关窗口\n"
          "⇧⌘W 关闭窗口\n⌘P 打印\n"
          "⌃Tab 切换标签\n"
-         "⌘K 快速直达\n⌥⌘K 聚焦地址栏\n⌃⌘S 显示列表\n⌥⌘I 显示大纲\n"
+         "⌘K 快速直达\n⌥⌘K 搜索正文\n⌃⌘S 显示列表\n⌥⌘I 显示大纲\n"
          "⌘F 在本页查找\n⌘R 重新载入\n"
          "⌃⌘F 进入全屏\nEsc 关浮层 / 退出编辑";
     [a addButtonWithTitle:@"好"];
@@ -2922,6 +3135,7 @@ static BOOL isShellMainURL(NSURL *u) {
 - (void)webView:(WKWebView *)w didFinishNavigation:(WKNavigation *)nav {
     if (w != _web) return;          // 辅窗 / 独立窗的完成不能冒充主门户就绪
     _loadedOnce = YES;
+    [self clearOnboardingFlag];     // 引导只走一次，重载不再重播
     [self showWindowIfNeeded];      // N-8：内容就绪了才把窗口放出来
     [self refreshState];
     [self flushPending];
