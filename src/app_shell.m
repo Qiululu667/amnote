@@ -430,7 +430,7 @@ static BOOL themeIsDark(NSString *theme, NSWindow *window) {
 /// 网页正文 / WebView 垫色，对应 template.html 的 --win。
 static NSColor *surfaceColorForTheme(NSString *theme, NSWindow *window) {
     return themeIsDark(theme, window)
-        ? [NSColor colorWithSRGBRed:25.0/255.0 green:25.0/255.0 blue:27.0/255.0 alpha:1.0]
+        ? [NSColor colorWithSRGBRed:37.0/255.0 green:41.0/255.0 blue:49.0/255.0 alpha:1.0]
         : [NSColor colorWithSRGBRed:1.0 green:1.0 blue:1.0 alpha:1.0];
 }
 
@@ -438,19 +438,27 @@ static NSColor *surfaceColorForTheme(NSString *theme, NSWindow *window) {
 /// 标签条是灰的，这里必须跟着灰，不然红绿灯周围会露出一块白。
 static NSColor *chromeColorForTheme(NSString *theme, NSWindow *window) {
     return themeIsDark(theme, window)
-        ? [NSColor colorWithSRGBRed:16.0/255.0 green:16.0/255.0 blue:18.0/255.0 alpha:1.0]
-        : [NSColor colorWithSRGBRed:230.0/255.0 green:231.0/255.0 blue:234.0/255.0 alpha:1.0];
+        ? [NSColor colorWithSRGBRed:34.0/255.0 green:38.0/255.0 blue:45.0/255.0 alpha:1.0]
+        : [NSColor colorWithSRGBRed:247.0/255.0 green:248.0/255.0 blue:250.0/255.0 alpha:1.0];
 }
 
-/// 把标题栏里那层 vibrancy 收掉，露出 window.backgroundColor。
+/// 把标题栏里那层 vibrancy 收掉，露出底下的网页。
 /// 全屏时系统会重新塞进 NSVisualEffectView，不处理就会重新变成一条白带。
-static void paintTitlebarSurface(NSWindow *window, NSColor *surface) {
+///
+/// 这几层视图都排在 contentView **之上**（themeFrame 的兄弟节点里靠后），
+/// 给它们刷不透明底色等于拿 chrome 色把网页顶部 32pt 糊死：标签名、×、＋、
+/// 右侧 app 图标全被盖住，只露出标签条底边那几点。所以一律刷成透明，
+/// 让网页自己画的那条标签带透上来。没被网页盖到的地方由
+/// `window.backgroundColor`（applyThemeToWindow 里设成 chrome 色）兜底，
+/// 颜色一致所以看不出接缝。
+static void paintTitlebarSurface(NSWindow *window) {
     if (!window) return;
+    CGColorRef clear = NSColor.clearColor.CGColor;
     NSButton *closeBtn = [window standardWindowButton:NSWindowCloseButton];
     NSView *titlebar = closeBtn.superview;
     if (titlebar) {
         titlebar.wantsLayer = YES;
-        titlebar.layer.backgroundColor = surface.CGColor;
+        titlebar.layer.backgroundColor = clear;
         for (NSView *child in titlebar.subviews) {
             if ([child isKindOfClass:[NSVisualEffectView class]]) {
                 child.hidden = YES;
@@ -459,7 +467,7 @@ static void paintTitlebarSurface(NSWindow *window, NSColor *surface) {
         NSView *container = titlebar.superview;
         if (container) {
             container.wantsLayer = YES;
-            container.layer.backgroundColor = surface.CGColor;
+            container.layer.backgroundColor = clear;
             for (NSView *child in container.subviews) {
                 if ([child isKindOfClass:[NSVisualEffectView class]]) {
                     child.hidden = YES;
@@ -473,7 +481,7 @@ static void paintTitlebarSurface(NSWindow *window, NSColor *surface) {
         NSString *cls = NSStringFromClass(v.class);
         if ([cls containsString:@"Titlebar"] || [cls containsString:@"Toolbar"]) {
             v.wantsLayer = YES;
-            v.layer.backgroundColor = surface.CGColor;
+            v.layer.backgroundColor = clear;
         }
     }
 }
@@ -560,7 +568,7 @@ static void applyThemeToWindow(NSWindow *window, NSString *theme) {
     window.contentView.wantsLayer = YES;
     window.contentView.layer.backgroundColor = surface.CGColor;
     paintWebSurfaces(window, surface);
-    paintTitlebarSurface(window, chrome);
+    paintTitlebarSurface(window);
 }
 
 /// AppKit 进入或退出全屏时会重新组织标题栏视图，原来设过的分隔线状态可能被系统重置。
@@ -1777,13 +1785,15 @@ static void applySeamlessChrome(NSWindow *window) {
         [menu addItem:mi];
     }
 
-    // 坐标：门户给的是 CSS 像素、webView 左上为原点；AppKit 这边 webView 不是 flipped 的，
-    // 原点在左下。先按页面缩放折算成点，再把 y 翻过来。
+    // 坐标：门户给的是 CSS 像素、webView 左上为原点。先按页面缩放折算成点。
+    // y 只有在视图不是 flipped（原点在左下）时才需要翻过来 —— WKWebView 在本机
+    // 是 flipped 的，无条件翻会把菜单弹到上下镜像的位置，所以按 isFlipped 判。
     CGFloat zoom = 1.0;
     if (@available(macOS 14.0, *)) { zoom = _web.pageZoom > 0 ? _web.pageZoom : 1.0; }
     CGFloat x = [m[@"x"] doubleValue] * zoom;
     CGFloat y = [m[@"y"] doubleValue] * zoom;
-    NSPoint pt = NSMakePoint(x, _web.bounds.size.height - y);
+    CGFloat yy = _web.isFlipped ? y : _web.bounds.size.height - y;
+    NSPoint pt = NSMakePoint(x, yy);
 
     _ctxMenuId = rid;
     [menu popUpMenuPositioningItem:nil atLocation:pt inView:_web];

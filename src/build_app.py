@@ -194,7 +194,7 @@ NATIVE_SRC = "app_shell.m"
 # （20260903）。有 digest 核 sha256，解开后核对 bundle id。
 # 5.0.0 = 开源首发。
 # 版本号是唯一能在「关于 AM·Note」里看出来跑的是新壳还是旧壳的地方，改了壳就要动它。
-NATIVE_VERSION = ("5.2.0", "23")
+NATIVE_VERSION = ("5.3.0", "24")
 MIN_MACOS = "12.0"
 
 

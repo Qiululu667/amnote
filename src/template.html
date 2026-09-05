@@ -10,9 +10,15 @@
 <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png">
 <style>
 /* ═══════════════════════════════════════════════════════════════
-   AM·Note 门户样式 · v22
-   视觉依据：_工作区/20260830_AMNote首页重设计Demo_v2/qa/10_home_light_recent_title_final.png
-   实现依据：_工作区/20260830_AMNote首页重设计Demo_v2/src/styles.css
+   AM·Note 门户样式 · v24
+   v24 换上新的设计系统：色板/字体/圆角/阴影全部按 2026-09 的交互稿走；标签条改成
+   浮起的白卡片，地址栏改成带 ⌘K 的胶囊，书签栏描边小夹子，底部多一条状态栏，
+   轻提示统一走窗口底部的 toast。--win / --chrome 与 app_shell.m 同步改过。
+   ⌘K 换成同一套 .modal：毛玻璃蒙层 ＋ 搜索行 ＋ 结果行 ＋ 底部提示；
+   下拉、右键、斜杠、标签溢出、快看、设置、格式条、横幅一律 --pop 底 ＋
+   --rule-row 描边 ＋ --float 阴影 ＋ arrive 落场，深色各给一套值。
+   已删：沉浸首页 #hub 那一整套（运行时不可达，被开始页取代）。
+   设计参考：2026-09 的交互稿（浅色开始页那一版）。
    v23 正文默认 17 / 1.85 / 640，中文标题不做负字距；打开后的纯正文更像一页纸。
    列表和首页最近一篇带一行摘录，搜索结果露出命中片段。⌘K 能找笔记也能做动作。
    编辑时空段打 / 出插入菜单；排版可从命令面板拉出浮层。
@@ -34,40 +40,54 @@
      不声明的话它们恒为浅色，深色主题下在深底上一片惨白。 */
   color-scheme: light dark;
 
-  /* ── 样张色板（浅） ── */
-  --canvas:#c7d0d5;
+  /* ── 色板（浅）── */
+  --canvas:#f4f5f7;
   --win:#ffffff;
-  --side:#ededee;
-  --list:#f3f3f4;
-  --hover:#efeff1;
+  /* 笔记页顶栏的毛玻璃底：--win 加一点透明。Safari 15 没有 color-mix，写死一对。 */
+  --win-blur:rgba(255,255,255,.94);
+  --quote-b:#b7c8c0;
+  --side:#f4f5f7;
+  --list:#f7f8fa;
+  --hover:#f2f4f7;
   --sel:#ffffff;
-  --t1:#1e1e20;
-  --t2:#535358;
-  --t3:#74747a;
-  --t4:#9b9ba0;
-  --recent:#66666b;
-  --accent:#3279c7;
+  --t1:#272b31;
+  --t2:#727881;
+  --t3:#9096a0;
+  --t4:#a8aeb8;
+  --recent:#727881;
+  --accent:#5276b2;
+  --accent-soft:#edf3fd;
+  /* 落在 --accent 实底上的字。浅色下是白，深色下 --accent 本身就亮，得反过来压深，
+     不然右键菜单和主按钮上的白字直接糊掉。 */
+  --on-accent:#ffffff;
+  --ok:#6a9484;
 
-  --pill:#ececee;
-  --field:#ececee;
-  --field2:#ececee;
+  --pill:#eef0f4;
+  --field:#eef0f4;
+  --field2:#eef0f4;
   --segon:#ffffff;
   --pop:#ffffff;
 
-  --rule-head:#dedee1;
-  --rule-row:#e8e8ea;
-  --zebra:#f1f1f2;
-  --hl:rgba(10,110,209,.12);
-  --dot:#34c759;
+  --rule-head:rgba(40,54,74,.13);
+  --rule-row:rgba(40,54,74,.085);
+  --zebra:#f7f8fa;
+  --hl:rgba(82,118,178,.16);
+  --dot:#6a9484;
 
-  --selshadow:0 2px 9px rgba(0,0,0,.08);
-  --segshadow:0 1px 3px rgba(0,0,0,.10);
-  --popshadow:0 10px 30px rgba(0,0,0,.14), 0 2px 8px rgba(0,0,0,.06);
-  --popbig:0 26px 70px rgba(0,0,0,.24), 0 6px 18px rgba(0,0,0,.10);
-  --scrim:rgba(0,0,0,.18);
+  --shadow:0 3px 7px rgba(30,44,66,.025),0 14px 32px rgba(30,44,66,.045);
+  --float:0 5px 10px rgba(30,44,66,.035),0 20px 40px rgba(30,44,66,.09);
+  --selshadow:0 2px 9px rgba(30,44,66,.08);
+  /* 当前标签浮起、开始页那颗白按钮：浅色下几乎看不见的一层，深色要换成实的 */
+  --tab-shadow:0 2px 8px rgba(38,51,75,.05);
+  --btn-shadow:0 2px 4px rgba(37,55,78,.02);
+  --btn-shadow-h:0 4px 12px rgba(37,55,78,.06);
+  --segshadow:0 1px 4px rgba(38,51,75,.09);
+  --popshadow:0 3px 7px rgba(30,44,66,.025),0 14px 32px rgba(30,44,66,.045);
+  --popbig:0 25px 90px rgba(36,52,73,.15), 0 3px 12px rgba(36,52,73,.05);
+  --scrim:rgba(37,51,71,.15);
 
   /* ── 字体栈 ── */
-  --ui:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Helvetica Neue","Hiragino Sans GB",sans-serif;
+  --ui:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB',sans-serif;
   --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
 
   /* ── 骨架尺寸 ── */
@@ -78,56 +98,115 @@
   /* 书签栏小黄夹：浅色深色都用同一对，夹在灰底上才认得出来。 */
   --folder:#e9b949;
   --folder2:#f4d27a;
+  /* 书签栏那排描边文件夹图标的暖色 */
+  --bm-ico:#b7a584;
+  --pin:#bba66e;
 
-  /* 标签条底色，跟工具条/正文的 --win 分开：当前标签才能「陷进」工具条。
+  /* 卡片上的文件小图标：md 一套冷灰蓝，html 一套淡紫。深色另给一套，
+     不然白底方块直接砸在深色卡片上。 */
+  --ico-md:#91a1b5;   --ico-md-bg:#f4f6f9;
+  --ico-html:#9a91b5; --ico-html-bg:#f3f1f7;
+  /* 分段控件的凹槽底 */
+  --seg-track:rgba(39,43,49,.03);
+  /* 「继续阅读」右边那叠纸的配色 */
+  --paper1:#ffffff; --paper2:#edf1f4; --paper3:#f7f9fb;
+  --paper-edge:rgba(217,225,233,.27); --paper-shadow:rgba(60,81,106,.04);
+  --paper-b:#98afab; --paper-line:#e7ecf0;
+  --paper-dot:#e3ebe7; --paper-dot-ico:#8aa396;
+
+  /* 标签条底色，跟工具条/正文的 --win 分开：当前标签才能「浮」在工具条之上。
      必须和 app_shell.m 里 chromeColorForTheme 同步。 */
-  --chrome:#e6e7ea;
-  --tab-r:12px;
+  --chrome:#f7f8fa;
+  --tab-r:9px;
   --tab-left:12px;
+  /* 顶部横幅占掉的高度，bnr() 按实际条数写进来。没横幅就是 0——
+     body.bnr-on 的两条规则只在挂着横幅时生效，那时这个值已经被 bnr() 改写过了。 */
+  --bnr-h:0px;
 
-  /* 浏览器壳高度：标签条＋工具条＋书签栏。nobm / solo / shell 在 body 上改分项。 */
-  --tabstrip-h:38px;
-  --toolbar-h:46px;
-  --bmbar-h:36px;
+  /* 浏览器壳高度：标签条＋工具条＋书签栏。nobm / solo / shell 在 body 上改分项。
+     底部状态栏另算，#app 高度要把它扣掉。 */
+  --tabstrip-h:42px;
+  --toolbar-h:50px;
+  --bmbar-h:34px;
+  --status-h:28px;
   --chrome-h:calc(var(--tabstrip-h) + var(--toolbar-h) + var(--bmbar-h));
 }
-@supports (color:AccentColor){ :root{ --accent:AccentColor } }
-@supports (color:-apple-system-control-accent){ :root{ --accent:-apple-system-control-accent } }
 
 :root[data-theme="light"]{ color-scheme: light }
 :root[data-theme="dark"] { color-scheme: dark  }
 
 /* ── 样张色板（深）── */
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --canvas:#a9b8c0; --win:#19191b; --side:#202023; --chrome:#101012; --list:#1c1c1f;
-  --hover:#2d2d31; --sel:#333338;
-  --t1:#f4f4f5; --t2:#b4b4b9; --t3:#85858b; --t4:#66666c; --recent:#a0a0a5; --accent:#8eb9ea;
-  --pill:#27272b; --field:#27272b; --field2:#27272b; --segon:#3a3a40; --pop:#27272b;
-  --rule-head:#343439; --rule-row:#29292d; --zebra:#202023;
-  --hl:rgba(142,185,234,.18); --dot:#32d66b;
-  --selshadow:0 2px 9px rgba(0,0,0,.22);
-  --segshadow:0 1px 3px rgba(0,0,0,.35);
-  --popshadow:0 10px 30px rgba(0,0,0,.50), 0 2px 8px rgba(0,0,0,.30);
-  --popbig:0 26px 70px rgba(0,0,0,.60), 0 6px 18px rgba(0,0,0,.40);
-  --scrim:rgba(0,0,0,.38);
+  --canvas:#1b1e24; --win:#252931; --side:#1b1e24; --chrome:#22262d; --list:#1f232a;
+  --win-blur:rgba(37,41,49,.94); --quote-b:#5f7d74;
+  --hover:#303640; --sel:#303640;
+  --t1:#e9edf3; --t2:#a4acb9; --t3:#929bab; --t4:#7d8593; --recent:#a4acb9; --accent:#a4c2ef;
+  --accent-soft:#303e55; --on-accent:#171a20; --ok:#9ec2b4;
+  --pill:#2b3038; --field:#2b3038; --field2:#2b3038; --segon:#3a414d; --pop:#252931;
+  --rule-head:rgba(215,226,250,.16); --rule-row:rgba(215,226,250,.11); --zebra:#22262d;
+  --hl:rgba(164,194,239,.20); --dot:#9ec2b4;
+  --shadow:0 3px 10px rgba(0,0,0,.13),0 14px 32px rgba(0,0,0,.13);
+  --float:0 16px 45px rgba(0,0,0,.33);
+  --selshadow:0 2px 9px rgba(0,0,0,.30);
+  --tab-shadow:0 2px 10px rgba(0,0,0,.34);
+  --btn-shadow:0 2px 5px rgba(0,0,0,.22);
+  --btn-shadow-h:0 5px 14px rgba(0,0,0,.34);
+  --segshadow:0 1px 4px rgba(0,0,0,.35);
+  --popshadow:0 3px 10px rgba(0,0,0,.13),0 14px 32px rgba(0,0,0,.13);
+  --popbig:0 26px 70px rgba(0,0,0,.55), 0 6px 18px rgba(0,0,0,.35);
+  --scrim:rgba(10,14,22,.45);
+  --ico-md:#9aa8bb;   --ico-md-bg:#303640;
+  --ico-html:#aaa0c8; --ico-html-bg:#343044;
+  --seg-track:rgba(215,226,250,.05);
+  /* 书签栏那排小文件夹和收藏星：浅色那对压在深底上发闷，各提亮一档 */
+  --bm-ico:#c9b48f; --pin:#d6c07e;
+  --paper1:#2e333c; --paper2:#262b33; --paper3:#2a2f38;
+  --paper-edge:rgba(215,226,250,.10); --paper-shadow:rgba(0,0,0,.22);
+  --paper-b:#7d968f; --paper-line:#3a414c;
+  --paper-dot:#33413b; --paper-dot-ico:#8fa89b;
 }}
 :root[data-theme="dark"]{
-  --canvas:#a9b8c0; --win:#19191b; --side:#202023; --chrome:#101012; --list:#1c1c1f;
-  --hover:#2d2d31; --sel:#333338;
-  --t1:#f4f4f5; --t2:#b4b4b9; --t3:#85858b; --t4:#66666c; --recent:#a0a0a5; --accent:#8eb9ea;
-  --pill:#27272b; --field:#27272b; --field2:#27272b; --segon:#3a3a40; --pop:#27272b;
-  --rule-head:#343439; --rule-row:#29292d; --zebra:#202023;
-  --hl:rgba(142,185,234,.18); --dot:#32d66b;
-  --selshadow:0 2px 9px rgba(0,0,0,.22);
-  --segshadow:0 1px 3px rgba(0,0,0,.35);
-  --popshadow:0 10px 30px rgba(0,0,0,.50), 0 2px 8px rgba(0,0,0,.30);
-  --popbig:0 26px 70px rgba(0,0,0,.60), 0 6px 18px rgba(0,0,0,.40);
-  --scrim:rgba(0,0,0,.38);
+  --canvas:#1b1e24; --win:#252931; --side:#1b1e24; --chrome:#22262d; --list:#1f232a;
+  --win-blur:rgba(37,41,49,.94); --quote-b:#5f7d74;
+  --hover:#303640; --sel:#303640;
+  --t1:#e9edf3; --t2:#a4acb9; --t3:#929bab; --t4:#7d8593; --recent:#a4acb9; --accent:#a4c2ef;
+  --accent-soft:#303e55; --on-accent:#171a20; --ok:#9ec2b4;
+  --pill:#2b3038; --field:#2b3038; --field2:#2b3038; --segon:#3a414d; --pop:#252931;
+  --rule-head:rgba(215,226,250,.16); --rule-row:rgba(215,226,250,.11); --zebra:#22262d;
+  --hl:rgba(164,194,239,.20); --dot:#9ec2b4;
+  --shadow:0 3px 10px rgba(0,0,0,.13),0 14px 32px rgba(0,0,0,.13);
+  --float:0 16px 45px rgba(0,0,0,.33);
+  --selshadow:0 2px 9px rgba(0,0,0,.30);
+  --tab-shadow:0 2px 10px rgba(0,0,0,.34);
+  --btn-shadow:0 2px 5px rgba(0,0,0,.22);
+  --btn-shadow-h:0 5px 14px rgba(0,0,0,.34);
+  --segshadow:0 1px 4px rgba(0,0,0,.35);
+  --popshadow:0 3px 10px rgba(0,0,0,.13),0 14px 32px rgba(0,0,0,.13);
+  --popbig:0 26px 70px rgba(0,0,0,.55), 0 6px 18px rgba(0,0,0,.35);
+  --scrim:rgba(10,14,22,.45);
+  --ico-md:#9aa8bb;   --ico-md-bg:#303640;
+  --ico-html:#aaa0c8; --ico-html-bg:#343044;
+  --seg-track:rgba(215,226,250,.05);
+  /* 书签栏那排小文件夹和收藏星：浅色那对压在深底上发闷，各提亮一档 */
+  --bm-ico:#c9b48f; --pin:#d6c07e;
+  --paper1:#2e333c; --paper2:#262b33; --paper3:#2a2f38;
+  --paper-edge:rgba(215,226,250,.10); --paper-shadow:rgba(0,0,0,.22);
+  --paper-b:#7d968f; --paper-line:#3a414c;
+  --paper-dot:#33413b; --paper-dot-ico:#8fa89b;
 }
 
 @media (prefers-reduced-motion:reduce){
-  *,*::before,*::after{animation-duration:.001ms!important;animation-iteration-count:1!important;
+  *,*::before,*::after{animation:none!important;
     transition-duration:.001ms!important;scroll-behavior:auto!important}
+  /* 卡片上浮、按钮回弹、浮层落场、翻页淡入，全部按住不动 */
+  .note-card:hover,.note-card:active,.resume:hover,.resume:active,
+  .hbtn:hover,.card-pin:hover,#appmark:hover img,#appmark:active{transform:none}
+  button:active:not([disabled]){transform:none}
+}
+/* 系统里关掉「透明」时，毛玻璃退回实色，别糊成一团。 */
+@media (prefers-reduced-transparency:reduce){
+  #cmdkWrap,#qlwrap,#cfgWrap{-webkit-backdrop-filter:none;backdrop-filter:none}
+  .doc-toolbar{background:var(--win);-webkit-backdrop-filter:none;backdrop-filter:none}
 }
 
 *,*::before,*::after{box-sizing:border-box}
@@ -136,31 +215,31 @@ body{background:var(--win);color:var(--t1);
   font:13px/1.5 var(--ui);
   font-synthesis:none;
   -webkit-font-smoothing:antialiased;
-  --tabstrip-h:38px; --toolbar-h:46px; --bmbar-h:36px;
+  --tabstrip-h:42px; --toolbar-h:50px; --bmbar-h:34px; --status-h:28px;
   --chrome-h:calc(var(--tabstrip-h) + var(--toolbar-h) + var(--bmbar-h))}
 /* 标签跟红绿灯同一行，左侧让出交通灯（约 78px）。多出来的标签由 layoutTabs
    整颗藏进 ▾，不再被左边距裁成半个。 */
-body.shell{--tabstrip-h:38px; --tab-left:80px}
+body.shell{--tabstrip-h:42px; --tab-left:80px}
 body.nobm{--bmbar-h:0px}
-body.solo{--tabstrip-h:0px; --toolbar-h:0px; --bmbar-h:0px}
-body.shell.solo{--tabstrip-h:52px; --toolbar-h:0px; --bmbar-h:0px}
-button{font:inherit;color:inherit;border:0;background:none;padding:0;margin:0;cursor:pointer;-webkit-appearance:none}
+body.solo{--tabstrip-h:0px; --toolbar-h:0px; --bmbar-h:0px; --status-h:0px}
+body.shell.solo{--tabstrip-h:52px; --toolbar-h:0px; --bmbar-h:0px; --status-h:0px}
+button{font:inherit;color:inherit;border:0;background:none;padding:0;margin:0;cursor:pointer;-webkit-appearance:none;
+  transition:background-color .16s ease,color .16s ease,box-shadow .18s ease}
+button:active:not([disabled]){transform:scale(.98)}
 input,textarea,select{font:inherit;color:inherit}
 a{color:inherit}
 ::selection{background:var(--hl)}
 .num{font-variant-numeric:tabular-nums;font-feature-settings:"tnum" 1}
 :focus{outline:none}
-:focus-visible{outline:2px solid var(--accent);outline-offset:2px;border-radius:4px}
+:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:4px}
 svg{fill:none;stroke:currentColor}
 
-/* ═══ 四态骨架 ═══════════════════════════
-   纯正文（默认）｜三栏（lists-on）｜窄栏（空态／搜索，nodoc 且未开列表）。
+/* ═══ 两态骨架 ═══════════════════════════
+   纯正文（默认）｜三栏（lists-on）。
    分区只靠背景深浅和留白，全程无分割线无描边。 */
-#app{display:none;height:100%;
+#app{display:grid;height:calc(100% - var(--status-h));
   grid-template-columns:var(--sbw) 0 var(--lcw) 0 1fr;
   grid-template-areas:"side sp1 list sp2 doc"}
-body.lists-on #app,
-body:not(.nodoc) #app{display:grid}
 body:not(.lists-on) #app{grid-template-columns:0 0 0 0 1fr}
 body:not(.lists-on) #side,
 body:not(.lists-on) #listpane,
@@ -168,25 +247,23 @@ body:not(.lists-on) .split{display:none}
 
 /* 原生壳是全尺寸透明标题栏：标签条跟红绿灯同一行，工具条和书签栏再往下。
    内容从 --chrome-h 开始。 */
-#app,#hub{padding-top:var(--chrome-h)}
-
-#hub{display:none;height:100%;overflow-y:auto;background:var(--win)}
-body.nodoc:not(.lists-on) #hub{display:block}
-body.nodoc:not(.lists-on) #app{display:none}
+#app{padding-top:var(--chrome-h)}
 
 /* ═══ 浏览器壳：标签条 / 工具条 / 书签栏 ═══
    标签条跟红绿灯同一行。空处可拖窗口。
    标签、加号、按钮、地址栏、书签一律 no-drag，不然点不着。
-   当前标签用凹角「耳朵」陷进工具条，未选中标签之间用短竖线隔开。 */
+   当前标签是一枚 9px 圆角白卡片，浮在 --chrome 灰底上。 */
+/* 底下那道线用 inset 阴影画，不用 border——border 会额外占 1px，
+   而 --chrome-h 只算了三条的高度，正文顶上就会被压掉一行的头。 */
 #chrome{position:fixed;top:0;left:0;right:0;z-index:20;background:var(--chrome);
-  display:flex;flex-direction:column}
+  display:flex;flex-direction:column;box-shadow:inset 0 -1px 0 var(--rule-row)}
 body.solo #chrome{display:none!important}
 #tabstrip{
   height:var(--tabstrip-h);flex:none;position:relative;
   background:var(--chrome);
-  display:flex;align-items:flex-end;
+  display:flex;align-items:center;
   width:100%;box-sizing:border-box;
-  padding:4px 8px 0 var(--tab-left);gap:0;
+  padding:0 12px 0 var(--tab-left);gap:5px;
   user-select:none;-webkit-user-select:none;
   -webkit-app-region:drag;
   overflow:hidden;
@@ -194,109 +271,77 @@ body.solo #chrome{display:none!important}
 /* 标签＋加号是一组：加号贴在最后一个标签后面。栏本身可以收缩，
    多出来的标签由 layoutTabs 整颗藏进 ▾，不要被 overflow 切成半个。 */
 #tabcluster{
-  display:flex;align-items:flex-end;gap:0;
-  flex:0 1 auto;min-width:0;max-width:calc(100% - 44px);
+  display:flex;align-items:center;gap:5px;
+  flex:0 1 auto;min-width:0;max-width:calc(100% - 52px);
 }
 #tabstrip .tabbar{
   position:relative;top:auto;left:auto;right:auto;z-index:auto;
-  display:flex;align-items:stretch;gap:0;
+  display:flex;align-items:center;gap:4px;
   padding:0;overflow:visible;background:transparent;
   flex:1 1 auto;min-width:0;max-width:none;height:auto;
 }
 #tabstrip .tabbar.on{display:flex}
 #tabstrip .tab{
-  --_r:var(--tab-r);
   position:relative;z-index:1;
-  min-width:120px;max-width:240px;flex:1 1 188px;
-  height:34px;margin:0 calc(var(--_r) * -1);
-  padding:0 28px 0 calc(12px + var(--_r));
-  border-radius:0;background:transparent;box-shadow:none;font-weight:400;
-  overflow:visible;transition:none;
+  display:flex;align-items:center;gap:9px;
+  min-width:96px;max-width:210px;flex:1 1 180px;
+  height:34px;margin:0;
+  padding:0 26px 0 12px;
+  border-radius:var(--tab-r);background:transparent;box-shadow:none;
+  color:var(--t2);font-weight:400;
+  overflow:hidden;
+  transition:background-color .16s ease,color .16s ease,box-shadow .18s ease;
 }
-#tabstrip .tab:first-child{margin-left:0}
-#tabstrip .tab:hover{z-index:2;background:transparent}
+#tabstrip .tab:hover{background:var(--hover);color:var(--t1)}
 #tabstrip .tab.on{
-  z-index:3;flex:1 1 188px;min-width:120px;max-width:240px;padding-right:28px;
-  background:var(--win);color:var(--t1);font-weight:500;box-shadow:none;
-  border-radius:var(--_r) var(--_r) 0 0;
+  z-index:3;
+  background:var(--win);color:var(--t1);font-weight:500;
+  box-shadow:var(--tab-shadow);
 }
-/* 当前标签左右凹角：径向渐变切出 1/4 圆，填工具条同色，看起来陷进去。 */
-#tabstrip .tab.on::before,
-#tabstrip .tab.on::after{
-  content:"";position:absolute;bottom:0;width:var(--_r);height:var(--_r);
-  pointer-events:none;
-}
-#tabstrip .tab.on::before{
-  left:calc(-1 * var(--_r));
-  background:radial-gradient(circle at 0 0, transparent var(--_r), var(--win) calc(var(--_r) + .4px));
-}
-#tabstrip .tab.on::after{
-  right:calc(-1 * var(--_r));
-  background:radial-gradient(circle at 100% 0, transparent var(--_r), var(--win) calc(var(--_r) + .4px));
-}
-/* 未选中悬停：缩进的圆角块，不连工具条。 */
-#tabstrip .tab:not(.on):hover::before{
-  content:"";position:absolute;inset:3px 8px;border-radius:8px;
-  background:color-mix(in srgb, var(--win) 58%, transparent);
-  pointer-events:none;z-index:-1;
-}
-/* 未选中之间的短竖线；贴着当前项或悬停项时收掉。 */
-#tabstrip .tab:not(.on)::after{
-  content:"";position:absolute;right:0;top:50%;
-  width:1px;height:14px;margin-top:-7px;
-  background:color-mix(in srgb, var(--t1) 28%, transparent);
-  pointer-events:none;
-}
-#tabstrip .tab:not(.on):hover::after,
-#tabstrip .tab:not(.on):has(+ .tab.on)::after,
-#tabstrip .tab:not(.on):has(+ .tab:hover)::after,
-#tabstrip .tab:not(.on):has(+ .tabmore)::after,
-#tabstrip .tab:not(.on):has(+ .tab[hidden])::after,
-#tabstrip .tab:last-of-type:not(.on)::after{opacity:0}
 #tabstrip .tab .fav{
-  width:16px;height:16px;flex:none;display:flex;align-items:center;justify-content:center;
-  color:var(--t3);opacity:.9;
+  width:14px;height:14px;flex:none;display:flex;align-items:center;justify-content:center;
+  color:var(--t3);
 }
-#tabstrip .tab.on .fav{color:var(--t2);opacity:1}
-#tabstrip .tab .fav svg{width:14px;height:14px}
+#tabstrip .tab.on .fav{color:var(--t2)}
+#tabstrip .tab .fav svg{width:13px;height:13px}
 #tabstrip .tab .fav,#tabstrip .tab .tt,#tabstrip .tab .ddot{position:relative;z-index:1}
 #tabstrip .tab .tx{
-  width:16px;height:16px;position:absolute;right:10px;top:9px;z-index:2;
-  display:none;
+  width:19px;height:19px;position:absolute;right:5px;top:50%;margin-top:-9.5px;z-index:2;
+  display:flex;align-items:center;justify-content:center;border-radius:5px;color:var(--t3);
 }
-#tabstrip .tab.on .tx,
-#tabstrip .tab:hover .tx{display:flex}
-#tabstrip .tab:hover:not(.on) .tx{background:transparent}
+#tabstrip .tab .tx svg{width:11px;height:11px}
+#tabstrip .tab .tx:hover{background:var(--hover);color:var(--t1)}
+#tabstrip .tab.on .tx:hover{background:var(--canvas)}
 #tabstrip .tabmore{
-  height:28px;align-self:center;margin:0 2px 3px;z-index:4;
+  height:28px;align-self:center;margin:0 2px;z-index:4;
   -webkit-app-region:no-drag;
 }
 #tabplus{
-  width:28px;height:28px;border-radius:8px;flex:none;align-self:flex-end;
-  margin:0 0 3px var(--tab-r);color:var(--t2);position:relative;z-index:5;
+  width:28px;height:28px;border-radius:8px;flex:none;align-self:center;
+  margin:0;color:var(--t2);position:relative;z-index:5;
   display:flex;align-items:center;justify-content:center;
   -webkit-app-region:no-drag;
 }
-#tabplus:hover{background:color-mix(in srgb, var(--win) 58%, transparent);color:var(--t1)}
+#tabplus:hover{background:var(--hover);color:var(--t1)}
 #tabplus svg{width:15px;height:15px;stroke-width:1.6}
 #tabflex{
   flex:1 1 auto;min-width:8px;align-self:stretch;
   -webkit-app-region:drag;
 }
 #appmark{
-  width:32px;height:32px;border-radius:9px;flex:none;
-  align-self:center;margin:0 6px 1px 8px;
+  width:30px;height:30px;border-radius:9px;flex:none;
+  align-self:center;margin:0 0 0 6px;
   display:flex;align-items:center;justify-content:center;
   position:relative;z-index:6;
   -webkit-app-region:no-drag;
   transition:background-color .15s ease,transform .15s ease;
 }
 #appmark img{
-  width:24px;height:24px;border-radius:6px;display:block;
-  box-shadow:0 1px 2px rgba(0,0,0,.18);
+  width:22px;height:22px;border-radius:6px;display:block;
+  box-shadow:0 1px 2px rgba(30,44,66,.14);
   -webkit-user-drag:none;pointer-events:none;
 }
-#appmark:hover{background:color-mix(in srgb, var(--win) 62%, transparent)}
+#appmark:hover{background:var(--hover)}
 #appmark:hover img{transform:scale(1.06)}
 #appmark:active{transform:scale(.96)}
 #tabstrip .tab,
@@ -304,42 +349,45 @@ body.solo #chrome{display:none!important}
 #appmark{-webkit-app-region:no-drag}
 
 #toolbar{
-  height:var(--toolbar-h);flex:none;background:var(--win);
-  display:flex;align-items:center;gap:4px;padding:0 10px 0 8px;
+  height:var(--toolbar-h);flex:none;background:var(--chrome);
+  display:flex;align-items:center;gap:4px;padding:0 16px;
   position:relative;-webkit-app-region:no-drag;
 }
 .navb{
-  width:30px;height:30px;border-radius:8px;color:var(--t2);flex:none;
-  display:flex;align-items:center;justify-content:center;
+  width:31px;height:31px;border-radius:8px;color:var(--t2);flex:none;
+  display:inline-flex;align-items:center;justify-content:center;
 }
-.navb:hover{background:var(--hover);color:var(--t1)}
-.navb[disabled]{opacity:.32;pointer-events:none}
-.navb.on{background:var(--field);color:var(--t1)}
+.navb:hover:not([disabled]){background:var(--hover);color:var(--t1)}
+.navb[disabled]{opacity:.28;pointer-events:none}
+.navb.on{background:var(--hover);color:var(--t1)}
 .navb svg{width:16px;height:16px;stroke-width:1.6}
 
 .omnibox.pulse{animation:omniPulse .8s ease}
 @keyframes omniPulse{
-  0%{box-shadow:0 0 0 0 color-mix(in srgb,var(--accent) 45%, transparent)}
+  0%{box-shadow:0 0 0 0 var(--accent-soft)}
   100%{box-shadow:0 0 0 8px transparent}
 }
+/* 地址栏＝搜索入口。设计稿里的胶囊：左搜索图标、中间路径/输入、右 ⌘K。 */
 .omnibox{
-  flex:1;min-width:0;height:34px;margin:0 6px;
-  border-radius:17px;background:var(--pill);
-  display:flex;align-items:center;gap:10px;padding:0 12px 0 14px;
-  position:relative;
+  flex:1;min-width:0;height:32px;margin:0 10px 0 8px;
+  border-radius:9px;background:var(--win);border:1px solid var(--rule-row);
+  display:flex;align-items:center;gap:10px;padding:0 12px;
+  position:relative;color:var(--t3);text-align:left;
+  box-shadow:0 1px 2px rgba(38,51,75,.01);
   transition:background-color .15s ease,box-shadow .15s ease;
 }
-.omnibox:hover{background:color-mix(in srgb,var(--pill) 86%, var(--t1) 5%)}
+.omnibox:hover{box-shadow:0 1px 2px rgba(38,51,75,.01),0 0 0 3px var(--hover)}
 .omnibox.focus{
   background:var(--win);
-  box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 35%, transparent), var(--selshadow);
+  box-shadow:0 0 0 2px var(--accent-soft), var(--selshadow);
+  border-color:var(--accent);
 }
-.ob-icon{width:16px;height:16px;flex:none;color:var(--t3);display:flex}
-.ob-icon svg{width:16px;height:16px}
+.ob-icon{width:14px;height:14px;flex:none;color:var(--t3);display:flex}
+.ob-icon svg{width:14px;height:14px}
 .ob-field{flex:1;min-width:0;position:relative;height:100%;display:flex;align-items:center}
 .omnibox input{
   flex:1;min-width:0;border:0;background:none;outline:none;
-  font-size:13px;line-height:1;color:var(--t1);-webkit-appearance:none;
+  font-size:12px;line-height:1;color:var(--t1);-webkit-appearance:none;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
 .omnibox:not(.focus) input{color:transparent;caret-color:transparent}
@@ -349,7 +397,7 @@ body.solo #chrome{display:none!important}
 .omnibox input::-webkit-search-cancel-button{display:none}
 .ob-path{
   position:absolute;inset:0;display:flex;align-items:center;
-  overflow:hidden;pointer-events:none;font-size:13px;line-height:1;color:var(--t1);
+  overflow:hidden;pointer-events:none;font-size:11px;line-height:1;color:var(--t2);
 }
 .omnibox.focus .ob-path{display:none}
 .ob-path > span{
@@ -360,6 +408,12 @@ body.solo #chrome{display:none!important}
   flex:none;font-size:10px;font-weight:600;letter-spacing:.04em;
   color:var(--t3);padding:2px 6px;border-radius:6px;background:var(--field);
 }
+/* 右边那颗 ⌘ K：只在没聚焦、也没在编路径时露出来。 */
+.ob-kbd{
+  flex:none;font:10px/1.6 var(--ui);white-space:nowrap;color:var(--t3);
+  background:none;border:0;border-radius:5px;padding:0 5px;
+}
+.omnibox.focus .ob-kbd{display:none}
 .loadbar{position:absolute;left:0;right:0;bottom:0;height:2px;overflow:hidden;pointer-events:none}
 .loadbar.on::after{
   content:"";display:block;height:100%;width:38%;background:var(--accent);
@@ -368,20 +422,20 @@ body.solo #chrome{display:none!important}
 @keyframes loadbar{from{transform:translateX(-120%)}to{transform:translateX(280%)}}
 
 #bmbar{
-  height:var(--bmbar-h);flex:none;background:var(--win);
-  display:flex;align-items:center;gap:2px;padding:0 10px 4px;
+  height:var(--bmbar-h);flex:none;background:var(--chrome);
+  display:flex;align-items:center;gap:10px;padding:0 23px 9px;
   overflow-x:auto;overflow-y:hidden;
-  box-shadow:inset 0 -1px 0 var(--rule-row);
   -webkit-app-region:no-drag;
 }
 body.nobm #bmbar{display:none}
 .bm{
-  height:26px;padding:0 8px;border-radius:6px;
-  display:inline-flex;align-items:center;gap:6px;
-  color:var(--t2);font-size:12px;white-space:nowrap;flex:none;
+  padding:5px 9px;border-radius:6px;
+  display:inline-flex;align-items:center;gap:7px;
+  color:var(--t2);font-size:11px;white-space:nowrap;flex:none;
 }
-.bm:hover,.bm.open{background:var(--hover);color:var(--t1)}
-.bm .fi{width:16px;height:16px;flex:none;display:block}
+.bm:hover,.bm.open,.bm.on{background:var(--win);color:var(--t1)}
+.bm .fi,.bm svg{width:13px;height:13px;flex:none;display:block;color:var(--bm-ico)}
+.bm.pin svg{color:var(--pin)}
 .bm .lbl{max-width:140px;overflow:hidden;text-overflow:ellipsis}
 
 .htmlframe{position:absolute;inset:0;width:100%;height:100%;border:0;background:var(--win);display:none}
@@ -389,141 +443,228 @@ body.nobm #bmbar{display:none}
 .pane.html,.pane.pg{padding:0!important;overflow:hidden}
 .pane.html .htmlframe{display:block}
 .pane.html .md,.pane.html .ed,.pane.html .pagebox{display:none!important}
+.pane.html .doc-layout{display:none}
+.pane.html .htmlframe{top:56px;height:auto;bottom:0}
 .pane.pg .pagebox{display:block}
 .pane.pg .md,.pane.pg .ed,.pane.pg .htmlframe{display:none!important}
 .pane:not(.html) .htmlframe{display:none}
 .pane:not(.pg) .pagebox{display:none}
 
-.folderpg{max-width:720px;margin:0 auto;padding:40px 28px 80px}
-.folderpg h1{font-size:28px;font-weight:620;margin:0 0 6px;display:flex;align-items:center;gap:10px}
-.folderpg h1 .fi{width:28px;height:28px}
-.folderpg .sub{color:var(--t4);font-size:13px;margin:0 0 22px}
-.frow{
-  width:100%;min-height:52px;padding:10px 12px;border-radius:12px;
-  display:flex;align-items:center;gap:12px;text-align:left;
+/* ═══ 搜索结果页 ═══════════════════════════
+   一行一条：图标 ｜ 标题 ｜「文件夹 · 命中片段」。命中的词照旧高亮。 */
+.serp{max-width:720px;margin:0 auto;padding:32px 24px 80px}
+.serp-q{font-size:10px;color:var(--t3);margin:0 0 4px;padding:0 12px 6px}
+.search-row{
+  width:100%;padding:12px;border-radius:10px;text-align:left;
+  display:flex;gap:12px;align-items:center;
 }
-.frow:hover{background:var(--hover)}
-.frow .ico{width:32px;height:32px;border-radius:8px;background:var(--field);
-  display:flex;align-items:center;justify-content:center;flex:none;color:var(--t2)}
-.frow .ico svg{width:16px;height:16px}
-.frow .t{font-size:14px;font-weight:500;color:var(--t1)}
-.frow .p{font-size:12px;color:var(--t4);margin-top:2px}
-.frow .m{margin-left:auto;font-size:12px;color:var(--t4);flex:none}
-
-.serp{max-width:680px;margin:0 auto;padding:36px 28px 80px}
-.serp-q{font-size:13px;color:var(--t4);margin:0 0 18px}
-.srow{display:block;width:100%;padding:12px 10px;border-radius:12px;margin:0 0 6px;text-align:left}
-.srow:hover{background:var(--hover)}
-.srow .u{font-size:12px;color:var(--t3);margin:0 0 3px}
-.srow .t{font-size:18px;font-weight:500;color:var(--accent);line-height:1.3;display:flex;align-items:center;gap:8px;min-width:0}
-.srow .t svg{flex:none;color:var(--t3)}
-.srow .t span{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.srow .kind{font-size:10px;font-weight:600;letter-spacing:.04em;color:var(--t4);padding:2px 6px;border-radius:5px;background:var(--field);flex:none}
-.srow .x{font-size:13px;color:var(--t2);margin-top:4px;line-height:1.55}
+.search-row:hover{background:var(--hover)}
+/* 键盘选中的那一条：按设计稿落在画布灰上，跟鼠标划过区分得开。 */
+.search-row.on{background:var(--canvas)}
+.search-row>.ico{color:var(--t3);flex:none;display:flex;align-items:center}
+.search-row>.ico svg{width:17px;height:17px}
+.search-row .search-info{flex:1;min-width:0}
+.search-row strong{
+  display:block;font-size:12px;font-weight:530;color:var(--t1);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.search-row small{
+  display:block;color:var(--t3);margin-top:3px;font-size:10px;line-height:1.6;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.search-row .kind{
+  font-size:9px;font-weight:600;letter-spacing:.04em;color:var(--t3);
+  padding:2px 5px;border-radius:5px;background:var(--field);flex:none;
+}
+.search-row .enter{color:var(--t3);font-size:12px;flex:none}
 .vacant{padding:80px 28px;text-align:center;color:var(--t3)}
 .vacant h2{margin:0 0 8px;font-size:18px;font-weight:600;color:var(--t2)}
 .vacant p{margin:0;font-size:13px;line-height:1.6}
+/* 键帽：描边不填色。填色的那版在深色下会烧出一块亮斑。 */
 kbd{
-  font:11px/1 var(--ui);
-  color:var(--t4);
-  background:color-mix(in srgb, var(--t1) 7%, transparent);
-  padding:3px 6px;border-radius:5px;font-weight:500;
+  font:10px/1.6 var(--ui);font-weight:500;white-space:nowrap;
+  color:var(--t3);background:none;
+  border:1px solid var(--rule-row);border-radius:5px;padding:0 5px;
 }
-.start{
-  min-height:100%;
-  display:flex;flex-direction:column;align-items:center;
-  padding:40px 40px 72px;
+/* ═══ 开始页 / 文件夹页 / 已收藏页 ═══════════
+   三种页面共用同一套骨架：问候 → 大卡 → 分区标题 → 卡片网格。
+   底色用 --canvas（灰），卡片是 --win（白）；打开的笔记页仍然整面白。 */
+.pagebox.canvas{background:var(--canvas)}
+.home{max-width:1050px;margin:0 auto;padding:38px 38px 44px}
+.home-greeting{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:26px}
+.eyebrow{color:var(--t2);font-size:11px;display:flex;align-items:center;gap:7px;margin-bottom:8px}
+.eyebrow svg{width:13px;height:13px}
+.home h1{font-weight:570;font-size:29px;letter-spacing:.02em;line-height:1.45;margin:0}
+.home-sub{color:var(--t3);margin:7px 0 0;font-size:12px}
+.hbtn{
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;flex:none;
+  border-radius:9px;padding:9px 14px;font-size:12px;white-space:nowrap;
+  background:var(--win);color:var(--t1);border:1px solid var(--rule-row);
+  box-shadow:var(--btn-shadow);
 }
-.start.empty{justify-content:center;padding:28px}
-.start-col{width:min(1040px,100%)}
-.start-lead{
-  margin:0 2px 22px;
-  font-size:13px;color:var(--t3);letter-spacing:-.005em;line-height:1.6;
+.hbtn svg{width:15px;height:15px}
+.hbtn:hover{background:var(--win);box-shadow:var(--btn-shadow-h)}
+
+/* ── 继续阅读大卡 ───────────────────────── */
+.resume{
+  width:100%;text-align:left;padding:24px 28px;min-height:146px;
+  border:1px solid var(--rule-row);border-radius:15px;background:var(--win);
+  box-shadow:var(--shadow);position:relative;overflow:hidden;
+  display:flex;justify-content:space-between;align-items:center;gap:16px;
+  transition:transform .22s cubic-bezier(.2,.8,.2,1),box-shadow .22s ease;
 }
-.start-actions{
-  display:flex;align-items:center;gap:6px;
-  margin:0 0 22px;
+.resume:hover{transform:translateY(-3px);box-shadow:var(--float)}
+.resume:active:not([disabled]){transform:translateY(0) scale(.997)}
+.resume .rs-text{min-width:0;flex:1}
+.resume .overline{font-size:10px;color:var(--ok);display:flex;align-items:center;gap:6px;
+  margin-bottom:9px;letter-spacing:.03em}
+.resume .overline svg{width:12px;height:12px}
+.resume h2{font-size:20px;font-weight:570;margin:0 0 7px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.resume .excerpt{font-size:12px;color:var(--t2);max-width:550px;margin:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.resume-bottom{display:flex;align-items:center;gap:15px;color:var(--t3);font-size:10px;margin-top:15px}
+.resume .continue{display:inline-flex;align-items:center;gap:6px;color:var(--accent);font-size:11px;flex:none}
+.resume .continue svg{width:13px;height:13px}
+
+/* 右边那三张叠着的纸，纯 CSS 画的，没有图片。深色下换成一套暗纸。 */
+.paper-art{width:137px;height:108px;position:relative;margin-right:21px;flex:none;transform:rotate(-7deg)}
+.paper-art::before,.paper-art::after,.paper-front{
+  content:'';position:absolute;width:83px;height:106px;top:1px;left:31px;
+  border:1px solid var(--paper-edge);border-radius:7px;background:var(--paper1);
+  box-shadow:0 10px 23px var(--paper-shadow);
 }
-.start-cta{
-  height:34px;padding:0 12px;border-radius:10px;
-  display:inline-flex;align-items:center;gap:7px;
-  color:var(--t2);font-size:13px;font-weight:500;
-  transition:background-color .15s ease,color .15s ease,transform .12s ease;
-}
-.start-cta svg{width:15px;height:15px;stroke-width:1.7}
-.start-cta kbd{margin-left:4px}
-.start-cta:hover{background:var(--hover);color:var(--t1)}
-.start-cta:active{transform:scale(.98)}
-.start-cta.new{color:var(--t1);background:var(--field)}
-.start-cta.new:hover{background:color-mix(in srgb,var(--field) 70%, var(--t1) 6%)}
-.start.empty .start-mark{
-  width:64px;height:64px;border-radius:16px;margin:0 auto 18px;display:block;
-  box-shadow:0 10px 28px rgba(50,121,199,.22);
-}
-.start.empty .start-title{
-  text-align:center;font-size:22px;font-weight:600;margin:0 0 6px;color:var(--t1);
-}
-.start.empty .start-lead{text-align:center;margin:0 0 22px}
-.start.empty .start-actions{justify-content:center;margin-bottom:0}
-.start-sec{
-  display:flex;align-items:center;gap:10px;
-  margin:0 2px 12px;
-}
-.start-sec h2{margin:0;font-size:12px;font-weight:560;color:var(--t4);letter-spacing:.02em}
-.start-sec .start-actions{margin:0}
-.rgrid{
-  display:grid;
-  grid-template-columns:repeat(3,minmax(0,1fr));
-  gap:10px;
-}
-.rtile{
-  min-width:0;min-height:108px;padding:14px 15px 13px;border-radius:14px;
-  display:flex;flex-direction:column;gap:5px;
-  text-align:left;background:var(--pill);
-  transition:background-color .15s ease,transform .12s ease;
-}
-.rtile:hover{background:var(--hover)}
-.rtile:active{transform:scale(.988)}
-.rtile .top{display:flex;align-items:center;gap:8px;margin-bottom:2px}
-.rtile .ico{
-  width:26px;height:26px;border-radius:7px;flex:none;
-  background:var(--win);color:var(--t2);
+.paper-art::before{transform:rotate(15deg);background:var(--paper2);left:42px}
+.paper-art::after{transform:rotate(6deg);background:var(--paper3);left:35px}
+.paper-front{z-index:1;padding:18px 13px}
+.paper-front b{display:block;width:24px;height:4px;background:var(--paper-b);margin-bottom:12px;border-radius:4px}
+.paper-front i{display:block;height:2px;background:var(--paper-line);margin:7px 0;border-radius:2px}
+.paper-front i:last-child{width:65%}
+.paper-dot{
+  position:absolute;width:27px;height:27px;background:var(--paper-dot);
+  border:4px solid var(--win);border-radius:50%;bottom:-6px;right:10px;z-index:2;
   display:flex;align-items:center;justify-content:center;
-  box-shadow:0 1px 2px rgba(0,0,0,.04);
+  color:var(--paper-dot-ico);transform:rotate(7deg);
 }
-:root[data-theme="dark"] .rtile .ico{box-shadow:none;background:var(--field)}
-.rtile .ico svg{width:14px;height:14px}
-.rtile .kind{
-  font-size:10px;font-weight:600;letter-spacing:.04em;color:var(--t4);
-  padding:2px 6px;border-radius:5px;background:var(--win);
+.paper-dot svg{width:12px;height:12px}
+
+/* ── 子文件夹小夹子 ─────────────────────── */
+.dirchips{display:flex;flex-wrap:wrap;gap:7px;margin:0 1px}
+.dirchip{
+  display:inline-flex;align-items:center;gap:6px;height:30px;padding:0 12px;
+  border-radius:9px;background:var(--win);border:1px solid var(--rule-row);
+  color:var(--t1);font-size:11px;box-shadow:0 1px 2px rgba(37,55,78,.03);
 }
-.rtile .t{
-  font-size:15px;font-weight:560;letter-spacing:-.012em;line-height:1.3;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+.dirchip:hover{background:var(--hover)}
+.dirchip svg{width:13px;height:13px;color:var(--bm-ico);flex:none}
+.dirchip .n{color:var(--t3);font-size:10px}
+
+/* ── 分区标题：计数 + 类型筛选 + 网格/列表 ── */
+.section-head{display:flex;align-items:center;gap:15px;margin:28px 1px 14px}
+.section-head h2{font-size:13px;font-weight:570;margin:0}
+.section-head .section-meta{font-size:10px;color:var(--t3)}
+.section-head .fill{flex:1}
+.filters{display:flex;gap:3px;background:var(--seg-track);padding:3px;border-radius:8px;flex:none}
+.filters button{font-size:10px;border-radius:6px;color:var(--t2);padding:4px 9px}
+.filters button:hover{color:var(--t1)}
+.filters button.on{background:var(--win);color:var(--t1);box-shadow:var(--segshadow)}
+.view-toggle{width:28px;height:28px;border-radius:8px;flex:none;color:var(--t2);
+  display:flex;align-items:center;justify-content:center}
+.view-toggle:hover{background:var(--hover);color:var(--t1)}
+.view-toggle svg{width:14px;height:14px}
+
+/* ── 卡片网格 ───────────────────────────── */
+.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+.note-card{
+  position:relative;min-width:0;border:1px solid var(--rule-row);border-radius:13px;
+  background:var(--win);box-shadow:var(--shadow);
+  transition:transform .2s cubic-bezier(.2,.8,.2,1),box-shadow .2s ease;
 }
-.rtile .x{
-  font-size:12px;color:var(--t3);line-height:1.45;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+.note-card:hover{transform:translateY(-3px);box-shadow:var(--float)}
+.note-card:active{transform:translateY(-1px)}
+.card-open{padding:19px 20px 17px;text-align:left;width:100%;height:100%;
+  display:flex;flex-direction:column;align-items:flex-start}
+.card-open>*{max-width:100%}
+.card-top{display:flex;align-items:center;gap:7px;margin-bottom:12px}
+.file-icon{width:28px;height:30px;border-radius:7px;flex:none;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--ico-md-bg);color:var(--ico-md)}
+.file-icon svg{width:15px;height:15px}
+.file-icon.html{background:var(--ico-html-bg);color:var(--ico-html)}
+.kind-label{font-size:9px;color:var(--t3);letter-spacing:.04em}
+.note-card h3{font-size:14px;font-weight:550;line-height:1.65;margin:0;min-height:23px;
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+.card-excerpt{font-size:11px;color:var(--t2);line-height:1.75;margin:5px 0 0;min-height:38px;
+  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
+.card-footer{margin-top:17px;display:flex;align-items:center;gap:5px;width:100%;
+  color:var(--t3);font-size:9px}
+.card-footer svg{width:11px;height:11px;flex:none}
+.card-footer .fdr{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card-footer .when{margin-left:auto;flex:none;padding-left:8px}
+.card-pin{
+  position:absolute;right:10px;top:12px;width:25px;height:25px;border-radius:6px;
+  color:var(--t3);opacity:0;display:flex;align-items:center;justify-content:center;
+  transition:opacity .15s ease,background-color .16s ease,color .16s ease;
 }
-.rtile .m{
-  margin-top:auto;padding-top:8px;font-size:11px;color:var(--t4);
-  display:flex;align-items:center;gap:10px;
+.card-pin:hover{background:var(--hover);color:var(--t1)}
+.card-pin.pinned,.note-card:hover .card-pin{opacity:1}
+/* :focus-visible 单开一条：Safari 15.0 不认它，写进逗号组会把整条规则一起丢掉 */
+.card-pin:focus-visible{opacity:1}
+.card-pin.pinned{color:var(--pin)}
+.card-pin svg{width:13px;height:13px}
+
+/* 列表模式：单列，图标 ｜ 标题＋一行摘录 ｜ 文件夹＋时间 */
+.cards.list{grid-template-columns:minmax(0,1fr);gap:7px}
+.cards.list .card-open{display:grid;grid-template-columns:40px minmax(0,1fr) 180px;
+  gap:0 10px;align-items:center;padding:13px 20px}
+.cards.list .card-top{margin:0;grid-row:span 2}
+.cards.list .kind-label{display:none}
+.cards.list h3{min-height:0;-webkit-line-clamp:1}
+.cards.list .card-excerpt{min-height:0;-webkit-line-clamp:1;margin:0;grid-column:2}
+.cards.list .card-footer{grid-column:3;grid-row:1 / 3;margin:0;padding-right:15px}
+.cards.list .card-pin{top:19px;right:6px}
+.cards.list .note-card:hover{transform:translateY(-1px)}
+
+/* ── 空态 / 底部提示 ────────────────────── */
+.empty{padding:70px 20px;text-align:center;color:var(--t2)}
+.empty>svg{width:30px;height:30px;color:var(--t3);margin-bottom:15px}
+.empty h2{font-size:17px;font-weight:550;color:var(--t1);margin:0 0 8px}
+.empty p{font-size:12px;margin:0 0 20px;line-height:1.7}
+.home-tip{display:flex;align-items:center;justify-content:center;gap:8px;
+  font-size:10px;color:var(--t3);margin:24px 0 0}
+.home-tip svg{width:13px;height:13px}
+/* 「最近打开」最多画 12 张，剩下的从这条进库根接着翻 */
+.see-all{display:flex;align-items:center;gap:7px;margin:14px 0 0;padding:9px 14px;
+  border-radius:9px;background:var(--field);color:var(--t2);font-size:11px;
+  transition:background-color .15s ease,color .15s ease}
+.see-all:hover{background:var(--hover);color:var(--t1)}
+.see-all svg{width:14px;height:14px}
+
+@media (max-width:900px){
+  .home{padding:30px 26px 40px}
+  .home h1{font-size:25px}
+  .home-greeting{margin-bottom:21px}
+  .cards{grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}
+  .card-open{padding:16px}
+  .paper-art{margin-right:0;width:110px}
+  .resume .excerpt{max-width:390px}
 }
-.rtile .m .path{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rtile .m .num{margin-left:auto;flex:none}
-@media (max-width:1100px){
-  .rgrid{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .start{padding:36px 28px 64px}
-}
-@media (max-width:800px){
-  .rgrid{grid-template-columns:minmax(0,1fr)}
-  .start{padding:28px 18px 64px}
+@media (max-width:700px){
+  .home{padding:24px 18px 40px}
+  .home h1{font-size:23px}
+  .cards{grid-template-columns:minmax(0,1fr)}
+  .paper-art{display:none}
+  .card-pin{opacity:1}
+  .home-greeting .hbtn .lbl{display:none}
+  .cards.list .card-open{grid-template-columns:40px minmax(0,1fr)}
+  .cards.list .card-footer{grid-column:2;grid-row:auto;margin-top:6px;padding-right:0}
 }
 
 .drop{
   position:fixed;z-index:40;min-width:240px;max-width:320px;max-height:min(52vh,420px);
-  overflow:auto;padding:6px;background:var(--pop);border-radius:12px;box-shadow:var(--popbig);
-  display:none;
+  overflow:auto;padding:6px;background:var(--pop);
+  border:1px solid var(--rule-row);border-radius:12px;box-shadow:var(--float);
+  display:none;animation:arrive .16s ease-out;
 }
 .drop.on{display:block}
 .drop button{
@@ -538,8 +679,9 @@ kbd{
 
 .obdrop{
   position:fixed;z-index:50;padding:6px;background:var(--pop);
-  border-radius:14px;box-shadow:var(--popbig);overflow:auto;max-height:min(56vh,460px);
-  display:none;
+  border:1px solid var(--rule-row);border-radius:12px;box-shadow:var(--float);
+  overflow:auto;max-height:min(56vh,460px);
+  display:none;animation:arrive .16s ease-out;
 }
 .obdrop.on{display:block}
 .obrow{
@@ -559,10 +701,7 @@ kbd{
 .split::after{content:"";position:absolute;inset:0 -3px}
 #sp1{grid-area:sp1} #sp2{grid-area:sp2}
 
-/* ═══ 窄栏（空态 / 搜索）═══════════════════ */
-.col{width:560px;margin:0 auto;padding:clamp(68px,10vh,106px) 0 100px;transition:width .2s ease}
-body.searching .col{width:640px}
-
+/* 列表栏顶上的那只搜索框 */
 .searchpill{
   height:36px;border-radius:18px;background:var(--pill);
   display:flex;align-items:center;gap:9px;padding:0 14px;
@@ -581,87 +720,6 @@ body.searching .searchpill .clear{display:flex}
 .searchpill.sm{height:30px;border-radius:15px;background:var(--field2);padding:0 11px}
 .searchpill.sm svg{width:14px;height:14px}
 .searchpill.sm input{font-size:12px}
-
-/* 沉浸首页（第 2 版）：整面只承担「找」和「继续上次阅读」。
-   搜索结果出现后仍回到原来的可滚动列表结构，不把结果塞在窗口正中央。 */
-body.nodoc:not(.lists-on):not(.searching) #hub{
-  display:grid;place-items:center;overflow:hidden;padding:28px;
-}
-body.shell.nodoc:not(.lists-on):not(.searching) #hub{padding:var(--chrome-h) 28px 28px}
-body.nodoc:not(.lists-on):not(.searching) #hub .col{
-  width:min(640px,calc(100vw - 48px));margin:0;padding:0;
-  transform:translateY(-1.5vh);
-}
-body.nodoc:not(.lists-on):not(.searching) #hub .searchpill{
-  height:54px;border-radius:27px;gap:13px;padding:0 18px 0 20px;
-  box-shadow:0 10px 30px rgba(0,0,0,.035);
-  transition:background-color .16s ease,box-shadow .16s ease,transform .16s ease;
-}
-body.nodoc:not(.lists-on):not(.searching) #hub .searchpill:hover{
-  background:color-mix(in srgb,var(--pill) 86%,var(--t1) 4%)
-}
-body.nodoc:not(.lists-on):not(.searching) #hub .searchpill:focus-within{
-  box-shadow:0 13px 34px rgba(0,0,0,.055);transform:translateY(-1px)
-}
-body.nodoc:not(.lists-on):not(.searching) #hub .searchpill svg{width:20px;height:20px;stroke-width:1.45}
-body.nodoc:not(.lists-on):not(.searching) #hub .searchpill input{
-  font-size:16px;line-height:1;font-weight:420;letter-spacing:-.015em
-}
-body.nodoc:not(.lists-on):not(.searching) #hub .searchpill .clear{
-  width:26px;height:26px;border-radius:13px
-}
-body.nodoc:not(.lists-on):not(.searching) #hubbody{padding-top:0}
-
-/* 首页最近一行必须压过后面的 .rrow / .rrow.sel。
-   上一版把 home-last 和 rrow 叠在同一颗节点上，选中态变成白卡片，
-   搜索框的阴影又压在卡片上，看起来像两层错位。 */
-body.nodoc:not(.lists-on):not(.searching) #hub .home-last{
-  width:100%;min-height:52px;margin:14px 0 0;padding:10px 18px 10px 20px;
-  display:grid;grid-template-columns:minmax(0,1fr) auto;
-  grid-template-areas:"title time" "ex time";
-  align-items:start;gap:4px 18px;
-  border-radius:14px;background:transparent;box-shadow:none;cursor:pointer;
-  transition:background-color .15s ease,transform .10s ease-out;
-}
-body.nodoc:not(.lists-on):not(.searching) #hub .home-last:hover{
-  background:rgba(0,0,0,.035)
-}
-body.nodoc:not(.lists-on):not(.searching) #hub .home-last:active{transform:scale(.992)}
-body.nodoc:not(.lists-on):not(.searching) #hub .home-last .last-title{
-  grid-area:title;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  font-size:14px;font-weight:450;letter-spacing:-.012em;color:var(--recent)
-}
-body.nodoc:not(.lists-on):not(.searching) #hub .home-last .last-ex{
-  grid-area:ex;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  font-size:12px;color:var(--t4)
-}
-body.nodoc:not(.lists-on):not(.searching) #hub .home-last .last-time{
-  grid-area:time;display:inline-flex;align-items:center;justify-self:end;align-self:start;gap:7px;
-  font-size:13px;font-weight:400;color:var(--t4);white-space:nowrap;padding-top:2px
-}
-body.nodoc:not(.lists-on):not(.searching) #hub .home-last .last-time svg{
-  width:15px;height:15px;flex:none;stroke-width:1.45
-}
-body.nodoc:not(.lists-on):not(.searching) #hub .home-last.sel,
-body.nodoc:not(.lists-on):not(.searching) #hub .home-last.sel:hover{
-  background:transparent;box-shadow:none
-}
-body.nodoc:not(.lists-on) .res.sel{background:rgba(0,0,0,.04);box-shadow:none}
-
-.seclab{font-size:11px;font-weight:560;color:var(--t4);letter-spacing:.01em;margin-top:30px}
-.hitline{text-align:right;font-size:11px;color:var(--t4);margin-top:10px}
-.hitline.off{display:none}
-
-/* 窄栏里的一行 */
-.rrow{
-  height:43px;display:flex;align-items:center;justify-content:space-between;gap:16px;
-  padding:0 10px;margin:0 -10px;border-radius:10px;cursor:default;
-  transition:background-color .15s ease;
-}
-.rrow .t{font-size:13px;font-weight:470;letter-spacing:-.006em;color:var(--t1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;flex:1;min-width:0}
-.rrow .m{font-size:11px;color:var(--t4);flex:none}
-.rrow:hover{background:var(--hover)}
-.rrow.sel{background:var(--sel);box-shadow:var(--selshadow)}
 
 /* 搜索结果 */
 .res{padding:10px 12px;margin:0 -12px;border-radius:10px;cursor:default;
@@ -684,7 +742,7 @@ body.nodoc:not(.lists-on) .res.sel{background:rgba(0,0,0,.04);box-shadow:none}
 /* 行上的次要动作：hover 才出，其余进右键 */
 .racts{display:flex;gap:2px;align-items:center;flex-shrink:0;opacity:0;
   transition:opacity .15s ease}
-.rrow:hover .racts,.lrow:hover .racts,.res:hover .racts,.racts:focus-within{opacity:1}
+.lrow:hover .racts,.res:hover .racts,.racts:focus-within{opacity:1}
 .iba{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;
   border-radius:7px;color:var(--t3);transition:background-color .15s ease,color .15s ease}
 .iba:hover{background:var(--hover);color:var(--t1)}
@@ -719,8 +777,6 @@ body.nodoc:not(.lists-on) .res.sel{background:rgba(0,0,0,.04);box-shadow:none}
 .listtop{padding:0 10px 10px;flex:none;display:flex;flex-direction:column;gap:10px}
 .listtop .kindseg{width:100%}
 .listtop .kindseg button{flex:1}
-#hub .kindseg{margin-top:12px}
-body.nodoc:not(.lists-on):not(.searching) #hub .kindseg{display:none}
 .kindtag{font-size:10px;font-weight:500;letter-spacing:.02em;color:var(--t4);flex:none}
 .kindempty{padding:28px 16px;text-align:center;font-size:12px;color:var(--t4)}
 #listbody{flex:1;overflow-y:auto;padding:0 0 40px;min-height:0}
@@ -737,26 +793,12 @@ body.nodoc:not(.lists-on):not(.searching) #hub .kindseg{display:none}
 .lrow:hover{background:var(--hover)}
 .lrow.sel{background:var(--sel);box-shadow:var(--selshadow)}
 #listbody .res{margin:0 8px;padding:10px 12px}
-#hubbody{padding-top:6px}
 
 /* ═══ 正文栏 ═══════════════════════════════ */
 #docpane{grid-area:doc;position:relative;background:var(--win);overflow:hidden;min-width:0}
 
-/* 三栏打开但还没选文稿：给一个窄而安静的落点，避免右侧被拉成一整块空黑。 */
-.quiet-empty{position:absolute;inset:0;display:none;place-content:center;justify-items:center;
-  color:var(--t4);text-align:center;pointer-events:none}
-body.nodoc.lists-on .quiet-empty{display:grid}
-body.nodoc.lists-on #panes,
-body.nodoc.lists-on .tabbar,
-body.nodoc.lists-on .toc,
-body.nodoc.lists-on .editstatus{display:none!important}
-.empty-symbol{width:46px;height:46px;display:grid;place-items:center;margin-bottom:13px;
-  border-radius:15px;background:var(--field);box-shadow:0 3px 14px rgba(0,0,0,.08)}
-.empty-symbol svg{width:22px;height:22px;stroke-width:1.25}
-.quiet-empty h2{margin:0 0 7px;color:var(--t2);font-size:14px;font-weight:560}
-.quiet-empty p{margin:0;font-size:11px}
-.quiet-empty kbd{display:inline-flex;align-items:center;padding:2px 6px;border:0;border-radius:6px;
-  background:var(--field);color:var(--t2);font:10px/1.4 var(--ui)}
+/* 「还没选文稿」的那块安静落点连同它的样式一起去掉了：触发条件是
+   body.nodoc.lists-on，而 nodoc 只有 solo 那条路会加，solo 里又没有列表栏。 */
 
 .listbtn{
   position:absolute;top:13px;left:16px;z-index:7;
@@ -771,10 +813,9 @@ body.solo .listbtn{display:none}
 body.lists-on .listbtn{background:var(--sel);box-shadow:var(--selshadow);color:var(--t1)}
 .listbtn svg{width:17px;height:17px;stroke-width:1.5}
 
-.editstatus{position:absolute;top:20px;right:24px;z-index:6;
-  font-size:11px;color:var(--t3);white-space:nowrap;max-width:46%;
-  overflow:hidden;text-overflow:ellipsis}
-.editstatus.act{cursor:pointer;color:var(--t2)}
+/* 老的编辑状态字。保存状态挪到笔记页顶栏的 pill 上，这一格留着不显示，
+   syncStatusLine 仍往里写，别的地方还有引用。 */
+.editstatus{display:none}
 
 /* 标签栏底料：撞车标题保住尾巴；装不下的进 ▾，不横滑。闲置的 × 只在悬停时露。
    外形（凹角、竖线）由 #tabstrip .tab 覆盖。 */
@@ -812,7 +853,8 @@ body.lists-on .listbtn{background:var(--sel);box-shadow:var(--selshadow);color:v
 .tabmore svg{flex:none}
 #tabpick{position:fixed;z-index:90;display:none;min-width:240px;max-width:360px;
   max-height:min(52vh,420px);overflow-y:auto;padding:6px;
-  background:var(--pop);border-radius:12px;box-shadow:var(--popshadow)}
+  background:var(--pop);border:1px solid var(--rule-row);border-radius:12px;
+  box-shadow:var(--float);animation:arrive .16s ease-out}
 #tabpick.on{display:block}
 #tabpick .tprow{display:flex;align-items:center;gap:10px;width:100%;text-align:left;
   padding:8px 10px;border-radius:8px}
@@ -826,73 +868,144 @@ body.lists-on .listbtn{background:var(--sel);box-shadow:var(--selshadow);color:v
 #tabpick .x:hover{background:var(--hover);color:var(--t1)}
 
 #panes{position:absolute;inset:0}
-.pane{position:absolute;inset:0;overflow-y:auto;padding:46px 42px 140px;display:none}
-body:not(.lists-on):not(.nodoc) .pane:not(.src){padding:56px 52px 160px}
+.pane{position:absolute;inset:0;overflow-y:auto;padding:0;display:none}
 .pane.on{display:block}
 .pane .ed{display:none}
 .pane.edit .md{outline:none}
-.pane.edit.src{padding:0;overflow:hidden}
-.pane.edit.src .md{display:none}
-.pane.edit.src .ed{display:block;width:100%;height:100%;margin:0;padding:44px 38px 90px;
-  border:0;background:var(--win);color:var(--t1);resize:none;
-  outline:none;overflow-y:auto;tab-size:2;min-height:0;font-family:var(--mono)}
 
-/* 篇内目录：右侧短横线轨道，读到哪亮哪，hover 展开标题，⌥⌘I 钉住 */
-.toc{position:absolute;top:120px;z-index:6;
-  right:max(12px, calc(50% - var(--docw)/2 - 34px));
-  display:flex;flex-direction:column;gap:6px}
+/* ═══ 笔记页：顶栏 ＋ 版心 ═══════════════
+   顶栏贴在正文栏顶上（sticky），左边面包屑，右边按钮组。阅读态是「专注 / 更多 /
+   编辑」，编辑态换成「保存状态 / 源码 / 完成」。毛玻璃底色让正文从下面透一点过去。 */
+.doc-toolbar{
+  position:sticky;top:0;z-index:8;
+  height:56px;flex:none;padding:0 30px;
+  display:flex;align-items:center;gap:10px;
+  border-bottom:1px solid var(--rule-row);
+  background:var(--win-blur);
+  -webkit-backdrop-filter:blur(15px);backdrop-filter:blur(15px);
+}
+.pane.pg .doc-toolbar,.pane.pg .doc-layout{display:none!important}
+/* solo 窗只有一份正文，本来就没有标签条和工具条，阅读时顶栏也不出现。
+   但编辑时得留一条——没有它就既看不到存没存上，也没地方点「完成」。
+   面包屑、专注、更多在这种窗里没用，收起来，只剩保存状态和收工那两颗。 */
+body.solo .doc-toolbar{display:none}
+body.solo .pane.edit .doc-toolbar{display:flex;justify-content:flex-end}
+body.solo .pane.edit .doc-toolbar .breadcrumb,
+body.solo .pane.edit .doc-toolbar [data-dt="focus"],
+body.solo .pane.edit .doc-toolbar [data-dt="more"]{display:none}
+body.solo .pane.html .htmlframe{top:0}
+.breadcrumb{display:flex;align-items:center;gap:8px;font-size:10px;color:var(--t3);
+  min-width:0;flex:1;white-space:nowrap;overflow:hidden}
+.breadcrumb svg{width:13px;height:13px;flex:none}
+.breadcrumb span,.breadcrumb button{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.breadcrumb button{border-radius:5px;padding:2px 4px;margin:0 -4px;max-width:40%}
+.breadcrumb button:hover{background:var(--hover);color:var(--t1)}
+.breadcrumb .sep{flex:none;color:var(--t4)}
+.breadcrumb .now{color:var(--t2);min-width:0}
+.dt-tag{flex:none;font-size:9px;color:var(--t2);background:var(--field);
+  border-radius:5px;padding:3px 7px;white-space:nowrap}
+.dt-btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;flex:none;
+  height:29px;padding:0 12px;border-radius:9px;font-size:11px;color:var(--t1);
+  background:var(--win);border:1px solid var(--rule-row)}
+.dt-btn:hover{background:var(--hover)}
+.dt-btn.soft{background:var(--accent-soft);color:var(--accent);border-color:transparent}
+.dt-btn.soft:hover{filter:brightness(.97)}
+.dt-ico{display:inline-flex;align-items:center;justify-content:center;flex:none;
+  width:31px;height:31px;border-radius:8px;color:var(--t2)}
+.dt-ico:hover{background:var(--hover);color:var(--t1)}
+.save-state{flex:none;font-size:10px;color:var(--ok);min-width:64px;text-align:right}
+.save-state.pending{color:var(--t3)}
+.save-state.act{color:var(--folder);cursor:pointer}
+
+.doc-layout{max-width:1020px;margin:0 auto;padding:38px 60px 120px}
+.pane.edit .doc-layout{padding-bottom:200px}
+/* 不给 position：篇内目录、搜索命中定位都按 h.offsetTop 算，
+   这一层一旦成了 offsetParent，那些偏移就全对不上了。 */
+.document{max-width:var(--docw);margin:0 auto}
+.doc-meta{display:flex;align-items:center;flex-wrap:wrap;gap:8px;
+  font-size:10px;color:var(--t3);margin:0 0 16px;user-select:none;-webkit-user-select:none}
+.doc-meta svg{width:12px;height:12px;flex:none}
+.doc-meta:empty{display:none}
+.doc-end{display:flex;align-items:center;gap:10px;margin-top:42px;
+  color:var(--t3);font-size:10px;user-select:none;-webkit-user-select:none}
+.doc-end:before,.doc-end:after{content:'';height:1px;background:var(--rule-row);flex:1}
+.pane.edit .doc-end{display:none}
+.editor-hint{display:none;font-size:10px;color:var(--t3);margin:22px 0 0}
+.pane.edit .editor-hint{display:block}
+
+/* 正文上方那条格式条：跟着正文滚，碰到顶栏就停住。 */
+.formatbar{display:none;align-items:center;gap:3px;flex-wrap:wrap;
+  position:sticky;top:66px;z-index:7;width:max-content;max-width:100%;
+  margin:0 0 24px;padding:5px;border-radius:11px;
+  background:var(--pop);border:1px solid var(--rule-row);box-shadow:var(--shadow)}
+.pane.edit:not(.src) .formatbar{display:flex}
+.formatbar button{height:28px;min-width:30px;padding:0 8px;border-radius:6px;
+  display:flex;align-items:center;justify-content:center;font-size:11px;color:var(--t2)}
+.formatbar button:hover,.formatbar button.on{background:var(--accent-soft);color:var(--accent)}
+.formatbar button svg{width:15px;height:15px}
+.formatbar i{width:1px;height:15px;background:var(--rule-row);margin:0 3px;flex:none}
+
+/* 整篇源码：一块等宽的框，不是整屏文本域。 */
+.pane .ed{width:100%;margin:0;padding:15px;
+  border:1px solid var(--rule-row);border-radius:10px;
+  background:var(--win);color:var(--t1);resize:none;outline:none;
+  font-family:var(--mono);font-size:13px;line-height:1.9;
+  tab-size:2;min-height:350px;overflow:hidden}
+.pane.edit.src .md{display:none}
+.pane.edit.src .ed{display:block}
+
+/* 篇内目录：右侧短横线轨道，读到哪亮哪，hover 滑出标题气泡，⌥⌘I 钉住 */
+.toc{position:absolute;top:190px;z-index:5;
+  right:max(20px, calc(50% - var(--docw)/2 - 42px));
+  display:flex;flex-direction:column;gap:5px}
 .toc.hide{display:none}
-.tick{position:relative;height:12px;display:flex;align-items:center;justify-content:flex-end;cursor:default}
-.tick .bar{width:16px;height:2px;border-radius:1px;background:var(--t3);transition:background-color .15s ease}
-.tick.h3 .bar{width:10px}
-.tick:hover .bar{background:var(--t2)}
-.tick.on .bar,.tick.on:hover .bar{background:var(--t1)}
+.tick{position:relative;height:22px;display:flex;align-items:center;justify-content:flex-end;
+  gap:10px;color:var(--t3);cursor:default}
+.tick .bar{width:14px;height:2px;border-radius:2px;background:currentColor;flex:none;
+  transition:background-color .15s ease}
+.tick.h3 .bar{width:9px}
+.tick:hover{color:var(--accent)}
+.tick.on{color:var(--t1)}
 .tick .lab{
-  position:absolute;right:24px;top:50%;transform:translateY(-50%);
-  white-space:nowrap;font-size:11px;color:var(--t2);
-  background:var(--pop);box-shadow:var(--popshadow);border-radius:8px;padding:4px 9px;
-  opacity:0;pointer-events:none;transition:opacity .15s ease;
+  white-space:nowrap;font-size:10px;color:var(--t2);
+  background:var(--pop);box-shadow:var(--popshadow);border-radius:6px;padding:4px 8px;
+  opacity:0;transform:translateX(3px);pointer-events:none;
+  transition:opacity .15s ease,transform .15s ease;
   max-width:240px;overflow:hidden;text-overflow:ellipsis;
 }
-.tick:hover .lab{opacity:1}
-body.toc-pin .tick .lab{opacity:1}
+.toc:hover .tick .lab,.toc:focus-within .tick .lab{opacity:1;transform:none}
+body.toc-pin .tick .lab{opacity:1;transform:none}
 
 /* ═══ Markdown 正文 ═══════════════════════
    默认 17 / 1.85 / 640。中文标题 letter-spacing 为 0，层级靠字重和留白。
    版式三项仍能在设置和排版浮层里调。 */
 .md{color:var(--t1);margin:0 auto;max-width:var(--docw)}
-.md h1{font-size:1.4em;font-weight:600;letter-spacing:0;line-height:1.28;margin:0 0 12px}
-.md > h1:first-child{font-size:32px;font-weight:600;letter-spacing:0;line-height:1.28;margin:0 0 8px}
-.md h2{font-size:1.22em;font-weight:600;letter-spacing:0;margin:2.35em 0 .62em;line-height:1.4}
-.md h3{font-size:1.02em;font-weight:600;margin:1.7em 0 .4em}
-.md h4{font-size:1em;font-weight:500;margin:1.3em 0 .35em;color:var(--t2)}
+.md h1{font-size:1.6em;font-weight:600;letter-spacing:0;line-height:1.45;margin:1.5em 0 .6em}
+.md > h1:first-child{font-size:31px;font-weight:580;letter-spacing:0;line-height:1.45;margin:0 0 18px}
+.md h2{font-size:1.25em;font-weight:600;letter-spacing:0;margin:1.9em 0 .7em;line-height:1.6}
+.md h3{font-size:1.08em;font-weight:600;margin:1.5em 0 .6em}
+.md h4{font-size:1em;font-weight:500;margin:1.5em 0 .6em;color:var(--t2)}
 .md>:first-child{margin-top:0}
-.md p{margin:0 0 .88em}
-.md .doc-meta{
-  display:flex;align-items:center;flex-wrap:wrap;gap:8px 12px;
-  font-size:12px;line-height:1.4;color:var(--t4);margin:0 0 34px;font-weight:400;
-  user-select:none;
-}
-.md .doc-meta .path{letter-spacing:0}
+.md p{margin:0 0 1em}
 .md strong{font-weight:600}
 .md em{font-style:italic;color:var(--t2)}
 .md a{color:var(--accent);text-decoration:none}
 .md a:hover{text-decoration:underline;text-underline-offset:3px}
-.md ul,.md ol{margin:0 0 1.1em;padding-left:1.5em}
-.md li{margin:.32em 0}
+.md ul,.md ol{margin:0 0 1em;padding-left:1.5em}
+.md li{margin:3px 0;padding-left:3px}
 .md li ul,.md li ol{margin:.32em 0 0}
 .md li.task{list-style:none;margin-left:-1.35em;display:flex;gap:.5em;align-items:flex-start}
 .md li.task input{margin:.44em 0 0;accent-color:var(--accent);flex-shrink:0;cursor:pointer}
 .md li.task input:checked+span{color:var(--t3);text-decoration:line-through}
 .md del{color:var(--t3)}
 .md hr{border:0;height:1px;background:var(--rule-row);margin:2.4em 0}
-.md blockquote{margin:0 0 1.1em;padding:.1em 0 .1em 1.1em;color:var(--t2);
-  box-shadow:inset 2px 0 0 var(--rule-head)}
+.md blockquote{margin:23px 0;padding:12px 20px;color:var(--t2);
+  background:var(--canvas);border-radius:0 8px 8px 0;border-left:2px solid var(--quote-b)}
 .md blockquote p{margin:0 0 .5em}
 .md blockquote p:last-child{margin:0}
-.md code{background:var(--field);padding:.14em .4em;border-radius:4px;font-size:.88em;
-  font-family:var(--mono)}
-.md pre{background:var(--field);border-radius:8px;padding:12px 14px;overflow-x:auto;margin:0 0 1.15em}
+.md code{background:var(--canvas);padding:2px 5px;border-radius:4px;
+  font:.82em/1.6 var(--mono)}
+.md pre{background:var(--canvas);border-radius:9px;padding:15px;overflow-x:auto;margin:0 0 1.15em}
 .md pre code{background:none;padding:0;color:var(--t2);font-size:.84em;line-height:1.6}
 /* 表格 B：表头 600 ＋ 表头下一道淡线 ＋ 隔行浅底，无竖线，宽表在自己容器里横滚 */
 .tw{overflow-x:auto;margin:0 0 1.5em;max-width:100%}
@@ -962,7 +1075,8 @@ body.toc-pin .tick .lab{opacity:1}
 
 /* 选中文字浮出的工具条 */
 #fmt{position:fixed;z-index:80;display:none;gap:2px;padding:5px 6px;
-  background:var(--pop);border-radius:10px;box-shadow:var(--popshadow)}
+  background:var(--pop);border:1px solid var(--rule-row);border-radius:11px;
+  box-shadow:var(--float);animation:arrive .14s ease-out}
 #fmt.on{display:flex}
 #fmt button{min-width:30px;height:28px;padding:0 8px;border-radius:7px;color:var(--t1);
   display:flex;align-items:center;justify-content:center;font-size:13px;white-space:nowrap;
@@ -976,38 +1090,51 @@ body.toc-pin .tick .lab{opacity:1}
 #fmt code{font-family:var(--mono);font-size:11px}
 
 /* ═══ 浮层：⌘K 直达 / 右键 / 快看 / 设置 / 候选 ═══ */
-.scrim{position:fixed;inset:0;background:var(--scrim);z-index:118}
 
-#cmdkWrap{position:fixed;inset:0;z-index:120;display:none}
-#cmdkWrap.on{display:block}
-.cmdk{position:absolute;z-index:121;left:50%;transform:translateX(-50%);top:calc(var(--chrome-h) + 28px);width:560px;
-  max-width:calc(100vw - 40px);
-  background:var(--pop);border-radius:12px;box-shadow:var(--popbig);padding-bottom:8px;overflow:hidden}
-.cmdk .q{padding:16px 20px 13px}
-.cmdk .q input{width:100%;border:0;background:none;outline:none;font-size:15px;color:var(--t1)}
-.cmdk .q input::placeholder{color:var(--t3)}
-.cmdk .rows{max-height:min(52vh,420px);overflow-y:auto}
-.ksec{font-size:11px;font-weight:560;color:var(--t4);padding:8px 20px 4px;letter-spacing:.01em}
-.krow{height:36px;width:calc(100% - 16px);margin:0 8px;padding:0 12px;border-radius:8px;cursor:default;
-  display:flex;align-items:center;gap:14px;transition:background-color .15s ease;box-sizing:border-box}
-.krow .t{font-size:13px;color:var(--t1);flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.krow .t b{font-weight:600}
-.krow .kindtag{margin-left:8px}
-.krow .p{font-size:11px;color:var(--t3);flex:none;max-width:40%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.krow:hover{background:var(--hover)}
-.krow.on{background:var(--sel);box-shadow:var(--selshadow)}
+/* ⌘K 直达：设计稿里的 .modal —— 半透明蒙层 + 5px 毛玻璃，面板从顶上落下来。 */
+#cmdkWrap{position:fixed;inset:0;z-index:120;display:none;
+  justify-content:center;align-items:flex-start;
+  padding:clamp(70px,15vh,145px) 18px 30px;
+  background:var(--scrim);
+  -webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px);
+  animation:fadeIn .18s ease-out}
+#cmdkWrap.on{display:flex}
+.modal{width:min(560px,100%);max-height:75vh;overflow:hidden;
+  display:flex;flex-direction:column;
+  background:var(--pop);border:1px solid var(--rule-row);border-radius:17px;
+  box-shadow:var(--popbig);
+  animation:arrive .22s cubic-bezier(.2,.8,.2,1)}
+.search-input-row{flex:none;display:flex;align-items:center;gap:12px;
+  padding:17px 20px;border-bottom:1px solid var(--rule-row)}
+.search-input-row>svg{width:18px;height:18px;flex:none;color:var(--accent)}
+.search-input-row input{flex:1;min-width:0;height:26px;
+  border:0;background:none;outline:none;font-size:15px;color:var(--t1)}
+.search-input-row input::placeholder{color:var(--t3)}
+.search-input-row .escb{flex:none;padding:3px;border-radius:7px;color:var(--t3);
+  display:flex;align-items:center}
+.search-input-row .escb:hover{background:var(--hover)}
+.modal-body{flex:1;min-height:100px;overflow-y:auto;padding:7px}
+.search-label{font-size:10px;color:var(--t3);padding:9px 12px 6px}
+.modal-footer{flex:none;display:flex;align-items:center;gap:14px;
+  padding:11px 18px;border-top:1px solid var(--rule-row);
+  font-size:10px;color:var(--t3)}
+.modal-empty{padding:46px 20px 40px;text-align:center;color:var(--t2)}
+.modal-empty h2{margin:0 0 8px;font-size:17px;font-weight:550;color:var(--t1)}
+.modal-empty p{margin:0 0 20px;font-size:12px;line-height:1.7}
 
 #ctx{position:fixed;z-index:150;display:none;min-width:196px;padding:5px;
-  background:var(--pop);border-radius:10px;box-shadow:var(--popshadow)}
+  background:var(--pop);border:1px solid var(--rule-row);border-radius:10px;
+  box-shadow:var(--float);animation:arrive .14s ease-out}
 #ctx.on{display:block}
 #ctx button{display:flex;align-items:center;gap:8px;width:100%;text-align:left;
   padding:5px 10px;border-radius:7px;font-size:13px;color:var(--t1);white-space:nowrap}
-#ctx button:hover{background:var(--accent);color:#fff}
+#ctx button:hover{background:var(--accent);color:var(--on-accent)}
 #ctx button[disabled]{opacity:.4;pointer-events:none}
 #ctx .sep{height:1px;background:var(--rule-row);margin:5px 8px}
 
 #slash{position:fixed;z-index:85;display:none;width:240px;padding:6px;
-  background:var(--pop);border-radius:12px;box-shadow:var(--popshadow)}
+  background:var(--pop);border:1px solid var(--rule-row);border-radius:12px;
+  box-shadow:var(--float);animation:arrive .16s ease-out}
 #slash.on{display:block}
 #slash .sh{font-size:11px;color:var(--t4);padding:6px 10px 4px}
 #slash button{display:flex;align-items:center;gap:10px;width:100%;text-align:left;
@@ -1015,34 +1142,62 @@ body.toc-pin .tick .lab{opacity:1}
 #slash button:hover,#slash button.on{background:var(--hover)}
 #slash .k{color:var(--t4);font-size:11px;margin-left:auto}
 
-#typeWrap{position:fixed;inset:0;z-index:110;display:none;pointer-events:none}
+/* ═══ 阅读与外观浮层 ═══════════════════════
+   工具条最右那颗滑块按钮拉出来。点外面、按 Esc、翻页都会关掉。 */
+#typeWrap{position:fixed;top:calc(var(--chrome-h) + var(--bnr-h, 0px) + 10px);right:20px;z-index:110;
+  width:260px;display:none;padding:19px;
+  background:var(--pop);border:1px solid var(--rule-row);border-radius:14px;
+  box-shadow:var(--float);transform-origin:top right;animation:arrive .18s ease-out}
 #typeWrap.on{display:block}
-#typeWrap .scrim{position:absolute;inset:0;background:transparent;pointer-events:auto}
-.typepane{
-  position:absolute;top:calc(var(--chrome-h) + 12px);right:20px;width:280px;pointer-events:auto;
-  background:var(--pop);border-radius:14px;box-shadow:var(--popbig);padding:16px 16px 18px;
-}
-.typepane h3{margin:0 0 12px;font-size:13px;font-weight:600}
-.typepane .cfgrow .k{width:36px}
-.typepane .seg button{padding:0 9px}
-.typepane .cfgd{font-size:11px;color:var(--t3);margin:8px 0 0;line-height:1.55}
+.pop-title{font-size:13px;font-weight:550;margin:0 0 17px}
+.setting{padding:13px 0;border-top:1px solid var(--rule-row)}
+.setting:last-child{padding-bottom:0}
+.setting > label{display:flex;justify-content:space-between;gap:8px;
+  font-size:11px;color:var(--t2);margin:0 0 10px}
+.setting > label .v{color:var(--t3)}
+.setting .filters{display:flex;gap:3px;width:100%;padding:3px;
+  border-radius:8px;background:var(--seg-track)}
+.setting .filters button{flex:1;padding:7px 4px;border-radius:6px;
+  font-size:10px;color:var(--t2);white-space:nowrap}
+.setting .filters button:hover{color:var(--t1)}
+.setting .filters button.on{background:var(--pop);color:var(--t1);box-shadow:var(--segshadow)}
+.setting input[type=range]{width:100%;accent-color:var(--accent)}
+.setting .dt-btn{width:100%}
+@keyframes arrive{from{opacity:0;transform:translateY(-6px) scale(.985)}to{opacity:1;transform:none}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
 body.type-on .toc{display:none!important}
 
-#wlpick{position:fixed;z-index:90;background:var(--pop);border-radius:10px;
-  box-shadow:var(--popshadow);padding:5px;display:none;
+/* ═══ 专注阅读 ═══════════════════════════
+   工具条、书签栏、状态栏都收起来。壳里留一条标签条高度的空白拖拽条给交通灯，
+   浏览器里没有交通灯，整条一起收掉。 */
+body.focus-mode{--toolbar-h:0px; --bmbar-h:0px; --status-h:0px}
+body.focus-mode:not(.shell){--tabstrip-h:0px}
+body.focus-mode #toolbar,
+body.focus-mode #bmbar,
+body.focus-mode .statusbar{display:none}
+body.focus-mode:not(.shell) #tabstrip{display:none}
+body.focus-mode.shell #tabcluster,
+body.focus-mode.shell #appmark{display:none}
+body.focus-mode #chrome{box-shadow:none}
+
+#wlpick{position:fixed;z-index:90;background:var(--pop);
+  border:1px solid var(--rule-row);border-radius:11px;
+  box-shadow:var(--float);padding:5px;display:none;animation:arrive .14s ease-out;
   max-width:420px;max-height:300px;overflow-y:auto}
 #wlpick.on{display:block}
 #wlpick button{display:block;width:100%;text-align:left;padding:6px 9px;border-radius:7px;
   font-size:13px;color:var(--t1)}
-#wlpick button:hover{background:var(--accent);color:#fff}
+#wlpick button:hover{background:var(--accent);color:var(--on-accent)}
 #wlpick .wp{display:block;font-size:11px;color:var(--t3);margin-top:1px}
-#wlpick button:hover .wp{color:#fff;opacity:.85}
+#wlpick button:hover .wp{color:var(--on-accent);opacity:.85}
 
 #qlwrap{position:fixed;inset:0;z-index:145;display:none;background:var(--scrim);
-  align-items:center;justify-content:center;padding:6vh 6vw}
+  -webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px);
+  align-items:center;justify-content:center;padding:6vh 6vw;animation:fadeIn .18s ease-out}
 #qlwrap.on{display:flex}
 #ql{width:min(860px,94vw);max-height:86vh;display:flex;flex-direction:column;
-  background:var(--pop);border-radius:12px;box-shadow:var(--popbig);overflow:hidden}
+  background:var(--pop);border:1px solid var(--rule-row);border-radius:17px;
+  box-shadow:var(--popbig);overflow:hidden;animation:arrive .22s cubic-bezier(.2,.8,.2,1)}
 #qlh{flex:none;display:flex;align-items:center;gap:10px;padding:14px 18px 10px}
 #qlt{font-size:13px;font-weight:500;flex:1;min-width:0;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -1050,10 +1205,12 @@ body.type-on .toc{display:none!important}
 #qlb .md{max-width:680px}
 
 #cfgWrap{position:fixed;inset:0;z-index:130;display:none;background:var(--scrim);
-  align-items:flex-start;justify-content:center;padding:6vh 20px}
+  -webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px);
+  align-items:flex-start;justify-content:center;padding:6vh 20px;animation:fadeIn .18s ease-out}
 #cfgWrap.on{display:flex}
 #viewCfg{width:min(720px,96vw);max-height:86vh;display:flex;flex-direction:column;
-  background:var(--pop);border-radius:12px;box-shadow:var(--popbig);overflow:hidden}
+  background:var(--pop);border:1px solid var(--rule-row);border-radius:17px;
+  box-shadow:var(--popbig);overflow:hidden;animation:arrive .22s cubic-bezier(.2,.8,.2,1)}
 .cfghead{flex:none;display:flex;align-items:center;gap:10px;padding:18px 22px 6px}
 .cfghead .ttl{font-size:15px;font-weight:600;flex:1}
 #cfgBody{flex:1;overflow-y:auto;padding:6px 22px 26px}
@@ -1086,38 +1243,88 @@ body.type-on .toc{display:none!important}
   font-size:12px;color:var(--t1);transition:background-color .15s ease}
 .btn:hover{background:var(--hover)}
 .btn[disabled]{opacity:.4;pointer-events:none}
-.btn.key{background:var(--accent);color:#fff}
+.btn.key{background:var(--accent);color:var(--on-accent)}
 .btn.key:hover{opacity:.88;background:var(--accent)}
 
 /* ═══ 顶部横幅：断线 / 升级 / 冲突 ═══════════
    界面里唯一允许出现的一行字，说的是「现在能不能用、你要做什么」，不是旁白。 */
 #banners{position:fixed;top:0;left:0;right:0;z-index:160}
 .bnr{display:none;align-items:center;justify-content:center;gap:12px;
-  height:33px;padding:0 14px;font-size:12px;color:var(--t2);background:var(--field)}
+  height:33px;padding:0 14px;font-size:11px;color:var(--t2);
+  background:var(--pop);border-bottom:1px solid var(--rule-row);
+  box-shadow:var(--segshadow);animation:arrive .18s ease-out}
 .bnr.on{display:flex}
-.bnr .btn{height:22px;padding:0 10px;font-size:11px;background:var(--pop)}
-body.bnr-on #app,body.bnr-on #hub{padding-top:calc(var(--chrome-h) + 33px)}
-body.bnr-on #chrome{top:33px}
+.bnr::before{content:"";width:6px;height:6px;border-radius:50%;flex:none;
+  background:var(--accent);opacity:.75}
+#offline.bnr::before{background:var(--t3)}
+#conflict.bnr::before{background:var(--folder)}
+.bnr .btn{height:22px;padding:0 10px;font-size:11px;
+  background:var(--field);color:var(--t1)}
+.bnr .btn:hover{background:var(--hover)}
+body.bnr-on #app{padding-top:calc(var(--chrome-h) + var(--bnr-h))}
+body.bnr-on #chrome{top:var(--bnr-h)}
+
+/* ═══ 底部状态栏 ═══════════════════════════
+   左边一颗点报服务状态，右边按当前在看什么给一句提示。不是旁白，是状态。 */
+.statusbar{
+  position:fixed;left:0;right:0;bottom:0;z-index:18;
+  height:var(--status-h);
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+  padding:0 19px;border-top:1px solid var(--rule-row);
+  background:var(--win);color:var(--t3);font-size:9px;
+  user-select:none;-webkit-user-select:none;
+}
+body.solo .statusbar{display:none}
+.statusbar > span:first-child{display:flex;align-items:center;gap:6px;min-width:0}
+.status-dot{width:4px;height:4px;border-radius:50%;background:var(--dot);flex:none;
+  transition:background-color .2s ease}
+.status-dot.scan{background:var(--folder)}
+.status-dot.off{background:var(--t4)}
+#statusText,#statusDetail{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#statusDetail{max-width:60%;text-align:right}
+
+/* ═══ 轻提示 ═══════════════════════════════
+   一句话、两秒、不挡手。持久性的话走顶部横幅，不走这里。 */
+#toast{
+  position:fixed;bottom:calc(var(--status-h) + 35px);left:50%;
+  transform:translate(-50%,8px);
+  background:var(--pop);border:1px solid var(--rule-row);box-shadow:var(--float);
+  border-radius:12px;font-size:12px;color:var(--t1);padding:11px 18px;
+  z-index:200;pointer-events:none;opacity:0;
+  transition:opacity .18s ease,transform .18s ease;
+  max-width:calc(100% - 32px);text-align:center;
+}
+#toast.on{opacity:1;transform:translate(-50%,0)}
+
+/* 页面切换的淡入。 */
+.page-enter{animation:pageIn .19s ease-out}
+@keyframes pageIn{from{opacity:.5;transform:translateY(3px)}to{opacity:1;transform:none}}
 
 /* ═══ 窄窗口 ═══════════════════════════════ */
 @media(max-width:900px){
   body.lists-on #app{grid-template-columns:0 0 var(--lcw) 0 1fr}
-  body.lists-on #side{position:fixed;left:0;top:var(--chrome-h);bottom:0;width:var(--sbw);z-index:60;
+  body.lists-on #side{position:fixed;left:0;top:var(--chrome-h);bottom:var(--status-h);width:var(--sbw);z-index:60;
     box-shadow:var(--popbig);display:none}
   body.lists-on.sideover #side{display:flex}
-}
-@media(max-width:720px){
-  body.lists-on #app{grid-template-columns:0 0 0 0 1fr}
-  body.lists-on #listpane{position:fixed;left:0;top:var(--chrome-h);bottom:0;width:var(--lcw);z-index:55;
-    box-shadow:var(--popbig)}
+  /* 篇内目录和地址栏那颗 ⌘K 先让位，正文别被挤窄 */
   .toc{display:none}
-  .pane{padding:46px 24px 120px}
-  .col{width:calc(100vw - 40px)}
-  body.searching .col{width:calc(100vw - 40px)}
+  .ob-kbd{display:none}
+  .section-head .section-meta{display:none}
+}
+@media(max-width:700px){
+  body.lists-on #app{grid-template-columns:0 0 0 0 1fr}
+  body.lists-on #listpane{position:fixed;left:0;top:var(--chrome-h);bottom:var(--status-h);width:var(--lcw);z-index:55;
+    box-shadow:var(--popbig)}
+  .statusbar{padding:0 12px;font-size:8px}
+  #statusDetail{max-width:60%}
+  #toolbar{padding:0 9px;gap:2px}
+  .omnibox{margin:0 2px 0 5px;padding:0 9px}
+  #bmbar{padding:0 10px 6px}
+  .modal-footer span:last-child{display:none}
 }
 
 /* ═══ 独立窗口（solo）═══════════════════════ */
-body.solo #side,body.solo #listpane,body.solo .split,body.solo #hub{display:none!important}
+body.solo #side,body.solo #listpane,body.solo .split{display:none!important}
 body.solo #app{display:grid!important;grid-template-columns:0 0 0 0 1fr}
 body.solo .tabbar{display:none!important}
 body.solo #chrome{display:none!important}
@@ -1126,14 +1333,17 @@ body.solo #chrome{display:none!important}
    ⌘P 走壳的 NSPrintOperation，打的是整个 WebView，所以界面得在这里收干净。 */
 @media print{
   html,body{height:auto;overflow:visible;background:#fff;color:#000}
-  #side,#listpane,.split,#hub,.tabbar,.toc,.listbtn,.editstatus,
-  #chrome,#obdrop,#bmdrop,
+  #side,#listpane,.split,.tabbar,.toc,.listbtn,.editstatus,
+  #chrome,#obdrop,#bmdrop,.statusbar,#toast,
+  .doc-toolbar,.formatbar,.doc-end,.editor-hint,
   #banners,#ctx,#fmt,#wlpick,#tabpick,#cmdkWrap,#qlwrap,#cfgWrap,#slash,#typeWrap{display:none!important}
-  #app,#hub{display:block!important;padding-top:0!important}
+  #app{display:block!important;padding-top:0!important;height:auto!important}
   #docpane{position:static;overflow:visible}
   #panes{position:static}
   .pane{position:static;display:none;overflow:visible;padding:0}
   .pane.on{display:block}
+  .doc-layout{max-width:none;padding:0}
+  .document{max-width:none}
   .md{max-width:none}
   .histbox>.tw{display:block!important}
 }
@@ -1156,29 +1366,38 @@ body.solo #chrome{display:none!important}
   </div>
   <div id="toolbar">
     <button type="button" class="navb" id="navBack" title="后退 ⌘[" aria-label="后退" disabled>
-      <i data-ic="chevron-left" data-sz="16"></i>
+      <i data-ic="left" data-sz="16"></i>
     </button>
     <button type="button" class="navb" id="navFwd" title="前进 ⌘]" aria-label="前进" disabled>
-      <i data-ic="chevron-right" data-sz="16"></i>
+      <i data-ic="right" data-sz="16"></i>
     </button>
-    <button type="button" class="navb" id="navReload" title="刷新" aria-label="刷新">
-      <i data-ic="refresh" data-sz="16"></i>
+    <button type="button" class="navb" id="navHome" title="回到开始页" aria-label="回到开始页">
+      <i data-ic="home" data-sz="16"></i>
     </button>
     <div class="omnibox" id="omnibox">
-      <span class="ob-icon" id="obicon"><i data-ic="search" data-sz="16"></i></span>
+      <span class="ob-icon" id="obicon"><i data-ic="search" data-sz="14"></i></span>
       <span class="ob-field">
         <span class="ob-path" id="obpath" hidden><span></span></span>
-        <input id="omni" type="text" placeholder="搜索本地文件" spellcheck="false" autocomplete="off" aria-label="搜索本地文件" aria-autocomplete="list">
+        <input id="omni" type="text" placeholder="搜索笔记，或输入文件名" spellcheck="false" autocomplete="off" aria-label="搜索笔记，或输入文件名" aria-autocomplete="list">
       </span>
       <span class="ob-chip" id="obchip" hidden></span>
+      <kbd class="ob-kbd" aria-hidden="true">⌘ K</kbd>
     </div>
     <button type="button" class="navb" id="navBm" title="书签栏 ⌘⇧B" aria-label="书签栏">
       <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true"><path d="M6 5.5h12v15l-6-3.2L6 20.5z"/></svg>
+    </button>
+    <button type="button" class="navb" id="navType" title="阅读与外观" aria-label="阅读与外观">
+      <i data-ic="sliders" data-sz="16"></i>
     </button>
     <div class="loadbar" id="loadbar"></div>
   </div>
   <div id="bmbar"></div>
 </div>
+<footer class="statusbar">
+  <span><i class="status-dot" id="statusDot"></i><span id="statusText">就绪</span></span>
+  <span id="statusDetail"></span>
+</footer>
+<div id="toast" role="status" aria-live="polite"></div>
 <div id="obdrop" class="obdrop" role="listbox"></div>
 <div id="bmdrop" class="drop"></div>
 
@@ -1232,73 +1451,30 @@ body.solo #chrome{display:none!important}
     <div class="editstatus" id="edMsg"></div>
     <div id="panes"></div>
     <div class="toc hide" id="toc"></div>
-    <div class="quiet-empty" aria-hidden="true">
-      <div class="empty-symbol"><i data-ic="doc-text"></i></div>
-      <h2>选择一份笔记</h2>
-      <p>或者按 <kbd>⌘ K</kbd> 直接打开</p>
-    </div>
-  </div>
-</div>
-
-<div id="hub">
-  <div class="col">
-    <label class="searchpill">
-      <i data-ic="search"></i>
-      <input id="q" type="search" autocomplete="off" spellcheck="false" placeholder="搜索整个库">
-      <button class="clear" id="qclear" title="清除"><i data-ic="close"></i></button>
-    </label>
-    <div class="seg kindseg" role="radiogroup" aria-label="文件类型">
-      <button type="button" data-kind="all" class="on" aria-pressed="true">全部</button>
-      <button type="button" data-kind="md" aria-pressed="false">Markdown</button>
-      <button type="button" data-kind="html" aria-pressed="false">HTML</button>
-    </div>
-    <div class="hitline off num" id="qhint"></div>
-    <div id="hubbody" tabindex="0" role="listbox" aria-label="文稿列表"></div>
   </div>
 </div>
 
 <div id="out" hidden></div>
 
 <div id="cmdkWrap">
-  <div class="scrim" id="cmdkScrim"></div>
-  <div class="cmdk">
-    <div class="q"><input id="ck" type="text" autocomplete="off" spellcheck="false" placeholder="找文件，或做一个动作…" aria-label="找文件或做动作"></div>
-    <div class="rows" id="ckList"></div>
+  <div class="modal" role="dialog" aria-modal="true" aria-label="快速直达">
+    <div class="search-input-row">
+      <i data-ic="search" data-sz="18"></i>
+      <input id="ck" type="text" autocomplete="off" spellcheck="false" placeholder="找一篇笔记，或一个想法…" aria-label="找一篇笔记，或一个想法">
+      <button type="button" class="escb" id="ckEsc" aria-label="关闭"><kbd>Esc</kbd></button>
+    </div>
+    <div class="modal-body" id="ckList" role="listbox" aria-label="结果"></div>
+    <div class="modal-footer">
+      <span><kbd>↑</kbd> <kbd>↓</kbd> 选择</span>
+      <span><kbd>↵</kbd> 打开</span>
+      <span>也可以搜索正文内容</span>
+    </div>
   </div>
 </div>
 
 <div id="slash"></div>
 
-<div id="typeWrap">
-  <div class="scrim" id="typeScrim"></div>
-  <div class="typepane">
-    <h3>排版</h3>
-    <div class="cfgrow">
-      <span class="k">字体</span>
-      <span class="seg" data-k="font" id="typeFont">
-        <button type="button" data-v="f-sans">系统</button>
-        <button type="button" data-v="f-serif">宋体</button>
-        <button type="button" data-v="f-mono">等宽</button>
-      </span>
-    </div>
-    <div class="cfgrow">
-      <span class="k">字号</span>
-      <input type="range" id="typeFs" min="15" max="20" step="1">
-      <span class="v num" id="typeVfs"></span>
-    </div>
-    <div class="cfgrow">
-      <span class="k">行高</span>
-      <input type="range" id="typeLh" min="160" max="200" step="5">
-      <span class="v num" id="typeVlh"></span>
-    </div>
-    <div class="cfgrow">
-      <span class="k">栏宽</span>
-      <input type="range" id="typeW" min="560" max="760" step="20">
-      <span class="v num" id="typeVw"></span>
-    </div>
-    <p class="cfgd">中文正文不做负字距。栏宽略窄，一行大约三十多个字。</p>
-  </div>
-</div>
+<div id="typeWrap" role="dialog" aria-label="阅读与外观"></div>
 
 <div id="ctx"></div>
 <div id="tabpick"></div>
@@ -1334,7 +1510,7 @@ const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&
    界面原来一个图标都没有，全靠文字。这里是一套 24×24、描边 1.6 的内联 SVG，
    跟 SF Symbols 同一种视觉语言（自己画的，不是苹果的路径数据）。
    用法：markup 里写 <i data-ic="inbox"></i>，paintIcons() 换成真 SVG。 */
-const ICONS = /*__ICONS__*/{"inbox":{"d":["M4,8 L4,17 A1.5,1.5 0 0 0 5.5,18.5 L18.5,18.5 A1.5,1.5 0 0 0 20,17 L20,8","M4,8 L9.5,8 L12,11.5 L14.5,8 L20,8"],"fill":false},"inbox-full":{"d":["M4,8 L4,17 A1.5,1.5 0 0 0 5.5,18.5 L18.5,18.5 A1.5,1.5 0 0 0 20,17 L20,8","M4,8 L9.5,8 L12,11.5 L14.5,8 L20,8","M7,4.5 L17,4.5 L17,8 L7,8 Z"],"fill":false},"checklist":{"d":["M2.2,7.03 L4.8,9.63 L9.48,3.91","M9,8.8 L20.5,8.8","M2.2,15.23 L4.8,17.83 L9.48,12.11","M9,17 L20.5,17"],"fill":false},"clock":{"d":["M3.5,12 A8.5,8.5 0 1,0 20.5,12 A8.5,8.5 0 1,0 3.5,12","M12,12 L12,7","M12,12 L15.8,13.6"],"fill":false},"docs":{"d":["M8,3 L19,3 L19,14 L8,14 Z","M5,8 L14,8 L17,11 L17,21 L5,21 Z","M14,8 L14,11 L17,11"],"fill":false},"gear":{"d":["M12,2.8 L14.45,6.09 L18.51,5.49 L17.91,9.55 L21.2,12 L17.91,14.45 L18.51,18.51 L14.45,17.91 L12,21.2 L9.55,17.91 L5.49,18.51 L6.09,14.45 L2.8,12 L6.09,9.55 L5.49,5.49 L9.55,6.09 Z","M8.9,12 A3.1,3.1 0 1,0 15.1,12 A3.1,3.1 0 1,0 8.9,12"],"fill":false},"tag":{"d":["M3,12 L9,4.5 L20,4.5 L20,19.5 L9,19.5 Z","M6.6,12 A1.4,1.4 0 1,0 9.4,12 A1.4,1.4 0 1,0 6.6,12"],"fill":false},"folder":{"d":["M3,18.5 L3,8.5 L8,8.5 L9.5,6.5 L14.5,6.5 L16,8.5 L21,8.5 L21,18.5 Z"],"fill":false},"doc-text":{"d":["M6,3 L15,3 L18,6 L18,21 L6,21 Z","M15,3 L15,6 L18,6","M8.5,10 L15.5,10","M8.5,13.5 L15.5,13.5","M8.5,17 L13,17"],"fill":false},"globe":{"d":["M3.5,12 A8.5,8.5 0 1,0 20.5,12 A8.5,8.5 0 1,0 3.5,12","M3.5,12 L20.5,12","M12,3.5 L12,20.5","M12,3.5 A4.2,8.5 0 0,0 12,20.5","M12,3.5 A4.2,8.5 0 0,1 12,20.5"],"fill":false},"doc-rich":{"d":["M6,3 L15,3 L18,6 L18,21 L6,21 Z","M15,3 L15,6 L18,6","M8,9 L16,9 L16,13 L8,13 Z","M8,15.5 L16,15.5","M8,18 L13,18"],"fill":false},"table":{"d":["M3,5 L21,5 L21,19 L3,19 Z","M3,10 L21,10","M3,14.5 L21,14.5","M9,5 L9,19","M15,5 L15,19"],"fill":false},"pencil":{"d":["M4,21 L16.59,5.59 L19.41,8.41 Z","M14.07,8.67 L16.33,10.93"],"fill":false},"text-size":{"d":["M3,18 L7,4 L11,18","M4.43,13 L9.57,13","M14,18 L17,9 L20,18","M15.2,14.4 L18.8,14.4"],"fill":false},"search":{"d":["M4,10.5 A6.5,6.5 0 1,0 17,10.5 A6.5,6.5 0 1,0 4,10.5","M15.1,15.1 L21,21"],"fill":false},"refresh":{"d":["M16.3,5.86 A7.5,7.5 0 1,1 7.7,5.86","M5.79,9.6 L7.7,5.86 L3.53,6.37"],"fill":false},"new-note":{"d":["M11,15 L3,15 L3,3 L15,3 L15,10","M9.5,16.5 L16.87,6.87 L19.13,9.13 Z"],"fill":false},"sidebar":{"d":["M5,5 L19,5 A2.4,2.4 0 0 1 21.4,7.4 L21.4,16.6 A2.4,2.4 0 0 1 19,19 L5,19 A2.4,2.4 0 0 1 2.6,16.6 L2.6,7.4 A2.4,2.4 0 0 1 5,5","M9,5 L9,19"],"fill":false},"share":{"d":["M14.5,4 L19,4 L19,19 L5,19 L5,4 L9.5,4","M12,16 L12,3","M8.7,6.3 L12,3 L15.3,6.3"],"fill":false},"chevron-left":{"d":["M14.5,5 L8,12 L14.5,19"],"fill":false},"chevron-right":{"d":["M9.5,5 L16,12 L9.5,19"],"fill":false},"chevron-down":{"d":["M5,9.5 L12,16 L19,9.5"],"fill":false},"chevron-up":{"d":["M5,14.5 L12,8 L19,14.5"],"fill":false},"close":{"d":["M5.5,5.5 L18.5,18.5","M18.5,5.5 L5.5,18.5"],"fill":false},"check":{"d":["M5,12.5 L10,17.5 L19,6.5"],"fill":false},"list":{"d":["M4,6.5 L20,6.5","M4,12 L20,12","M4,17.5 L20,17.5"],"fill":false},"grid":{"d":["M3.5,3.5 L11,3.5 L11,11 L3.5,11 Z","M13,3.5 L20.5,3.5 L20.5,11 L13,11 Z","M3.5,13 L11,13 L11,20.5 L3.5,20.5 Z","M13,13 L20.5,13 L20.5,20.5 L13,20.5 Z"],"fill":false},"info":{"d":["M3.5,12 A8.5,8.5 0 1,0 20.5,12 A8.5,8.5 0 1,0 3.5,12","M12,10.5 L12,16.5","M12,7.2 L12,7.32"],"fill":false},"newwin":{"d":["M12.5,4 L4,4 L4,20 L20,20 L20,11.5","M11,13 L20,4","M14,4 L20,4 L20,10"],"fill":false},"copy":{"d":["M9,9 L20,9 L20,20 L9,20 Z","M15,9 L15,6 A1.5,1.5 0 0 0 13.5,4.5 L5.5,4.5 A1.5,1.5 0 0 0 4,6 L4,14 A1.5,1.5 0 0 0 5.5,15.5 L9,15.5"],"fill":false}}/*__ICONS__*/;
+const ICONS = /*__ICONS__*/{"inbox":{"d":["M4,8 L4,17 A1.5,1.5 0 0 0 5.5,18.5 L18.5,18.5 A1.5,1.5 0 0 0 20,17 L20,8","M4,8 L9.5,8 L12,11.5 L14.5,8 L20,8"],"fill":false},"inbox-full":{"d":["M4,8 L4,17 A1.5,1.5 0 0 0 5.5,18.5 L18.5,18.5 A1.5,1.5 0 0 0 20,17 L20,8","M4,8 L9.5,8 L12,11.5 L14.5,8 L20,8","M7,4.5 L17,4.5 L17,8 L7,8 Z"],"fill":false},"checklist":{"d":["M2.2,7.03 L4.8,9.63 L9.48,3.91","M9,8.8 L20.5,8.8","M2.2,15.23 L4.8,17.83 L9.48,12.11","M9,17 L20.5,17"],"fill":false},"clock":{"d":["M3.5,12 A8.5,8.5 0 1,0 20.5,12 A8.5,8.5 0 1,0 3.5,12","M12,12 L12,7","M12,12 L15.8,13.6"],"fill":false},"docs":{"d":["M8,3 L19,3 L19,14 L8,14 Z","M5,8 L14,8 L17,11 L17,21 L5,21 Z","M14,8 L14,11 L17,11"],"fill":false},"gear":{"d":["M12,2.8 L14.45,6.09 L18.51,5.49 L17.91,9.55 L21.2,12 L17.91,14.45 L18.51,18.51 L14.45,17.91 L12,21.2 L9.55,17.91 L5.49,18.51 L6.09,14.45 L2.8,12 L6.09,9.55 L5.49,5.49 L9.55,6.09 Z","M8.9,12 A3.1,3.1 0 1,0 15.1,12 A3.1,3.1 0 1,0 8.9,12"],"fill":false},"tag":{"d":["M3,12 L9,4.5 L20,4.5 L20,19.5 L9,19.5 Z","M6.6,12 A1.4,1.4 0 1,0 9.4,12 A1.4,1.4 0 1,0 6.6,12"],"fill":false},"folder":{"d":["M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10H3Z"],"fill":false},"doc-text":{"d":["M6,3 L15,3 L18,6 L18,21 L6,21 Z","M15,3 L15,6 L18,6","M8.5,10 L15.5,10","M8.5,13.5 L15.5,13.5","M8.5,17 L13,17"],"fill":false},"globe":{"d":["M3.5,12 A8.5,8.5 0 1,0 20.5,12 A8.5,8.5 0 1,0 3.5,12","M3.5,12 L20.5,12","M12,3.5 L12,20.5","M12,3.5 A4.2,8.5 0 0,0 12,20.5","M12,3.5 A4.2,8.5 0 0,1 12,20.5"],"fill":false},"doc-rich":{"d":["M6,3 L15,3 L18,6 L18,21 L6,21 Z","M15,3 L15,6 L18,6","M8,9 L16,9 L16,13 L8,13 Z","M8,15.5 L16,15.5","M8,18 L13,18"],"fill":false},"table":{"d":["M3,5 L21,5 L21,19 L3,19 Z","M3,10 L21,10","M3,14.5 L21,14.5","M9,5 L9,19","M15,5 L15,19"],"fill":false},"pencil":{"d":["M4,21 L16.59,5.59 L19.41,8.41 Z","M14.07,8.67 L16.33,10.93"],"fill":false},"text-size":{"d":["M3,18 L7,4 L11,18","M4.43,13 L9.57,13","M14,18 L17,9 L20,18","M15.2,14.4 L18.8,14.4"],"fill":false},"search":{"d":["M4,10.5 A6.5,6.5 0 1,0 17,10.5 A6.5,6.5 0 1,0 4,10.5","M15.1,15.1 L21,21"],"fill":false},"refresh":{"d":["M16.3,5.86 A7.5,7.5 0 1,1 7.7,5.86","M5.79,9.6 L7.7,5.86 L3.53,6.37"],"fill":false},"new-note":{"d":["M11,15 L3,15 L3,3 L15,3 L15,10","M9.5,16.5 L16.87,6.87 L19.13,9.13 Z"],"fill":false},"sidebar":{"d":["M5,5 L19,5 A2.4,2.4 0 0 1 21.4,7.4 L21.4,16.6 A2.4,2.4 0 0 1 19,19 L5,19 A2.4,2.4 0 0 1 2.6,16.6 L2.6,7.4 A2.4,2.4 0 0 1 5,5","M9,5 L9,19"],"fill":false},"share":{"d":["M14.5,4 L19,4 L19,19 L5,19 L5,4 L9.5,4","M12,16 L12,3","M8.7,6.3 L12,3 L15.3,6.3"],"fill":false},"chevron-left":{"d":["M14.5,5 L8,12 L14.5,19"],"fill":false},"chevron-right":{"d":["M9.5,5 L16,12 L9.5,19"],"fill":false},"chevron-down":{"d":["M5,9.5 L12,16 L19,9.5"],"fill":false},"chevron-up":{"d":["M5,14.5 L12,8 L19,14.5"],"fill":false},"close":{"d":["M5.5,5.5 L18.5,18.5","M18.5,5.5 L5.5,18.5"],"fill":false},"check":{"d":["M5,12.5 L10,17.5 L19,6.5"],"fill":false},"list":{"d":["M4,6.5 L20,6.5","M4,12 L20,12","M4,17.5 L20,17.5"],"fill":false},"grid":{"d":["M3.5,3.5 L11,3.5 L11,11 L3.5,11 Z","M13,3.5 L20.5,3.5 L20.5,11 L13,11 Z","M3.5,13 L11,13 L11,20.5 L3.5,20.5 Z","M13,13 L20.5,13 L20.5,20.5 L13,20.5 Z"],"fill":false},"info":{"d":["M3.5,12 A8.5,8.5 0 1,0 20.5,12 A8.5,8.5 0 1,0 3.5,12","M12,10.5 L12,16.5","M12,7.2 L12,7.32"],"fill":false},"newwin":{"d":["M12.5,4 L4,4 L4,20 L20,20 L20,11.5","M11,13 L20,4","M14,4 L20,4 L20,10"],"fill":false},"copy":{"d":["M9,9 L20,9 L20,20 L9,20 Z","M15,9 L15,6 A1.5,1.5 0 0 0 13.5,4.5 L5.5,4.5 A1.5,1.5 0 0 0 4,6 L4,14 A1.5,1.5 0 0 0 5.5,15.5 L9,15.5"],"fill":false},"plus":{"d":["M12 5v14","M5 12h14"],"fill":false},"left":{"d":["M14 5l-7 7 7 7"],"fill":false},"right":{"d":["M10 5l7 7-7 7"],"fill":false},"home":{"d":["M3 10l9-7 9 7","M5 9v11h14V9","M9 20v-7h6v7"],"fill":false},"star":{"d":["M12 3l2.7 5.8 6.3.9-4.5 4.4 1.1 6.3L12 17.4l-5.6 3 1.1-6.3L3 9.7l6.3-.9Z"],"fill":false},"sliders":{"d":["M4 6h7","M15 6h5","M4 12h2","M10 12h10","M4 18h9","M17 18h3","M11 6a2 2 0 1 0 4 0 2 2 0 1 0-4 0","M6 12a2 2 0 1 0 4 0 2 2 0 1 0-4 0","M13 18a2 2 0 1 0 4 0 2 2 0 1 0-4 0"],"fill":false},"doc":{"d":["M6 3h8l4 4v14H6Z","M14 3v5h4","M9 12h6","M9 16h5"],"fill":false},"leaf":{"d":["M20 4C5 1 1 11 7 17c7 5 14-1 13-13Z","M7 17l9-9","M7 17l-3 3"],"fill":false},"arrow":{"d":["M4 12h15","M14 7l5 5-5 5"],"fill":false},"focus":{"d":["M8 3H3v5","M16 3h5v5","M21 16v5h-5","M8 21H3v-5"],"fill":false},"source":{"d":["M8 7L3 12L8 17","M16 7L21 12L16 17","M14 4L10 20"],"fill":false},"edit":{"d":["M15 4l5 5","M4 20l4-1L20 7a2 2 0 0 0-4-4L4 15Z"],"fill":false},"more":{"d":["M4.5,12 A1.3,1.3 0 1,0 7.1,12 A1.3,1.3 0 1,0 4.5,12","M10.7,12 A1.3,1.3 0 1,0 13.3,12 A1.3,1.3 0 1,0 10.7,12","M16.9,12 A1.3,1.3 0 1,0 19.5,12 A1.3,1.3 0 1,0 16.9,12"],"fill":false},"undo":{"d":["M5 5v6h6","M5 11a8 8 0 1 1 2 8"],"fill":false},"redo":{"d":["M19 5v6h-6","M19 11a8 8 0 1 0-2 8"],"fill":false},"quote":{"d":["M5 7h5v6H5m0-6v7c0 3 2 4 4 4","M14 7h5v6h-5m0-6v7c0 3 2 4 4 4"],"fill":false},"link":{"d":["M10 13l4-4","M8 15l-2 2a3 3 0 0 1-4-4l5-5a3 3 0 0 1 4 0","M13 16a3 3 0 0 0 4 0l5-5a3 3 0 0 0-4-4l-2 2"],"fill":false}}/*__ICONS__*/;
 const ICON_FALLBACK={d:['M4 6h16','M4 12h16','M4 18h10'],fill:false};
 function icon(name, size){
   const s=ICONS[name]||ICON_FALLBACK, px=size||16;
@@ -1397,14 +1573,20 @@ function hdrs(extra){
 function bnr(id, on){
   const el=$('#'+id); if(!el) return;
   el.classList.toggle('on', !!on);
-  document.body.classList.toggle('bnr-on', !!$$('#banners .bnr.on').length);
+  const n=$$('#banners .bnr.on').length;
+  document.body.classList.toggle('bnr-on', !!n);
+  // 三条同时挂出来的时候（升级 ＋ 离线），标签条要按实际条数往下让
+  document.documentElement.style.setProperty('--bnr-h', (n*33)+'px');
 }
 
 /* ═══ 会话状态 ═══════════════════════════
    Mac 的约定是重开就回到离开时的样子。存储键名沿用 tp-state，不改。
    lists（列表与边栏收放）只在当次会话内保持，不进 localStorage：
    打开文档默认纯正文，重开回纯正文。 */
-const DEF_ST={sbw:224, lcw:320, side:true, toc:false, bookmarks:true, recents:[]};
+const DEF_ST={sbw:224, lcw:320, side:true, toc:false, bookmarks:true, recents:[],
+  pins:[],              /* 已收藏：库根相对路径。文件没了就在 setTree 里剔掉 */
+  homeFilter:'all',     /* 开始页/文件夹页/已收藏页的类型筛：all | md | html */
+  homeView:'grid'};     /* 卡片网格 grid ｜ 单列列表 list */
 let ST=Object.assign({}, DEF_ST, (()=>{ try{ return JSON.parse(localStorage.getItem('tp-state')||'{}') }catch(e){ return {} } })());
 let stSaveT=null;
 function saveST(){ clearTimeout(stSaveT); stSaveT=setTimeout(()=>{
@@ -1507,19 +1689,23 @@ function clipPath(rel){
   if(!LIBROOT){ flash('还没连上服务'); return; }
   copyText('file://'+LIBROOT+'/'+rel).then(ok=>flash(ok?'路径已拷贝':'拷不了'));
 }
-/* 一句话的回执，两秒自己消失。用正文栏右上角那格状态字，不另做一套提示。 */
-let flashT=null;
-function flash(t){
-  const el=$('#edMsg'); if(!el) return;
-  el.className='editstatus'; el.textContent=t;
-  clearTimeout(flashT);
-  flashT=setTimeout(()=>{ syncStatusLine(); }, 2000);
+/* 一句话的回执，两秒多自己消失。窗口底部居中一张小卡片。
+   持久的事（断线、升级、冲突）走顶部横幅 bnr()，不走这里。 */
+let toastT=null;
+function notify(t){
+  const el=$('#toast'); if(!el){ return; }
+  el.textContent=String(t||'');
+  el.classList.add('on');
+  clearTimeout(toastT);
+  toastT=setTimeout(()=>{ el.classList.remove('on'); }, 2400);
 }
+/* 老代码里到处在调 flash()，名字留着，统一走 toast。 */
+function flash(t){ notify(t); }
 
 /* ── 阅读版式 ─────────────────────────────
    默认 17 / 1.85 / 640。prefsGen 2 把仍停在上一版默认 15/1.80/680 的迁过来；
    自己调过的不动。 */
-const DEF_PREF = {font:'f-sans', fs:17, lh:185, w:640, theme:'auto'};
+const DEF_PREF = {font:'f-sans', fs:17, lh:195, w:690, theme:'auto'};
 const RESETTABLE = ['font','fs','lh','w'];
 const PREF = Object.assign({}, DEF_PREF,
   (()=>{ try{ return JSON.parse(localStorage.getItem('tp-pref')||'{}') }catch(e){ return {} } })());
@@ -1536,6 +1722,11 @@ const savePref = () => { try{ localStorage.setItem('tp-pref', JSON.stringify(PRE
     }
     PREF.prefsGen = 2;
   }
+  // 3：正文改成 17 / 1.95 / 690。仍停在上一版默认的迁过来，自己调过的不动。
+  if(PREF.prefsGen < 3){
+    if(+PREF.fs===17 && +PREF.lh===185 && +PREF.w===640){ PREF.lh=195; PREF.w=690; }
+    PREF.prefsGen = 3;
+  }
   savePref();
 })();
 
@@ -1549,12 +1740,9 @@ function applyPref(){
     d.style.lineHeight = (PREF.lh/100).toFixed(2);
     d.style.maxWidth = PREF.w+'px';
   });
-  // 源码框跟着走一档：等宽字比正文占地方，字号收 1px 才不至于换行乱掉
-  $$('#panes .ed').forEach(e=>{
-    e.style.fontSize = Math.max(12, PREF.fs-1)+'px';
-    e.style.lineHeight = (PREF.lh/100).toFixed(2);
-  });
+  // 源码框固定等宽 13 / 1.9，不跟正文字号走——源码看的是行，不是阅读节奏。
   document.documentElement.style.setProperty('--docw', PREF.w+'px');
+  growAllEd();                                   // 字号／版心变了，源码框的高度得重算
   if (PREF.theme==='auto') document.documentElement.removeAttribute('data-theme');
   else document.documentElement.setAttribute('data-theme', PREF.theme);
   // 全屏内容视图把网页铺进原生标题栏后，两层必须用同一套明暗外观。
@@ -1564,7 +1752,8 @@ function applyPref(){
 }
 /* 版式与外观的控件住在设置页里，页没开就没有这些节点 */
 function syncPrefControls(){
-  const fs=$('#fs'); if(!fs) return;
+  const fs=$('#fs');
+  if(!fs){ syncPopControls(); return; }
   fs.value=PREF.fs; $('#lh').value=PREF.lh; $('#w').value=PREF.w;
   $('#vfs').textContent=PREF.fs+'px';
   $('#vlh').textContent=(PREF.lh/100).toFixed(2);
@@ -1573,14 +1762,21 @@ function syncPrefControls(){
   $$('.seg[data-k=theme] button').forEach(b=>b.classList.toggle('on',b.dataset.v===PREF.theme));
   const rb=$('#rstPref');
   if(rb) rb.disabled = RESETTABLE.every(k=>PREF[k]===DEF_PREF[k]);
-  const tfs=$('#typeFs');
-  if(tfs){
-    tfs.value=PREF.fs; $('#typeLh').value=PREF.lh; $('#typeW').value=PREF.w;
-    $('#typeVfs').textContent=PREF.fs;
-    $('#typeVlh').textContent=(PREF.lh/100).toFixed(2);
-    $('#typeVw').textContent=PREF.w;
-    $$('#typeFont button').forEach(b=>b.classList.toggle('on',b.dataset.v===PREF.font));
-  }
+  syncPopControls();
+}
+/* 浮层里的控件。范围条不重画（重画会打断拖动），只回写值和分段的选中态。 */
+function syncPopControls(){
+  const pf=$('#popFs'); if(!pf) return;
+  pf.value=PREF.fs; $('#popVfs').textContent=PREF.fs;
+  const pl=$('#popLh');
+  if(pl){ pl.value=PREF.lh; $('#popVlh').textContent=(PREF.lh/100).toFixed(2); }
+  $$('#typeWrap [data-pk]').forEach(b=>{
+    const k=b.dataset.pk;
+    if(!k || k==='focus') return;
+    const on=String(PREF[k])===String(b.dataset.v);
+    b.classList.toggle('on', on);
+    b.setAttribute('aria-pressed', on?'true':'false');
+  });
 }
 function setPref(k, v){ PREF[k]=v; savePref(); applyPref(); }
 function toggleTheme(){
@@ -1872,7 +2068,8 @@ function normHtml(h){
     // 块末尾那一个 <br> 不参与比较：浏览器拿它当光标位，显示上等于没有，
     // inlMd 出口处本来就不写出去。留着比会让「按一次换行再贴图」这种正常操作
     // 在存盘自检里报一次假警。连着两个以上是真的空行，照旧比，报警是对的。
-    .replace(/<br\s*\/?>(?=<\/(?:p|li|td|th|h[1-6]|blockquote|div)>|$)/i, '')
+    // 加 g：一张表里每个空格子末尾都有一个，只剥第一个的话整块就判「会变样」。
+    .replace(/<br\s*\/?>(?=<\/(?:p|li|td|th|h[1-6]|blockquote|div)>|$)/ig, '')
     .replace(/>\s+/g, '>')
     .replace(/\s+</g, '<')
     .trim();
@@ -1914,6 +2111,7 @@ function titleOfEntry(e){
   if(e.kind==='start') return '开始';
   if(e.kind==='search') return e.q || e.title || '搜索';
   if(e.kind==='folder') return e.folder || e.title || '文件夹';
+  if(e.kind==='pins') return '已收藏';
   return e.title || (e.path||'').split('/').pop() || '无标题';
 }
 function makeEntry(kind, extra){
@@ -1978,13 +2176,14 @@ function currentPath(t){
   if(!e) return '';
   if(e.kind==='search') return e.q||'';
   if(e.kind==='folder') return (e.folder||'')+'/';
+  if(e.kind==='pins') return '已收藏';
   if(e.kind==='start') return '';
   return e.path||t.path||'';
 }
 function setPaneMode(t){
   const p=t && paneOf(t); if(!p) return;
   const k=kindOfTab(t);
-  const html=k==='html', pg=k==='start'||k==='search'||k==='folder';
+  const html=k==='html', pg=isPageKind(k);
   p.classList.toggle('html', html);
   p.classList.toggle('pg', pg);
   const ifr=p.querySelector('.htmlframe');
@@ -2042,6 +2241,7 @@ async function goHist(dir){
 }
 async function loadEntry(t){
   if(!t) return;
+  closeType();
   const e=ensureStack(t);
   applyEntry(t, e);
   setPaneMode(t);
@@ -2058,6 +2258,7 @@ async function loadEntry(t){
   if(t.id===curTab){
     buildToc(); syncProg(); syncBar(); syncChrome();
   }
+  if(k==='md'){ const p=paneOf(t); if(p) pageEnter(p.querySelector('.doc-layout')); }
 }
 function loadHtml(t){
   const p=paneOf(t); if(!p) return;
@@ -2073,71 +2274,208 @@ function loadHtml(t){
   const u=url(t.path);
   ifr.src='about:blank';
   setTimeout(()=>{ ifr.setAttribute('sandbox',''); ifr.src=u; }, 0);
+  drawDocMeta(t);
 }
-function paintPage(t){
+/* 换一页就轻轻淡进来一下。重复调用要先摘掉再挂，不然动画不重放。 */
+function pageEnter(el){
+  if(!el) return;
+  el.classList.remove('page-enter');
+  void el.offsetWidth;
+  el.classList.add('page-enter');
+  const off=()=>el.classList.remove('page-enter');
+  el.addEventListener('animationend', off, {once:true});
+  setTimeout(off, 400);                       // 动画没跑（元素当时不可见）也要摘掉
+}
+/* 某一块在这一栏里从顶上数下来多少像素。不用 offsetTop——中间那几层
+   （版心、淡入动画）随时可能变成 offsetParent，算出来就偏了。 */
+function scrollYOf(box, el){
+  if(!box || !el) return 0;
+  return box.scrollTop + el.getBoundingClientRect().top - box.getBoundingClientRect().top;
+}
+/* 开始页 / 搜索页 / 文件夹页 / 已收藏页，四种都画在这个标签自己的 .pagebox 里。
+   除了搜索页，其余三种是灰底白卡（--canvas），打开的笔记仍然整面白（--win）。 */
+function isPageKind(k){ return k==='start'||k==='search'||k==='folder'||k==='pins'; }
+function paintPage(t, opt){
   const p=paneOf(t); if(!p) return;
   const box=p.querySelector('.pagebox'); if(!box) return;
   const k=kindOfTab(t);
+  const quiet=!!(opt&&opt.quiet);
+  const y=quiet ? box.scrollTop : 0;
+  box.classList.toggle('canvas', k!=='search');
   if(k==='search') paintSerp(t, box);
   else if(k==='folder') paintFolder(t, box);
+  else if(k==='pins') paintPins(t, box);
   else paintStart(box);
+  if(quiet) box.scrollTop=y;
+  else pageEnter(box);
 }
-function recentForStart(){
-  const seen=new Set(), out=[];
-  const push=it=>{
-    const p=it && (it.路径||it.path);
-    if(!p || seen.has(p)) return;
-    seen.add(p);
-    out.push(it.路径 ? it : {路径:p, 标题:it.标题||it.title||p.split('/').pop(), 类型:it.类型||it.type||'md', 修改时间:it.修改时间||0});
-  };
-  (ST.recents||[]).forEach(r=>{
-    if(!r||!r.路径) return;
-    push(items.find(i=>i.路径===r.路径) || r);
-  });
-  if(out.length<6){
-    items.slice().sort(byRecent).forEach(i=>{ if(out.length<6) push(i); });
+/* 收藏或筛选变了就地重画：滚动位置留住，也不再放一遍淡入。 */
+function repaintPages(){
+  TABS.forEach(t=>{ if(isPageKind(kindOfTab(t))) paintPage(t, {quiet:true}); });
+}
+
+/* ── 收藏 ────────────────────────────────
+   存的是库根相对路径，跟着 tp-state 走。文件改了名或删了，
+   下一次 /__tree 回来时在 prunePins 里剔掉，不留死链。 */
+function pinSet(){ return new Set(Array.isArray(ST.pins)?ST.pins:[]); }
+function isPinned(rel){ return !!rel && pinSet().has(rel); }
+function togglePin(rel){
+  if(!rel) return;
+  const arr=Array.isArray(ST.pins)?ST.pins.slice():[];
+  const at=arr.indexOf(rel);
+  if(at>=0) arr.splice(at,1); else arr.unshift(rel);
+  ST.pins=arr; saveST();
+  notify(at>=0 ? '已取消收藏' : '已放进「已收藏」');
+  repaintPages();
+}
+function prunePins(){
+  const arr=Array.isArray(ST.pins)?ST.pins:[];
+  if(!arr.length || !items.length) return;
+  const have=new Set(items.map(i=>i.路径));
+  const next=arr.filter(p=>have.has(p));
+  if(next.length!==arr.length){ ST.pins=next; saveST(); }
+}
+function openPins(newTab){
+  navigate(makeEntry('pins', {title:'已收藏'}), {newTab:!!newTab});
+}
+
+/* ── 卡片清单 ────────────────────────────
+   排序：先按「最近打开」的次序，剩下的按改动时间倒序。再过一遍类型筛。 */
+function pageDocs(kind, folder){
+  let pool;
+  if(kind==='pins'){ const set=pinSet(); pool=items.filter(i=>set.has(i.路径)); }
+  else if(kind==='folder') pool=filesInFolder(folder);
+  else pool=items.slice();
+  pool=pool.filter(i=>{ const k=kindOf(i); return k==='md'||k==='html'; });
+  const f=homeFilter();
+  if(f!=='all') pool=pool.filter(i=>kindOf(i)===f);
+  const rank=new Map();
+  (ST.recents||[]).forEach((r,n)=>{ if(r&&r.路径&&!rank.has(r.路径)) rank.set(r.路径, n); });
+  const at=i=>rank.has(i.路径)?rank.get(i.路径):9999;
+  return pool.sort((a,b)=>(at(a)-at(b)) || ((b.修改时间||0)-(a.修改时间||0)));
+}
+function homeFilter(){ return (ST.homeFilter==='md'||ST.homeFilter==='html') ? ST.homeFilter : 'all'; }
+function homeList(){ return ST.homeView==='list'; }
+/* 上次读的那一篇：只认 ST.recents，没有就不画「继续阅读」。 */
+function resumeDoc(){
+  const rec=(ST.recents||[]);
+  for(let n=0;n<rec.length;n++){
+    const r=rec[n]; if(!r || !r.路径) continue;
+    const it=items.find(i=>i.路径===r.路径);
+    if(it && kindOf(it)==='md') return it;
   }
-  return out.slice(0,6);
+  return null;
 }
+function folderLabel(rel){
+  const p=String(rel||''), at=p.lastIndexOf('/');
+  return at<0 ? '库根' : p.slice(0, at);
+}
+/* 卡片上那两行摘录。/__tree 给的「预览」是原始 md，井号、星号、表格竖线
+   全在里面；先洗一遍，再把开头重复的标题去掉，不然卡片上标题会写两遍。 */
+function cardText(i){
+  let s=String((i&&i.预览) || (NOTEPV && NOTEPV.get(i&&i.路径)) || '');
+  s=s.replace(/[#>*`~\[\]]/g,'').replace(/\|/g,' ').replace(/-{3,}/g,' ')
+     .replace(/\s+/g,' ').trim();
+  const t=String((i&&i.标题)||'').trim();
+  if(t && s.slice(0,t.length)===t) s=s.slice(t.length).trim();
+  return s.slice(0,140);
+}
+function greetingHtml(ico, eyebrow, title, sub){
+  return `<div class="home-greeting">
+    <div>
+      <div class="eyebrow">${ico} ${esc(eyebrow)}</div>
+      <h1>${esc(title)}</h1>
+      <p class="home-sub">${esc(sub)}</p>
+    </div>
+    <button type="button" class="hbtn" data-act="newnote">${icon('plus',15)}<span class="lbl">新建随手记</span></button>
+  </div>`;
+}
+function sectionHead(label, n){
+  const f=homeFilter(), list=homeList();
+  const segs=[['all','全部'],['md','Markdown'],['html','HTML']].map(x=>
+    `<button type="button" data-filter="${x[0]}" class="${f===x[0]?'on':''}" aria-pressed="${f===x[0]?'true':'false'}">${x[1]}</button>`
+  ).join('');
+  const swap=list?'换成卡片':'换成列表';
+  return `<div class="section-head">
+    <h2>${esc(label)}</h2><span class="section-meta num">${n} 篇</span><span class="fill"></span>
+    <div class="filters" role="group" aria-label="文件类型">${segs}</div>
+    <button type="button" class="view-toggle" data-view="1" title="${swap}" aria-label="${swap}">${icon(list?'grid':'list',14)}</button>
+  </div>`;
+}
+function cardHtml(i){
+  const rel=i.路径, html=kindOf(i)==='html', pinned=isPinned(rel);
+  const title=cleanTitle(i), ex=cardText(i);
+  const pinTip=pinned?'取消收藏':'收藏';
+  return `<div class="note-card">
+    <button type="button" class="card-open" data-open="${esc(rel)}" data-kind="${html?'html':'md'}" aria-label="打开 ${esc(title)}">
+      <span class="card-top"><span class="file-icon${html?' html':''}">${icon(html?'globe':'doc',15)}</span><span class="kind-label">${html?'HTML':'MD'}</span></span>
+      <h3>${esc(title)}</h3>
+      <p class="card-excerpt">${esc(ex)}</p>
+      <span class="card-footer">${icon('folder',11)}<span class="fdr">${esc(folderLabel(rel))}</span><span class="when num">${esc(fmtWhen(i.修改时间))}</span></span>
+    </button>
+    <button type="button" class="card-pin${pinned?' pinned':''}" data-pin="${esc(rel)}"
+      title="${pinTip}" aria-label="${pinTip} ${esc(title)}" aria-pressed="${pinned?'true':'false'}">${icon('star',13)}</button>
+  </div>`;
+}
+function cardsHtml(list, fallback){
+  if(!list.length) return fallback;
+  return `<div class="cards${homeList()?' list':''}">${list.map(cardHtml).join('')}</div>`;
+}
+function emptyHtml(title, text){
+  return `<div class="empty">${icon('folder',30)}<h2>${esc(title)}</h2><p>${esc(text)}</p>
+    <button type="button" class="hbtn" data-act="newnote">${icon('plus',15)}<span class="lbl">新建随手记</span></button></div>`;
+}
+function resumeHtml(i){
+  const ex=cardText(i) || '写下来的想法，下次还可以接着想。';
+  return `<button type="button" class="resume" data-open="${esc(i.路径)}" data-kind="md">
+    <span class="rs-text">
+      <span class="overline">${icon('clock',12)} 继续阅读</span>
+      <h2>${esc(cleanTitle(i))}</h2>
+      <p class="excerpt">${esc(ex)}</p>
+      <span class="resume-bottom"><span>${esc(folderLabel(i.路径))} · ${esc(fmtWhen(i.修改时间))}</span><span class="continue">接着读 ${icon('arrow',13)}</span></span>
+    </span>
+    <span class="paper-art" aria-hidden="true">
+      <span class="paper-front"><b></b><i></i><i></i><i></i><i></i><i></i></span>
+      <span class="paper-dot">${icon('leaf',12)}</span>
+    </span>
+  </button>`;
+}
+
 function paintStart(box){
   if(!box) return;
-  const files=recentForStart();
-  const empty=!files.length;
-  const plusIco=`<svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg>`;
-  const actions=`<div class="start-actions">
-      <button type="button" class="start-cta" data-act="focusomni">${icon('search',15)} 搜索本地文件 <kbd>⌘L</kbd></button>
-      <button type="button" class="start-cta new" data-act="newnote">${plusIco} 新建随手记</button>
-    </div>`;
-  if(empty){
-    box.innerHTML=`<div class="start empty"><div class="start-col">
-      <img class="start-mark" src="/icon-192.png" alt="">
-      <h1 class="start-title">这个文件夹还是空的</h1>
-      <p class="start-lead">在地址栏搜索，或先写一张随手记。<br>把 md / html 放进这个文件夹，就会出现在开始页。</p>
-      ${actions}
-    </div></div>`;
+  const tip=`<p class="home-tip">${icon('search',13)} 想找以前写过的内容？按 <kbd>⌘ K</kbd> 搜一搜。</p>`;
+  if(!items.length){
+    box.innerHTML=`<div class="home">
+      ${greetingHtml(icon('leaf',13),'我的笔记','今天，想记下什么？','把 md / html 放进这个文件夹，就会出现在这里。')}
+      ${emptyHtml('这里还空着','写下第一个想法，或者先把已有的笔记搬进来。')}
+      ${tip}</div>`;
     return;
   }
-  const tiles=files.map(i=>{
-    const html=kindOf(i)==='html';
-    const ex=String((i.预览 || (NOTEPV&&NOTEPV.get(i.路径)) || '')).replace(/\s+/g,' ').trim();
-    const when=i.修改时间 ? whenLabel(i.修改时间, true) : '';
-    return `<button type="button" class="rtile" data-open="${esc(i.路径)}" data-kind="${esc(kindOf(i))}">
-      <div class="top">
-        <span class="ico">${icon(html?'globe':'doc-text',14)}</span>
-        ${html?'<span class="kind">HTML</span>':''}
-      </div>
-      <div class="t">${esc(cleanTitle(i))}</div>
-      ${ex?`<div class="x">${esc(String(ex).slice(0,80))}</div>`:''}
-      <div class="m"><span class="path">${esc(i.路径)}</span>${when?`<span class="num">${esc(when)}</span>`:''}</div>
-    </button>`;
-  }).join('');
-  box.innerHTML=`<div class="start"><div class="start-col">
-    <div class="start-sec">
-      <h2>最近打开</h2>
-      ${actions}
-    </div>
-    <div class="rgrid">${tiles}</div>
-  </div></div>`;
+  const all=pageDocs('start');
+  const shown=all.slice(0,12);
+  const last=resumeDoc();
+  // 标题右边那个数报的是这一屏画了几张，不是库里一共几篇——数跟眼睛看到的对得上。
+  // 装不下的走下面那条去库根，文件夹页里接着翻。
+  const more=all.length>shown.length
+    ? `<button type="button" class="see-all" data-folder="">${icon('folder',14)}<span>看全部 ${all.length} 篇</span></button>`
+    : '';
+  box.innerHTML=`<div class="home">
+    ${greetingHtml(icon('leaf',13),'我的笔记','今天，想记下什么？','从上次的思路，轻松继续。')}
+    ${last?resumeHtml(last):''}
+    ${sectionHead('最近打开', shown.length)}
+    ${cardsHtml(shown, emptyHtml('这一类还没有','换个类型看看，或者写点新的。'))}
+    ${more}
+    ${tip}</div>`;
+}
+function paintPins(t, box){
+  box=box||(paneOf(t)&&paneOf(t).querySelector('.pagebox'));
+  if(!box) return;
+  const list=pageDocs('pins');
+  box.innerHTML=`<div class="home">
+    ${greetingHtml(icon('star',13),'收藏','已收藏','把常看的、喜欢的，留在手边。')}
+    ${sectionHead('收藏的笔记', list.length)}
+    ${cardsHtml(list, emptyHtml('还没有收藏','在卡片右上角点一下 ★，它就放进这里了。'))}
+  </div>`;
 }
 function paintSerp(t, box){
   box=box||(paneOf(t)&&paneOf(t).querySelector('.pagebox'));
@@ -2158,18 +2496,19 @@ function paintSerp(t, box){
   }
   box.innerHTML=`<div class="serp">
     <p class="serp-q">找到 ${list.length+folders.length} 条 · ${esc(q)}</p>
-    ${folders.map(d=>`<button type="button" class="srow" data-folder="${esc(d.名称)}">
-      <div class="u">${esc(d.名称)}/</div>
-      <div class="t">${icon('folder',16)}<span>${esc(d.显示名||d.名称)}</span></div>
-      <div class="x">根目录下的子文件夹</div>
+    ${folders.map(d=>`<button type="button" class="search-row" data-folder="${esc(d.名称)}">
+      <span class="ico">${icon('folder',17)}</span>
+      <span class="search-info"><strong>${esc(d.显示名||d.名称)}</strong><small>根目录下的子文件夹 · ${esc(d.名称)}/</small></span>
+      <span class="enter">↵</span>
     </button>`).join('')}
     ${list.map(i=>{
       const html=kindOf(i)==='html';
-      const sn=snipOf(i, ts) || esc((excerptOf(i)||'').slice(0,88));
-      return `<button type="button" class="srow" data-open="${esc(i.路径)}" data-kind="${esc(kindOf(i))}">
-        <div class="u">${esc(i.路径)}</div>
-        <div class="t">${icon(html?'globe':'doc-text',16)}<span>${hl(cleanTitle(i), ts)}</span>${html?'<span class="kind">HTML</span>':''}</div>
-        ${sn?`<div class="x">${sn}</div>`:''}
+      const sn=snipOf(i, ts) || esc(cardText(i));
+      return `<button type="button" class="search-row" data-open="${esc(i.路径)}" data-kind="${html?'html':'md'}">
+        <span class="ico">${icon(html?'globe':'doc',17)}</span>
+        <span class="search-info"><strong>${hl(cleanTitle(i), ts)}</strong><small>${esc(folderLabel(i.路径))}${sn?' · '+sn:''}</small></span>
+        ${html?'<span class="kind">HTML</span>':''}
+        <span class="enter">↵</span>
       </button>`;
     }).join('')}
   </div>`;
@@ -2208,22 +2547,20 @@ function paintFolder(t, box){
   box=box||(paneOf(t)&&paneOf(t).querySelector('.pagebox'));
   if(!box) return;
   const folder=t.folder || (ensureStack(t).folder) || '';
-  const files=filesInFolder(folder);
+  const list=pageDocs('folder', folder);
   const subs=subfoldersOf(folder);
-  const name=folder.split('/').filter(Boolean).pop() || folder || '库';
-  box.innerHTML=`<div class="folderpg">
-    <h1>${folderMark(28)} ${esc(name)}</h1>
-    <p class="sub">${files.length} 个文件${subs.length?` · ${subs.length} 个子文件夹`:''}${folder?` · ${esc(folder)}`:''}</p>
-    ${subs.map(s=>`<button type="button" class="frow" data-folder="${esc(s.path|| (folder?folder+'/'+s.名称:s.名称))}">
-      <span class="ico">${folderMark(16)}</span>
-      <span><div class="t">${esc(s.显示名||s.名称)}</div><div class="p">${esc(s.path||s.名称)}/</div></span>
-      <span class="m">${s.份数||''}</span>
-    </button>`).join('')}
-    ${files.map(i=>`<button type="button" class="frow" data-open="${esc(i.路径)}" data-kind="${esc(kindOf(i))}">
-      <span class="ico">${icon(kindOf(i)==='html'?'globe':'doc-text',16)}</span>
-      <span><div class="t">${esc(cleanTitle(i))}</div><div class="p">${esc(i.路径)}</div></span>
-      <span class="m">${kindOf(i)==='html'?'HTML':'MD'}</span>
-    </button>`).join('') || (subs.length?'':`<div class="vacant"><h2>空文件夹</h2><p>还没有文件。</p></div>`)}
+  const name=folder.split('/').filter(Boolean).pop() || '库根';
+  const chips=subs.length
+    ? `<div class="dirchips">${subs.map(s=>{
+        const path=s.path || (folder ? folder+'/'+s.名称 : s.名称);
+        return `<button type="button" class="dirchip" data-folder="${esc(path)}">${icon('folder',13)}<span>${esc(s.显示名||s.名称)}</span>${s.份数?`<span class="n num">${s.份数}</span>`:''}</button>`;
+      }).join('')}</div>`
+    : '';
+  box.innerHTML=`<div class="home">
+    ${greetingHtml(folderMark(14),'文件夹', name, list.length+' 篇'+(folder?' · '+folder:''))}
+    ${chips}
+    ${sectionHead('这个文件夹里', list.length)}
+    ${cardsHtml(list, emptyHtml(subs.length?'这一层还没有文件':'空文件夹', subs.length?'点上面的子文件夹看看。':'这里还没有 md 或 html。'))}
   </div>`;
 }
 function openStartTab(){
@@ -2246,6 +2583,7 @@ function goAppHome(){
 function omniIconFor(kind){
   if(kind==='search') return icon('search',13);
   if(kind==='folder') return icon('folder',13);
+  if(kind==='pins') return icon('star',13);
   if(kind==='html') return icon('globe',13);
   if(kind==='note') return icon('pencil',13);
   return icon('doc-text',13);
@@ -2270,8 +2608,10 @@ function syncChrome(){
     else { chip.hidden=true; }
   }
   if(ico) ico.innerHTML=omniIconFor(k==='start'?'search':k);
+  const bmpin=$('#bmPinned'); if(bmpin) bmpin.classList.toggle('on', k==='pins');
   paintIdlePath(path, document.activeElement===omni);
   requestAnimationFrame(()=>paintIdlePath(path, document.activeElement===$('#omni')));
+  syncStatusBar();
 }
 function pathTextWidth(s){
   let probe=pathTextWidth._el;
@@ -2347,7 +2687,9 @@ function tabIcon(t){
   const k=kindOfTab(t);
   if(k==='html') return 'globe';
   if(k==='folder') return 'folder';
-  if(k==='search' || k==='start') return 'search';
+  if(k==='pins') return 'star';
+  if(k==='start') return 'home';
+  if(k==='search') return 'search';
   return 'doc-text';
 }
 function tabLabel(t, all){
@@ -2565,11 +2907,40 @@ function showTab(id){
   pushState();
 }
 
+/* 关掉的标签留个底：⌘⇧T 把浏览栈和当前位置一起搬回来，前进后退照旧能用。
+   只留最近 20 个，再多就把最老的挤掉。 */
+const CLOSED=[];
+const CLOSED_MAX=20;
+function rememberClosed(t){
+  if(!t || SOLO) return;
+  const st=(t.stack||[]).map(e=>Object.assign({}, e));
+  if(!st.length) return;
+  let idx=t.idx==null ? 0 : t.idx;
+  if(idx<0) idx=0;
+  if(idx>=st.length) idx=st.length-1;
+  CLOSED.push({stack:st, idx:idx, title:t.title||''});
+  while(CLOSED.length>CLOSED_MAX) CLOSED.shift();
+}
+async function reopenClosed(){
+  if(SOLO) return;
+  const rec=CLOSED.pop();
+  if(!rec){ notify('没有刚关掉的标签'); return; }
+  const t=makeTab(rec.stack[rec.idx]);
+  t.stack=rec.stack;
+  t.idx=rec.idx;
+  applyEntry(t, rec.stack[rec.idx]);
+  TABS.push(t); newPane(t);
+  enterReader(); showTab(t.id);
+  await loadEntry(t);
+  notify('已恢复「' + (t.title||'开始') + '」');
+}
+
 function closeTab(id){
   const i=TABS.findIndex(t=>t.id===id); if(i<0) return true;
   const t=TABS[i];
   if(t.editing) flushSave(t);                       // 关标签强制落盘
   if(dirty(t) && !ask(`要关掉「${t.title||''}」吗？`,'改动还没保存，关掉就丢了。','不保存并关闭','取消',true)) return false;
+  rememberClosed(t);
   const p=paneOf(t); if(p) p.remove();
   if(t.blobs) t.blobs.forEach(u=>{ try{ URL.revokeObjectURL(u); }catch(e){} });
   TABS.splice(i,1);
@@ -2583,15 +2954,355 @@ function closeTab(id){
   return true;
 }
 
+/* ═══ 笔记页的顶栏 · 格式条 · 专注 ═══════
+   顶栏和格式条只是外壳：每一颗按钮都接回本来就有的那套函数（startEdit /
+   toggleSrc / fmtAction / retype / hopCell / saveEdit），编辑引擎一点没换。 */
+
+const FMTBAR=[
+  ['undo','撤销'], ['redo','重做'], ['sep'],
+  ['p','正文'], ['h2','二级标题'], ['bold','加粗'], ['italic','斜体'], ['sep'],
+  ['ul','项目列表'], ['quote','引用'], ['link','插入链接'], ['table','插入表格'],
+  ['row','在表格里加一行'], ['col','在表格里加一列'],
+];
+const FMTFACE={
+  undo:()=>icon('undo',15), redo:()=>icon('redo',15),
+  p:()=>'正文', h2:()=>'H2', bold:()=>'<b>B</b>', italic:()=>'<em>I</em>',
+  ul:()=>icon('list',15), quote:()=>icon('quote',15),
+  link:()=>icon('link',15), table:()=>icon('table',15),
+  row:()=>'+ 行', col:()=>'+ 列',
+};
+function fmtBarHtml(){
+  return '<div class="formatbar" role="toolbar" aria-label="文字格式">'
+    + FMTBAR.map(x=> x[0]==='sep' ? '<i aria-hidden="true"></i>'
+        : `<button type="button" data-format="${x[0]}" title="${esc(x[1])}" aria-label="${esc(x[1])}">${(FMTFACE[x[0]]||(()=>''))()}</button>`
+      ).join('')
+    + '</div>';
+}
+
+/* 顶栏和格式条各挂一次事件，之后只换 innerHTML，不再重复绑。
+   格式条上 pointerdown 要拦住：不拦的话点按钮的那一下先把正文的选区清掉。 */
+function wireDocBar(p, t){
+  const bar=p.querySelector('.doc-toolbar');
+  if(bar) bar.addEventListener('click', e=>{
+    const b=e.target.closest('[data-dt]'); if(!b) return;
+    const a=b.dataset.dt;
+    if(t.id!==curTab) showTab(t.id);
+    if(a==='folder'){
+      const f=b.dataset.folder||'';
+      navigate(makeEntry('folder',{folder:f, title:f?f.split('/').pop():'库根', path:f?f+'/':'/'}),
+               {newTab:e.metaKey||e.ctrlKey});
+    }
+    else if(a==='focus') toggleFocus();
+    else if(a==='more') docMoreMenu(e, t);
+    else if(a==='edit') startEdit();
+    else if(a==='done') finishEdit();
+    else if(a==='src') toggleSrc();
+    else if(a==='savestate') savePillClick(t);
+  });
+  const fb=p.querySelector('.formatbar');
+  if(fb){
+    fb.addEventListener('pointerdown', e=>{ if(e.target.closest('[data-format]')) e.preventDefault(); });
+    fb.addEventListener('mousedown',  e=>{ if(e.target.closest('[data-format]')) e.preventDefault(); });
+    fb.addEventListener('click', e=>{
+      const b=e.target.closest('[data-format]'); if(!b) return;
+      docFmt(b.dataset.format);
+    });
+  }
+}
+
+/* 面包屑：库内是「文件夹 › 文件名」，点文件夹进那一页；
+   库外文档拿绝对路径的最后两段，改不了也没有文件夹页可去。 */
+function docCrumb(t){
+  if(t.ext){
+    const segs=String(t.abs||t.path||'').split('/').filter(Boolean);
+    const two=segs.slice(Math.max(0, segs.length-2));
+    const dir=two.length>1?two[0]:'';
+    return icon('folder',13)
+      + (dir?`<span>${esc(dir)}</span><span class="sep">›</span>`:'')
+      + `<span class="now">${esc(two[two.length-1]||'')}</span>`;
+  }
+  const rel=String(t.path||'');
+  const dir=dirOf(rel);
+  const name=rel.split('/').pop() || t.title || '';
+  return icon('folder',13)
+    + `<button type="button" data-dt="folder" data-folder="${esc(dir)}" title="打开文件夹">${esc(dir||'库根')}</button>`
+    + `<span class="sep">›</span><span class="now">${esc(name)}</span>`;
+}
+
+function drawDocBar(t){
+  const p=t && paneOf(t); if(!p) return;
+  const bar=p.querySelector('.doc-toolbar'); if(!bar) return;
+  const k=kindOfTab(t);
+  if(isPageKind(k)){ bar.innerHTML=''; bar.dataset.sig=''; return; }
+  const src=p.classList.contains('src');
+  const sig=[k, t.path, t.title, t.ext?1:0, t.editing?1:0, src?1:0,
+             canEditPath(t.path)?1:0, FOCUS?1:0].join('|');
+  if(bar.dataset.sig===sig){ paintSaveState(t); return; }
+  bar.dataset.sig=sig;
+  const fLbl=FOCUS?'退出专注阅读':'专注阅读';
+  const bFocus=`<button type="button" class="dt-ico" data-dt="focus" title="${fLbl}" aria-label="${fLbl}">${icon('focus',16)}</button>`;
+  let right;
+  if(t.editing){
+    const sLbl=src?'回到排版':'Markdown 源码';
+    right=`<span class="save-state" data-dt="savestate"></span>`
+      + `<button type="button" class="dt-ico" data-dt="src" title="${sLbl}" aria-label="${sLbl}">${icon(src?'doc':'source',16)}</button>`
+      + `<button type="button" class="dt-btn soft" data-dt="done">${icon('check',14)} 完成</button>`;
+  }else if(k==='html'){
+    right=`<span class="dt-tag">HTML 页面</span>`+bFocus;
+  }else if(t.ext){
+    right=`<span class="dt-tag">只读</span>`+bFocus;
+  }else{
+    right=bFocus
+      + `<button type="button" class="dt-ico" data-dt="more" title="更多" aria-label="更多">${icon('more',16)}</button>`
+      + (canEditPath(t.path)
+          ? `<button type="button" class="dt-btn soft" data-dt="edit">${icon('edit',14)} 编辑</button>` : '');
+  }
+  bar.innerHTML=`<div class="breadcrumb">${docCrumb(t)}</div>${right}`;
+  const hint=p.querySelector('.editor-hint');
+  if(hint) hint.textContent = !t.editing ? ''
+    : (src ? '直接改 Markdown，随时切回排版。'
+           : '直接在正文里输入。选中一段文字，可以加粗、加链接；⌘ Z 撤销。');
+  paintSaveState(t);
+}
+
+/* 保存状态 pill。状态源全是现成的：
+   t.conflict（外部改过）／ t.pendingBad（自检拦下）／ t.saving（请求在飞）／
+   t.touched·t.autoT（有没有正在等落盘的改动）／ t.savedAt（这一趟最后一次写进
+   文件的时刻，没存过就是空）。 */
+function paintSaveState(t){
+  const p=t && paneOf(t); if(!p) return;
+  const el=p.querySelector('.save-state'); if(!el) return;
+  el.className='save-state';
+  if(!t.editing){ el.textContent=''; return; }
+  if(t.pendingBad && t.pendingBad.length){
+    el.textContent='有 '+t.pendingBad.length+' 处存不进 · 点看'; el.classList.add('act'); return;
+  }
+  if(t.conflict){ el.textContent='有冲突 · 点看'; el.classList.add('act'); return; }
+  if(t.saving){ el.textContent='正在保存…'; el.classList.add('pending'); return; }
+  // 这里看 touched / autoT 两个便宜的标记，不调 dirty()——它每次都要把正文重新反解一遍，
+  // 而这一格是每敲一个字都要刷的。
+  if(t.touched || t.autoT){ el.textContent='正在编辑'; el.classList.add('pending'); return; }
+  // 刚进编辑一个字都没动，说「已保存」是骗人的——这一趟根本还没写过文件。
+  el.textContent = t.savedAt ? '已保存 '+t.savedAt : '就绪';
+}
+function savePillClick(t){
+  if(!t || !t.editing) return;
+  if(t.conflict){
+    // conflictTab 空着的时候（手动 ⌘S 那条路不写它）横幅上两颗按钮是死的，先挂回去
+    if(conflictTab!==t) showConflict(t, '');
+    else bnr('conflict', true);
+    return;
+  }
+  if(t.pendingBad && t.pendingBad.length) saveEdit(false);
+}
+
+/* /__raw 和 /__save 回的「改于」是 "YYYY-MM-DD HH:MM:SS" 这种字符串，
+   Safari 不认带空格的那一版，自己拆一遍再转秒。拿不到就返回 0，交给 /__tree 那份。 */
+function rawAtSec(v){
+  if(typeof v==='number') return v>0 ? v : 0;
+  const m=/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/.exec(String(v||''));
+  if(!m) return 0;
+  return new Date(+m[1], +m[2]-1, +m[3], +m[4], +m[5], +m[6]).getTime()/1000;
+}
+/* 标题上面那一行：类型 · 改于 · 字数。字数按渲染后的纯文本算，去掉所有空白。 */
+function drawDocMeta(t){
+  const p=t && paneOf(t); if(!p) return;
+  const el=p.querySelector('.doc-meta'); if(!el) return;
+  const k=kindOfTab(t);
+  if(isPageKind(k)){ el.innerHTML=''; return; }
+  if(k==='html'){ el.innerHTML=icon('globe',12)+'<span>HTML 页面</span>'; return; }
+  const md=p.querySelector('.md');
+  const n=md ? (md.textContent||'').replace(/\s/g,'').length : 0;
+  const it=items.find(i=>i.路径===t.path);
+  const at=rawAtSec(t.rawAt) || (it ? it.修改时间 : 0);
+  const bits=['Markdown'];
+  if(t.ext) bits.push('只读');
+  const w=t.ext ? '' : fmtWhen(at);
+  if(w) bits.push('改于 '+w);
+  bits.push(n+' 字');
+  el.innerHTML=icon('doc',12)+bits.map(x=>`<span>${esc(x)}</span>`).join('<span>·</span>');
+}
+
+/* 「更多」：壳里弹原生菜单，浏览器里退回页面自己的那张。 */
+function docMoreMenu(e, t){
+  if(!t || !t.path) return;
+  popMenu(e, [
+    {id:'reveal',  label:'在访达中显示'},
+    {id:'copyurl', label:'拷贝路径'},
+    {id:'share',   label:'分享…'},
+    {sep:true},
+    {id:'newwin',  label:'在新窗口打开'},
+  ], id=>{
+    if(id==='reveal') revealPath(t.path);
+    else if(id==='copyurl') clipPath(t.path);
+    else if(id==='share'){
+      if(SHELL) post({type:'share', path:LIBROOT+'/'+t.path});
+      else notify('分享要在 AM·Note 里用。');
+    }
+    else if(id==='newwin') openSolo(t.path);
+  });
+}
+
+/* 格式条的每一颗都落到已有的命令上：
+   撤销/重做 → execCommand；正文/H2/列表/引用/加粗/斜体/链接 → fmtAction；
+   插入表格 → retype 多认一种 kind；+行 → hopCell 走到最后一格再跳（跟 Tab 同一条路）。 */
+function fmtCell(){
+  const s=getSelection();
+  return closestTag(s && s.anchorNode,'TD') || closestTag(s && s.anchorNode,'TH');
+}
+function docFmt(name){
+  const t=active(); if(!t || !t.editing) return;
+  const p=paneOf(t); if(!p || p.classList.contains('src')) return;
+  const md=p.querySelector('.md');
+  if(name==='undo' || name==='redo'){
+    if(!caretInDoc()) md.focus();
+    try{ document.execCommand(name); }catch(err){}
+    t.touched=true; autoKick(t); syncBar(); return;
+  }
+  if(name==='row' || name==='col'){
+    const cell=fmtCell();
+    if(!cell){ notify('先把光标放进表格，再添加行或列。'); return; }
+    if(name==='row') tblAddRow(t, cell); else tblAddCol(t, cell);
+    t.touched=true; autoKick(t); syncBar(); return;
+  }
+  if(!caretInDoc()) ensureCaret(t);
+  const blk=curBlock(t);
+  if(!blk){ notify('先将光标放进正文，或选中一段文字。'); return; }
+  if(name==='bold' || name==='italic'){
+    const s=getSelection();
+    const tag=name==='bold'?'STRONG':'EM';
+    if((!s || s.isCollapsed) && !closestTag(s && s.anchorNode, tag)){
+      notify('先将光标放进正文，或选中一段文字。'); return;
+    }
+    fmtAction(name); return;
+  }
+  if(name==='link'){
+    const s=getSelection();
+    if((!s || s.isCollapsed) && !closestTag(s && s.anchorNode,'A')){
+      notify('先将光标放进正文，或选中一段文字。'); return;
+    }
+    fmtAction('link'); return;
+  }
+  if(name==='table'){
+    if(blk.hasAttribute('data-lock')){ notify('先将光标放进正文，或选中一段文字。'); return; }
+    // 光标那一块还有字就别顶掉它，在它下面新起一块再变成表
+    let host=blk;
+    if(tidyTxt(blk.textContent).trim()){
+      host=document.createElement('p'); host.dataset.dirty='1'; ensureBr(host);
+      blk.after(host);
+    }
+    const made=retype(t, host, 'table', '');
+    const cell=made && made.querySelector('td,th');
+    if(cell) caretEnd(cell, true);
+    t.touched=true; autoKick(t); syncBar(); return;
+  }
+  fmtAction(name);                                  // p / h2 / ul / quote
+}
+/* 停在最后一格再跳一次＝补一行，跟表格里按 Tab 完全同一条路。 */
+function tblAddRow(t, cell){
+  const tb=cell.closest('table'); if(!tb) return;
+  const cells=[...tb.querySelectorAll('td,th')];
+  if(cells.length) hopCell(t, cells[cells.length-1], false);
+}
+function tblAddCol(t, cell){
+  const tb=cell.closest('table'); if(!tb) return;
+  const row=cell.parentElement;
+  const at=[...row.children].indexOf(cell);
+  [...tb.rows].forEach(r=>{
+    const ref=r.children[at];
+    const nc=document.createElement(ref && ref.tagName==='TH' ? 'th' : 'td');
+    if(ref) ref.after(nc); else r.appendChild(nc);
+  });
+  // 对齐位串也得跟着插一档空的。少一档，反解出来的分隔行就少一节 ---，
+  // 重新渲染回来 data-al 对不上，存盘自检直接判整块「会变样」，整篇卡住存不进。
+  const cols=Math.max(0, ...[...tb.rows].map(r=>r.children.length));
+  const al=String(tb.dataset.al||'').split(',');
+  while(al.length < cols-1) al.push('');
+  al.splice(at+1, 0, '');
+  al.length=cols;
+  tb.dataset.al=al.join(',');
+  const blk=tb.closest('[data-bid]') || tb.parentElement;
+  if(blk && blk.dataset) blk.dataset.dirty='1';
+  const made=row.children[at+1];
+  if(made) caretEnd(made, true);
+}
+
+/* 「完成」＝落盘 ＋ 回阅读。**必须等真的写进文件再回阅读态**：
+   endEdit 会把工作副本丢掉、按 t.raw 重画，没存成就走等于把这次改的字扔了。
+   所以这里 await 到有结果为止，冲突／写失败一律留在编辑态，字还在屏幕上。
+   走的是 saveEdit 而不是 flushSave：flushSave 带 keepalive，那条路上不改名，
+   而且 keepalive 的请求体有 64KiB 上限，长笔记会直接发不出去。 */
+async function finishEdit(){
+  const t=active(); if(!t || !t.editing) return;
+  const p=paneOf(t);
+  if(p && p.classList.contains('src')) toggleSrc();      // 先回排版，再按正文那条路存
+  if(t.conflict){ bnr('conflict', true); notify('这份在外部被改过了，先挑一个再走。'); return; }
+  if(t.finishing) return;
+  t.finishing=true;
+  let ok=false;
+  try{
+    // 自动保存正好在飞，等它落地，别让「完成」白报一次失败
+    for(let i=0;i<120 && t.saving;i++) await new Promise(r=>setTimeout(r, 50));
+    clearTimeout(t.autoT); t.autoT=null;
+    ok=await saveEdit(false, {tab:t, auto:true});
+  }finally{ t.finishing=false; }
+  if(!t.editing) return;                                 // 这中间被别处收了编辑态
+  if(t.pendingBad && t.pendingBad.length){
+    syncBar(); notify('有 '+t.pendingBad.length+' 处存不进 · 点上面看看'); return;
+  }
+  if(t.conflict){ syncBar(); notify('有冲突，先处理一下'); return; }
+  if(!ok){ syncBar(); notify('没存进去，改动还在'); return; }
+  endEdit(t); paintWork(t); buildToc(); syncProg(); drawDocMeta(t);
+  notify('已保存，继续阅读。');
+}
+
+/* 源码框跟着内容长高，不自己开一层滚动条。 */
+function growEd(ta){
+  if(!ta) return;
+  ta.style.height='auto';
+  ta.style.height=Math.max(350, ta.scrollHeight+4)+'px';
+}
+/* 高度是按当时的宽度算出来的，窗口一窄、版心一改，算出来的就旧了。
+   框上是 overflow:hidden，不重算就等于把下半截源码裁掉，还滚不到。
+   只重算看得见的那一份——藏起来的量不出高度，量了会被压成最矮的 350。 */
+function growAllEd(){
+  $$('#panes .pane.on.src .ed').forEach(growEd);
+}
+
+/* ── 专注阅读 ────────────────────────────
+   工具条、书签栏、状态栏收起来；壳里留一条标签条高度的空白拖拽条给交通灯。
+   进出都报一句，Esc 退出也报。state() 不加新键。 */
+let FOCUS=false;
+function setFocus(on){
+  const next=!!on;
+  if(next===FOCUS) return;
+  FOCUS=next;
+  document.body.classList.toggle('focus-mode', FOCUS);
+  closeType();
+  TABS.forEach(x=>drawDocBar(x));
+  requestAnimationFrame(()=>{ layoutTabs(); syncProg(); });
+  notify(FOCUS ? '已进入专注阅读 · 按 Esc 返回' : '已回到浏览模式');
+}
+function toggleFocus(){ setFocus(!FOCUS); }
+
 function newPane(t){
   const p=document.createElement('div');
   p.id='pane-'+t.id;
   p.className='pane';
-  // 渲染稿和源码框都留在 pane 里，靠 .edit 切换谁露出来
-  p.innerHTML='<div class="md f-sans"></div>'
-    + '<textarea class="ed" spellcheck="false" autocomplete="off"></textarea>'
+  /* 顶栏 ＋ 版心。渲染稿和源码框都留在版心里，靠 .edit / .src 切换谁露出来。
+     .md 仍是块台账的容器，里面的结构一个属性都没动，只是外面多包了两层。 */
+  p.innerHTML='<div class="doc-toolbar"></div>'
+    + '<div class="doc-layout"><div class="document">'
+    +   '<div class="doc-meta"></div>'
+    +   fmtBarHtml()
+    +   '<div class="md f-sans"></div>'
+    +   '<textarea class="ed" spellcheck="false" autocomplete="off"></textarea>'
+    +   '<div class="doc-end">写下来的，都在这里。</div>'
+    +   '<p class="editor-hint"></p>'
+    + '</div></div>'
     + '<iframe class="htmlframe" sandbox hidden title=""></iframe>'
     + '<div class="pagebox" hidden></div>';
+  wireDocBar(p, t);
   p.addEventListener('scroll', ()=>{ if(t.id===curTab) syncProg(); }, {passive:true});
   const box0=p.querySelector('.pagebox');
   box0.addEventListener('click', e=>{
@@ -2599,6 +3310,13 @@ function newPane(t){
     if(act){
       if(act.dataset.act==='focusomni'){ focusOmnibox({pulse:true}); return; }
       if(act.dataset.act==='newnote'){ newNote(); return; }
+    }
+    const pin=e.target.closest('[data-pin]');
+    if(pin){ e.preventDefault(); e.stopPropagation(); togglePin(pin.dataset.pin); return; }
+    const flt=e.target.closest('[data-filter]');
+    if(flt){ ST.homeFilter=flt.dataset.filter; saveST(); repaintPages(); return; }
+    if(e.target.closest('[data-view]')){
+      ST.homeView = homeList() ? 'grid' : 'list'; saveST(); repaintPages(); return;
     }
     const row=e.target.closest('[data-open]');
     if(row){
@@ -2608,8 +3326,20 @@ function newPane(t){
       return;
     }
     const fol=e.target.closest('[data-folder]');
-    if(fol) navigate(makeEntry('folder', {folder:fol.dataset.folder, title:fol.dataset.folder.split('/').pop(), path:fol.dataset.folder+'/'}),
-      {newTab:e.metaKey||e.ctrlKey});
+    if(fol){
+      const f=fol.dataset.folder||'';            // 空串＝库根，跟面包屑那条路一致
+      navigate(makeEntry('folder', {folder:f, title:f?f.split('/').pop():'库根', path:f?f+'/':'/'}),
+        {newTab:e.metaKey||e.ctrlKey});
+    }
+  });
+  box0.addEventListener('mousedown', e=>{ if(e.button===1 && e.target.closest('[data-open]')) e.preventDefault(); });
+  box0.addEventListener('auxclick', e=>{
+    if(e.button!==1) return;
+    const row=e.target.closest('[data-open]'); if(!row) return;
+    e.preventDefault();
+    const rel=row.dataset.open;
+    const it=items.find(i=>i.路径===rel) || {路径:rel, 标题:rel.split('/').pop(), 类型:row.dataset.kind||'md'};
+    openDoc(it, {newTab:true});
   });
   const md0=p.querySelector('.md');
   // 阅读态点链接：库内 md / html 在当前标签打开（⌘ 点开新标签）。
@@ -2685,7 +3415,7 @@ function newPane(t){
   p.oncontextmenu=e=>docMenu(e, t);
   const ta=p.querySelector('.ed');
   ta.addEventListener('input', ()=>{
-    t.work=ta.value; t.touched=true; autoKick(t);
+    t.work=ta.value; t.touched=true; growEd(ta); autoKick(t);
   });
   ta.addEventListener('keydown', e=>{
     if(e.key==='Tab'){                       // 列表缩进要用得上，别让 Tab 跳走焦点
@@ -2831,7 +3561,7 @@ function scrollToHeading(txt){
   const p=paneOf(t); if(!p) return;
   const h=[...p.querySelectorAll('.md h1,.md h2,.md h3,.md h4')]
     .find(el=>(el.textContent||'').includes(txt));
-  if(h) p.scrollTop=Math.max(0, h.offsetTop-16);
+  if(h) p.scrollTop=Math.max(0, scrollYOf(p,h)-80);
 }
 
 /* 从搜索结果点开：跳到第一个命中段，闪一下就还原。 */
@@ -2843,7 +3573,7 @@ function flashHit(t, ts){
   const blk=[...md.children].find(el=>ts.every(w=>low(el.textContent).includes(w)))
         || [...md.children].find(el=>ts.some(w=>low(el.textContent).includes(w)));
   if(!blk) return;
-  p.scrollTop=Math.max(0, blk.offsetTop-90);
+  p.scrollTop=Math.max(0, scrollYOf(p,blk)-150);
   blk.classList.add('flash');
   setTimeout(()=>blk.classList.remove('flash'), 1500);
 }
@@ -2865,23 +3595,6 @@ function renderMd(el, src, base){
   wireImg(el);
 }
 
-/* 标题下那一行路径只是显示层，不进台账、不进存盘。 */
-function decorateChrome(md, path){
-  if(!md) return;
-  md.querySelectorAll('.doc-meta').forEach(el=>el.remove());
-  if(!path) return;
-  const parts=String(path).replace(/\.md$/i,'').split('/').filter(Boolean);
-  if(parts.length<2) return;
-  const pretty=parts.join(' / ');
-  const meta=document.createElement('p');
-  meta.className='doc-meta';
-  meta.dataset.chrome='1';
-  meta.contentEditable='false';
-  meta.innerHTML=`<span class="path">${esc(pretty)}</span>`;
-  const h1=[...md.children].find(el=>el.tagName==='H1');
-  if(h1) h1.after(meta); else md.prepend(meta);
-}
-
 async function loadMd(t){
   const p=paneOf(t); if(!p) return;
   const md=p.querySelector('.md');
@@ -2889,7 +3602,6 @@ async function loadMd(t){
     const r=await fetch(url(t.path)); if(!r.ok) throw 0;
     t.raw=await r.text();
     renderMd(md, t.raw, dirOf(t.path));
-    decorateChrome(md, t.path);
     decorateHistory(md);
   }catch(err){
     md.textContent='';
@@ -2897,6 +3609,7 @@ async function loadMd(t){
       '浏览器不允许网页读本地文件。从 Dock 上的 AM·Note 图标进来就能读。\n\n'+LIBROOT+'/'+t.path);
   }
   applyPref();
+  drawDocMeta(t);
   if(t.id===curTab){ buildToc(); syncProg(); syncBar(); }
 }
 
@@ -2960,6 +3673,7 @@ async function loadExt(t){
     tell('读不出这一份','库外文件读取失败');
   }
   applyPref();
+  drawDocMeta(t);
   if(t.id===curTab){ buildToc(); syncProg(); syncBar(); }
 }
 
@@ -3014,12 +3728,13 @@ function buildToc(){
   const el=$('#toc');
   el.classList.toggle('hide', !on);
   el.innerHTML = on ? hs.map(h=>
-    `<div class="tick${h.tagName==='H3'?' h3':''}" data-id="${h.id}">`
-    + `<span class="lab">${esc(h.textContent)}</span><i class="bar"></i></div>`).join('') : '';
+    `<button type="button" class="tick${h.tagName==='H3'?' h3':''}" data-id="${h.id}"`
+    + ` aria-label="跳到 ${esc(h.textContent)}">`
+    + `<span class="lab">${esc(h.textContent)}</span><span class="bar"></span></button>`).join('') : '';
   el.querySelectorAll('.tick').forEach(a=>a.onclick=()=>{
     const t=active(), p=t&&paneOf(t);
     const h=p&&p.querySelector('#'+CSS.escape(a.dataset.id));
-    if(h) p.scrollTo({top:Math.max(0,h.offsetTop-24), behavior:'smooth'});
+    if(h) p.scrollTo({top:Math.max(0, scrollYOf(p,h)-88), behavior:'smooth'});
   });
   syncToc();
 }
@@ -3027,7 +3742,7 @@ function syncProg(){
   const t=active(), p=t&&paneOf(t);
   if(!p||kindOfTab(t)!=='md') return;
   let cur=null;
-  heads().forEach(h=>{ if(h.offsetTop-80<=p.scrollTop) cur=h.id; });
+  heads().forEach(h=>{ if(scrollYOf(p,h)-140<=p.scrollTop) cur=h.id; });
   $$('#toc .tick').forEach(a=>a.classList.toggle('on', a.dataset.id===cur));
 }
 function syncToc(){ document.body.classList.toggle('toc-pin', !!ST.toc); }
@@ -3038,17 +3753,14 @@ let LISTS=false;
 function setLists(on){
   LISTS=!!on;
   document.body.classList.toggle('lists-on', LISTS);
-  if(LISTS) mountOut('#listbody'); else if(document.body.classList.contains('nodoc')) mountOut('#hubbody');
+  mountOut('#listbody');
   /* 关掉列表也要重画。上一版只在打开时 render，#out 里那列最近文件
      会被原样搬回首页，居中布局装不下，搜索框就顶进标题栏。 */
   render();
   syncNative();
   requestAnimationFrame(layoutTabs);
 }
-function toggleLists(){
-  if(!LISTS && document.body.classList.contains('nodoc')){ setLists(true); return; }
-  setLists(!LISTS);
-}
+function toggleLists(){ setLists(!LISTS); }
 /* 行都画在同一个 #out 里，按当下这一屏挂到窄栏还是列表栏。
    只有一套行渲染、一套键盘、一套右键，四态之间不会走样。 */
 function mountOut(sel){
@@ -3057,9 +3769,7 @@ function mountOut(sel){
   out.hidden=false;
   if(out.parentElement!==host) host.appendChild(out);
 }
-function listHost(){
-  return (document.body.classList.contains('nodoc') && !LISTS) ? '#hubbody' : '#listbody';
-}
+function listHost(){ return '#listbody'; }
 
 /* 块台账。每一块在原文里是哪几行（src），和下一块之间隔着哪几行（gap）。
    头（frontmatter 和它后面的空行）和尾（末尾的空行）单独留着，原样带出去。
@@ -3271,9 +3981,9 @@ function paintWork(t){
   const md=p.querySelector('.md');
   undecorateHistory(md);
   renderMd(md, t.editing ? t.work : t.raw, dirOf(t.path));
-  decorateChrome(md, t.ext ? null : t.path);
   if(!t.editing) decorateHistory(md);
   applyPref();
+  drawDocMeta(t);
   p.scrollTop=top;
 }
 
@@ -3531,8 +4241,9 @@ const plainOf = el => blkMd(el)
 function retype(t, el, kind, text){
   if(!el) return null;
   const body = text!==undefined ? text : plainOf(el);
-  const src = kind==='pre' ? '```\n'+body+'\n```'
-            : kind==='hr'  ? '---'
+  const src = kind==='pre'   ? '```\n'+body+'\n```'
+            : kind==='hr'    ? '---'
+            : kind==='table' ? '| 项目 | 备注 |\n| --- | --- |\n|  |  |'
             : (MARK[kind]||'') + body;
   const box=document.createElement('div');
   box.innerHTML=md2html(src.trim()?src:' ', dirOf(t.path), 0);
@@ -3952,7 +4663,7 @@ function hopCell(t, cell, back){
       const td=document.createElement('td');
       const ref=tb.rows[tb.rows.length-1].children[k];
       if(ref && ref.getAttribute('style')) td.setAttribute('style', ref.getAttribute('style'));
-      td.innerHTML='<br>';
+      // 空格子就留空，跟 md2html 渲染出来的一模一样（光标落进去时 ensureBr 自会补 <br>）
       tr.appendChild(td);
     }
     (tb.tBodies[0]||tb).appendChild(tr);
@@ -4048,8 +4759,10 @@ function settleImg(md){
 /* ── 正文栏右上角那行淡字 ───────────────
    只报状态，不讲解怎么用：正在编辑 / 保存中 / 已保存 HH:MM / 有 N 处存不进 · 点看。 */
 function syncStatusLine(){
+  syncStatusBar();
   const m=$('#edMsg'); if(!m) return;
   const t=active();
+  paintSaveState(t);
   m.classList.remove('act');
   if(!t || !t.editing){ m.textContent=''; return; }
   if(t.pendingBad && t.pendingBad.length){
@@ -4083,6 +4796,7 @@ function canEditPath(rel){
 
 function syncBar(){
   syncStatusLine();
+  drawDocBar(active());
   syncNative();
   syncTabDirty();
 }
@@ -4199,7 +4913,8 @@ function toggleSrc(){
     unwatch(t);
     ta.value=t.work;
     p.classList.add('src');
-    ta.focus(); ta.setSelectionRange(0,0); ta.scrollTop=0;
+    growEd(ta);
+    ta.focus(); ta.setSelectionRange(0,0); p.scrollTop=0;
   }
   applyPref(); syncBar();
 }
@@ -4210,7 +4925,9 @@ const AUTOSAVE_MS = 2000;
 function autoKick(t){
   if(!t || !t.editing) return;
   t.pendingBad=null;
-  if(t.id===curTab) syncStatusLine();
+  // 打字这条路径也要把脏标志推给壳，不然关闭按钮里的脏点要等到别处
+  // 调 syncBar 才出现。syncNative 自带 lastNat 去重，敲一个字不会刷屏。
+  if(t.id===curTab){ syncStatusLine(); syncNative(); }
   syncTabDirty();
   clearTimeout(t.autoT);
   t.autoT=setTimeout(()=>{ t.autoT=null; saveEdit(false, {tab:t, auto:true}); }, AUTOSAVE_MS);
@@ -4234,13 +4951,15 @@ const hhmm = () => { const d=new Date(), z=n=>String(n).padStart(2,'0');
 
 /* 存盘。自动保存这条路上不弹窗打断：
    冲突（别人改过）→ 顶部横幅两个动作；自检报「会变样」→ 状态字变「有 N 处存不进 · 点看」。
-   手动 ⌘S 保持原来的对话框行为。 */
+   手动 ⌘S 保持原来的对话框行为。
+   返回值：真＝这次改动确实落到文件里了（或本来就跟文件一样）；假＝没落盘，
+   改动还在编辑区里。「完成」按这个决定要不要回阅读态，别的调用点可以不看。 */
 async function saveEdit(force, opt){
   opt=opt||{};
   const t=opt.tab||active();
-  if(!t || !t.editing) return;
-  if(t.saving){ t.again=true; return; }
-  const p=paneOf(t); if(!p) return;
+  if(!t || !t.editing) return false;
+  if(t.saving){ t.again=true; return false; }
+  const p=paneOf(t); if(!p) return false;
   const auto=!!opt.auto;
 
   let body;
@@ -4250,18 +4969,18 @@ async function saveEdit(force, opt){
     undecorateHistory(p.querySelector('.md'));
     const bad=force?[]:verifyDirty(t);
     if(bad.length){
-      if(auto){ t.pendingBad=bad; if(t.id===curTab) syncStatusLine(); return; }
+      if(auto){ t.pendingBad=bad; if(t.id===curTab) syncStatusLine(); return false; }
       if(!ask(
         `有 ${bad.length} 块存下去会变样，仍然保存吗？`,
         '多半是打了 markdown 会认的记号，比如表格格子里的竖线、落单的星号：\n\n'
         + bad.slice(0,6).map(x=>'· '+x).join('\n')
         + (bad.length>6?`\n…还有 ${bad.length-6} 块`:''),
-        '仍然保存','取消',true)){ t.pendingBad=bad; syncStatusLine(); return; }
+        '仍然保存','取消',true)){ t.pendingBad=bad; syncStatusLine(); return false; }
     }
     t.pendingBad=null;
     body=serializeBody(t);
   }
-  if(body===t.raw){ t.touched=false; if(t.id===curTab) syncStatusLine(); return; }
+  if(body===t.raw){ t.touched=false; if(t.id===curTab) syncStatusLine(); return true; }
 
   t.saving=true; if(t.id===curTab) syncStatusLine();
   const payload={路径:t.path, 正文:body, 基于:t.rawAt, 强制:!!force};
@@ -4275,20 +4994,23 @@ async function saveEdit(force, opt){
   if(opt.keepalive) req.keepalive=true;
   let r=null;
   try{ r=await (await fetch('/__save', req)).json(); }
-  catch(e){ t.saving=false; if(t.id===curTab) flash('服务没应答'); return; }
+  catch(e){ t.saving=false; if(t.id===curTab) flash('服务没应答'); return false; }
   t.saving=false;
 
   if(!r.ok){
     if(r.需确认){
       t.conflict=body;
-      if(auto){ showConflict(t, r.错误||''); return; }
+      if(auto){ showConflict(t, r.错误||''); return false; }
       if(ask('这份在外部被改过了，仍然保存吗？',
              (r.错误||'')+'\n外部那一版会被你这一版覆盖，覆盖前会先留档。',
              '仍然保存','取消',true)) return saveEdit(true, {tab:t});
-      return;
+      // 手动这条路上按了「取消」＝不存了，冲突就此揭过，别让 pill 和「完成」一直卡着
+      t.conflict=null;
+      if(t.id===curTab) syncStatusLine();
+      return false;
     }
     if(t.id===curTab) flash(r.错误||'写失败');
-    return;
+    return false;
   }
   t.raw=body; t.touched=false; t.conflict=null;
   bnr('conflict', false);
@@ -4301,8 +5023,10 @@ async function saveEdit(force, opt){
   }
   // 存完文件的 mtime 变了，下一次的「基于」得跟着换，不然会被当成外部改动
   if(r.改于) t.rawAt=r.改于; else await refreshRawAt(t);
+  drawDocMeta(t);
   if(t.id===curTab){ syncStatusLine(); syncNative(); }
   if(t.again){ t.again=false; autoKick(t); }
+  return true;
 }
 
 async function refreshRawAt(t){
@@ -4400,14 +5124,28 @@ function prepItems(){
 const ymd = t => { const d=new Date((t||0)*1000), z=n=>String(n).padStart(2,'0');
   return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate()); };
 
-/* 时间怎么写：窄栏写「今天 11:42 / 昨天 21:07 / 8月27日」，列表栏只写时刻。 */
-function whenLabel(sec, wide){
-  const ms=(sec||0)*1000, d=new Date(ms), z=n=>String(n).padStart(2,'0');
+/* 「多久之前」只有这一把梯子：刚刚 → N 分钟前 → 今天 09:12 → 昨天 16:40
+   → 9月3日 → 2025年12月1日。卡片、最近列表、继续阅读大卡都走它。 */
+function fmtWhen(sec){
+  const ms=(sec||0)*1000;
+  if(!ms) return '';
+  const d=new Date(ms), z=n=>String(n).padStart(2,'0');
+  const gap=Date.now()-ms;
+  if(gap>=0 && gap<60e3) return '刚刚';
+  if(gap>=0 && gap<3600e3) return Math.floor(gap/60e3)+' 分钟前';
   const hm=z(d.getHours())+':'+z(d.getMinutes());
   const b=dayBucket(sec);
-  if(!wide) return b==='更早' ? (d.getMonth()+1)+'月'+d.getDate()+'日' : hm;
-  if(b==='更早') return (d.getMonth()+1)+'月'+d.getDate()+'日';
-  return b+' '+hm;
+  if(b!=='更早') return b+' '+hm;
+  if(d.getFullYear()===new Date().getFullYear()) return (d.getMonth()+1)+'月'+d.getDate()+'日';
+  return d.getFullYear()+'年'+(d.getMonth()+1)+'月'+d.getDate()+'日';
+}
+/* 时间怎么写：窄栏（wide）走上面那把梯子，列表栏挤，只写时刻。 */
+function whenLabel(sec, wide){
+  if(wide) return fmtWhen(sec);
+  const ms=(sec||0)*1000, d=new Date(ms), z=n=>String(n).padStart(2,'0');
+  const b=dayBucket(sec);
+  return b==='更早' ? (d.getMonth()+1)+'月'+d.getDate()+'日'
+                    : z(d.getHours())+':'+z(d.getMinutes());
 }
 
 function setTree(t){
@@ -4416,12 +5154,12 @@ function setTree(t){
   items=(t.文档||[]).map(d=>({
     路径:d.路径, 标题:d.标题||'', 类型:d.类型||'md',
     修改时间:d.改于||0, 日期:ymd(d.改于), 预览:d.预览||''}));
-  prepItems(); syncNotePv();
+  prepItems(); syncNotePv(); prunePins();
   buildNav(); render();
-  drawBmBar();
+  drawBmBar(); syncStatusBar();
   TABS.forEach(t=>{
     const k=kindOfTab(t);
-    if(k==='folder'||k==='search'||k==='start') paintPage(t);
+    if(isPageKind(k)) paintPage(t);
   });
 }
 
@@ -4707,15 +5445,6 @@ function rowHtml(i, idx, ts, seq, kind){
       + acts(i, idx)
       + `</div>`;
   }
-  const wide = kind==='rrow';
-  if(wide){
-    return `<div class="rrow" ${base}>`
-      + `<span class="t">${esc(cleanTitle(i))}</span>`
-      + tag
-      + acts(i, idx)
-      + `<span class="m num">${esc(whenLabel(i.修改时间, true))}</span>`
-      + `</div>`;
-  }
   const ex=excerptOf(i);
   return `<div class="lrow" ${base}>`
     + `<span class="top"><span class="t">${esc(cleanTitle(i))}</span>${tag}`
@@ -4740,19 +5469,14 @@ function render(){
   syncKindSeg();
   buildNav();
   mountOut(listHost());
-  const inHub = listHost()==='#hubbody';
-  const kind = searching ? 'res' : (inHub ? 'rrow' : 'lrow');
-  const glab = inHub ? 'seclab' : 'lgroup';
+  const kind = searching ? 'res' : 'lrow';
+  const glab = 'lgroup';
 
   const list=items.filter(hit);
   hits = searching ? list : [];
   listNow=[]; selSet.clear();
 
-  const hint=$('#qhint');
-  hint.classList.toggle('off', !searching);
-  if(searching) hint.textContent='命中 '+list.length+' 份';
-
-  if(!list.length && (searching || !inHub)){
+  if(!list.length){
     const empty = (searching || fNotes) ? '' : (fKind==='html' ? '没有 HTML 文件' : fKind==='md' ? '没有 Markdown 文件' : '');
     $('#out').innerHTML = empty ? `<div class="kindempty">${empty}</div>` : '';
     selSeq=-1; saveFilters(); pushState(); return;
@@ -4768,22 +5492,6 @@ function render(){
     list.sort((a,b)=> score(b,ts)-score(a,ts) || (b.修改时间||0)-(a.修改时间||0));
     hits=list;
     h=list.slice(0,PAGE).map(i=>cell(i,ts)).join('');
-  }else if(inHub){
-    /* 沉浸首页：只留上次打开的一份。第一次使用还没有记录时，用最近修改的一份兜底。
-       一旦打开过文稿，后续重开客户端也回到同一条「上次打开」。 */
-    const arr=items.filter(i=>(i.类型||'md')==='md').slice().sort(byRecent);
-    const last=items.find(i=>i.路径===ST.lastPath && (i.类型||'md')==='md') || arr[0];
-    if(last){
-      listNow.push(last);
-      selSeq=-1; selSet.clear();
-      const seq=0, idx=items.indexOf(last);
-      const ex=excerptOf(last);
-      h=`<div class="home-last" role="option" data-idx="${idx}" data-seq="${seq}" draggable="true" aria-selected="false">`
-        + `<span class="last-title">${esc(cleanTitle(last))}</span>`
-        + `<span class="last-time">${icon('clock',15)}<span class="num">${esc(whenLabel(last.修改时间,true))}</span></span>`
-        + (ex?`<span class="last-ex">${esc(ex)}</span>`:'')
-        + `</div>`;
-    }
   }else if(fNotes || fSub){
     h=list.slice().sort(byRecent).slice(0,PAGE).map(i=>cell(i)).join('');
   }else if(fDir===null){
@@ -4822,13 +5530,7 @@ function wireScroll(sel){
     PAGE+=80; render();
   }, {passive:true});
 }
-['#hubbody','#listbody'].forEach(wireScroll);
-$('#hub').addEventListener('scroll', ()=>{
-  const el=$('#hub');
-  if(el.scrollTop+el.clientHeight < el.scrollHeight-200) return;
-  if(listNow.length < PAGE) return;
-  PAGE+=80; render();
-}, {passive:true});
+wireScroll('#listbody');
 
 /* ── 选中与键盘 ───────────────────────── */
 function wireRows(root){
@@ -4984,8 +5686,7 @@ function closeQL(){ qlOn=false; $('#qlwrap').classList.remove('on'); }
 /* ── 搜索框：窄栏一个、列表栏一个，共用同一个 kw ─── */
 function setKw(v){
   kw=String(v||'').trim();
-  const a=$('#q'), b=$('#q2');
-  if(a && a.value!==v) a.value=v||'';
+  const b=$('#q2');
   if(b && b.value!==v) b.value=v||'';
   PAGE=80;
   post({type:'search', text:kw});
@@ -5012,7 +5713,7 @@ function focusOmnibox(opts){
   }
   if(opts.suggest!==false) showOmni();
 }
-['#q','#q2'].forEach(sel=>{
+['#q2'].forEach(sel=>{
   const el=$(sel); if(!el) return;
   el.oninput=e=>{ setKw(e.target.value); render(); };
   el.onkeydown=e=>{
@@ -5024,13 +5725,19 @@ function focusOmnibox(opts){
     if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); clearQ(true); }
   };
 });
-$('#qclear').onclick=()=>clearQ(true);
 $('#qclear2').onclick=()=>clearQ(true);
 
 /* ── 地址栏 ／ 书签栏 ─────────────────────
    地址栏搜本地文件，不是网址。空着聚焦给最近打开和根目录文件夹。
    拼音上屏那一下的 Enter 要放过去（isComposing / 229），跟下面列表框同一条规矩。 */
 let omniRows=[], omniIdx=0, omniUser=false, omniTimer=null;
+/* 冷启动时 #omni 会拿到初始焦点。focus 里无条件展开建议，开始页一进来
+   就被下拉盖掉上半截，非按 Esc 不可。所以只有用户真动过手（点过或敲过键）
+   之后，focus 才顺带展开。⌘L／点地址栏／开始页直接打字都走 focusOmnibox()，
+   那条路自己会调 showOmni()，不受这道闸限制。 */
+let omniGesture=false;
+addEventListener('pointerdown', ()=>{ omniGesture=true; }, true);
+addEventListener('keydown',     ()=>{ omniGesture=true; }, true);
 function omniOn(){ const d=$('#obdrop'); return !!(d && d.classList.contains('on')); }
 function hideOmni(restore){
   const d=$('#obdrop'); if(d) d.classList.remove('on');
@@ -5068,6 +5775,7 @@ function omniSuggest(q){
     });
     rows.push({kind:'label', title:'文件夹'});
     ((TREE&&TREE.目录)||[]).forEach(d=>rows.push({kind:'folder', title:d.显示名||d.名称, path:d.名称+'/', folder:d.名称}));
+    rows.push({kind:'pins', title:'已收藏', path:(ST.pins||[]).length+' 篇'});
     rows.push({kind:'note', title:'新建随手记', path:NOTE_DIR+'/'});
   }
   return rows;
@@ -5109,6 +5817,7 @@ function pickOmni(i, newTab){
   const input=$('#omni'); if(input) input.blur();
   omniUser=false;
   if(r.kind==='note'){ newNote(); return; }
+  if(r.kind==='pins'){ openPins(newTab); return; }
   if(r.kind==='search'){
     const q=r.q||'';
     setKw(q);
@@ -5135,7 +5844,7 @@ function moveOmni(dir){
     wrap.classList.add('focus');
     input.select();
     omniUser=false;
-    showOmni();
+    if(omniGesture) showOmni();          // 冷启动那次初始焦点不展开
   });
   input.addEventListener('input', ()=>{
     omniUser=true;
@@ -5180,9 +5889,10 @@ function drawBmBar(){
   const bar=$('#bmbar'); if(!bar) return;
   const dirs=(TREE&&TREE.目录)||[];
   bar.innerHTML=dirs.map(d=>
-    `<button type="button" class="bm" data-folder="${esc(d.名称)}" title="${esc(d.名称)}">${folderMark(16)}<span class="lbl">${esc(d.显示名||d.名称)}</span></button>`
-  ).join('');
-  bar.querySelectorAll('.bm').forEach(b=>{
+    `<button type="button" class="bm" data-folder="${esc(d.名称)}" title="${esc(d.名称)}">${icon('folder',13)}<span class="lbl">${esc(d.显示名||d.名称)}</span></button>`
+  ).join('')
+  + `<button type="button" class="bm pin" id="bmPinned" title="已收藏">${icon('star',13)}<span class="lbl">已收藏</span></button>`;
+  bar.querySelectorAll('.bm[data-folder]').forEach(b=>{
     b.onclick=e=>{
       if(e.metaKey||e.ctrlKey){
         hideBmDrop();
@@ -5190,6 +5900,11 @@ function drawBmBar(){
       }else showBmMenu(b.dataset.folder, b);
     };
   });
+  const pin=$('#bmPinned');
+  if(pin){
+    pin.classList.toggle('on', kindOfTab(active())==='pins');
+    pin.onclick=e=>{ hideBmDrop(); openPins(e.metaKey||e.ctrlKey); };
+  }
 }
 function showBmMenu(name, anchor){
   hideOmni(false); hideBmDrop();
@@ -5224,17 +5939,19 @@ function toggleBookmarks(){
 }
 
 (function wireChromeBtns(){
-  const back=$('#navBack'), fwd=$('#navFwd'), rel=$('#navReload'), plus=$('#tabplus'), bm=$('#navBm'), mark=$('#appmark');
+  const back=$('#navBack'), fwd=$('#navFwd'), home=$('#navHome'), plus=$('#tabplus'),
+        bm=$('#navBm'), mark=$('#appmark'), ty=$('#navType');
   if(back) back.onclick=()=>goHist(-1);
   if(fwd) fwd.onclick=()=>goHist(1);
-  if(rel) rel.onclick=()=>{ const t=active(); if(t) loadEntry(t); };
+  if(home) home.onclick=()=>{ navigate(makeEntry('start', {title:'开始'})); home.blur(); };
   if(plus) plus.onclick=()=>{ newTab(); plus.blur(); };
   if(bm) bm.onclick=toggleBookmarks;
+  if(ty) ty.onclick=()=>{ typeOn() ? closeType() : openType(); };
   if(mark) mark.onclick=()=>goAppHome();
 })();
 
 /* 列表本身可聚焦，上下键走行，回车打开，空格快看 */
-['#hubbody','#listbody'].forEach(sel=>{
+['#listbody'].forEach(sel=>{
   const el=$(sel); if(!el) return;
   el.addEventListener('keydown', e=>{
     if(e.isComposing) return;
@@ -5256,9 +5973,9 @@ const CK_ACTS=[
   {id:'win', title:'新建窗口', kbd:'⌘N', go(){ AMN.newWindow(); }},
   {id:'lists', title:'显示列表', kbd:'⌃⌘S', go(){ toggleLists(); }},
   {id:'edit', title:'进入编辑', kbd:'⌘E', go(){ AMN.enterEdit(); }},
-  {id:'type', title:'排版', kbd:'', go(){ openType(); }},
+  {id:'type', title:'阅读与外观', kbd:'', go(){ openType(); }},
   {id:'finder', title:'在访达中显示', kbd:'⇧⌘R', go(){ AMN.reveal(); }},
-  {id:'home', title:'回到开始页', kbd:'Esc', go(){ navigate(makeEntry('start', {title:'开始'})); }},
+  {id:'home', title:'回到开始页', kbd:'', go(){ navigate(makeEntry('start', {title:'开始'})); }},
 ];
 function openQuick(){
   $('#cmdkWrap').classList.add('on');
@@ -5295,11 +6012,14 @@ function ckItems(q){
   const notes=ckNotes(q).map(i=>({kind:'note', i}));
   return acts.concat(notes);
 }
-function runCk(it){
+/* 动作行前面那颗图标，只是长相，不进 CK_ACTS。 */
+const CK_ICON={tab:'plus', new:'new-note', win:'newwin', lists:'sidebar',
+  edit:'pencil', type:'sliders', finder:'folder', home:'home'};
+function runCk(it, newTab){
   closeQuick();
   if(!it) return;
   if(it.kind==='act'){ it.a.go(); return; }
-  openDoc(it.i);
+  openDoc(it.i, newTab?{newTab:true}:null);
 }
 function ckRender(){
   const q=$('#ck').value;
@@ -5316,46 +6036,88 @@ function ckRender(){
     });
     return out;
   };
+  const row=(n, ico, title, sub, tail)=>
+    `<button type="button" class="search-row${n===ckSel?' on':''}" role="option"`
+    + ` aria-selected="${n===ckSel?'true':'false'}" data-n="${n}">`
+    + `<span class="ico">${ico}</span>`
+    + `<span class="search-info"><strong>${title}</strong>${sub?`<small>${sub}</small>`:''}</span>`
+    + tail + `</button>`;
   const acts=ckList.filter(x=>x.kind==='act');
   const notes=ckList.filter(x=>x.kind==='note');
   let html='';
   if(acts.length){
-    html+=`<div class="ksec">动作</div>`;
+    html+=`<div class="search-label">动作</div>`;
     acts.forEach(it=>{
       const n=ckList.indexOf(it);
-      html+=`<div class="krow${n===ckSel?' on':''}" data-n="${n}">`
-        + `<span class="t">${esc(it.a.title)}</span>`
-        + `<span class="p">${esc(it.a.kbd||'')}</span></div>`;
+      html+=row(n, icon(CK_ICON[it.a.id]||'arrow',17), esc(it.a.title), '',
+        it.a.kbd ? `<kbd>${esc(it.a.kbd)}</kbd>` : '<span class="enter">↵</span>');
     });
   }
   if(notes.length){
-    html+=`<div class="ksec">文件</div>`;
+    const typed=String(q||'').trim();
+    html+=`<div class="search-label">${typed?('找到 '+notes.length+' 篇'):'最近的笔记'}</div>`;
     notes.forEach(it=>{
       const n=ckList.indexOf(it);
-      const htmlKind=kindOf(it.i)==='html';
-      html+=`<div class="krow${n===ckSel?' on':''}" data-n="${n}">`
-        + `<span class="t">${mark(cleanTitle(it.i))}</span>`
-        + (htmlKind?'<span class="kindtag">HTML</span>':'')
-        + `<span class="p">${esc(stripNo(it.i._d0||''))}</span></div>`;
+      const isHtml=kindOf(it.i)==='html';
+      const bits=[folderLabel(it.i.路径), cardText(it.i)].filter(Boolean);
+      html+=row(n, icon(isHtml?'globe':'doc',17), mark(cleanTitle(it.i)),
+        esc(bits.join(' · ')), '<span class="enter">↵</span>');
     });
   }
+  if(!ckList.length){
+    html=`<div class="modal-empty"><h2>还没找到这篇笔记</h2>`
+      + `<p>换一个短一点的词试试。</p>`
+      + `<button type="button" class="hbtn" id="ckNew">${icon('plus',15)}<span>先记下这个想法</span></button></div>`;
+  }
   $('#ckList').innerHTML=html;
-  $$('#ckList .krow').forEach(el=>{
-    el.onclick=()=>runCk(ckList[+el.dataset.n]);
+  $$('#ckList .search-row').forEach(el=>{
+    el.onclick=e=>runCk(ckList[+el.dataset.n], e.metaKey||e.ctrlKey);
   });
+  const ne=$('#ckNew'); if(ne) ne.onclick=()=>{ closeQuick(); newNote(); };
+  const cur=$('#ckList .search-row.on');
+  if(cur && cur.scrollIntoView) cur.scrollIntoView({block:'nearest'});
 }
 $('#ck').oninput=()=>{ ckSel=0; ckRender(); };
 $('#ck').onkeydown=e=>{
   if(e.isComposing || e.keyCode===229) return;
   if(e.key==='ArrowDown'){ e.preventDefault(); ckSel=Math.min(ckList.length-1, ckSel+1); ckRender(); }
   else if(e.key==='ArrowUp'){ e.preventDefault(); ckSel=Math.max(0, ckSel-1); ckRender(); }
-  else if(e.key==='Enter'){ e.preventDefault(); runCk(ckList[ckSel]); }
+  else if(e.key==='Enter'){ e.preventDefault(); runCk(ckList[ckSel], e.metaKey||e.ctrlKey); }
   else if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); closeQuick(); }
 };
-$('#cmdkScrim').onclick=closeQuick;
+/* 点面板以外的蒙层、或右上角那颗 Esc，都关。 */
+$('#cmdkWrap').onclick=e=>{ if(e.target===$('#cmdkWrap')) closeQuick(); };
+$('#ckEsc').onclick=closeQuick;
 
 /* ── 排版浮层 ─────────────────────────── */
+/* ── 阅读与外观 ─────────────────────────
+   主题走 PREF.theme + applyPref()（applyPref 里会 post 一条 theme 给壳，别绕过它）。
+   字体、行高沿用设置页那三档；字号 15–21 实时；宽度三个预设。 */
+const POP_THEMES=[['auto','跟随系统'],['light','浅色'],['dark','深色']];
+const POP_FONTS=[['f-sans','系统'],['f-serif','宋体'],['f-mono','等宽']];
+const POP_WIDTHS=[[620,'紧凑'],[690,'舒适'],[820,'宽阔']];
+function popSeg(k, arr, cur){
+  return `<div class="filters" role="group">` + arr.map(x=>{
+    const on = String(cur)===String(x[0]);
+    return `<button type="button" data-pk="${k}" data-v="${x[0]}" class="${on?'on':''}" aria-pressed="${on?'true':'false'}">${esc(x[1])}</button>`;
+  }).join('') + `</div>`;
+}
+function drawType(){
+  const box=$('#typeWrap'); if(!box) return;
+  box.innerHTML=`<div class="pop-title">阅读与外观</div>
+    <div class="setting"><label>主题</label>${popSeg('theme', POP_THEMES, PREF.theme)}</div>
+    <div class="setting"><label>字体</label>${popSeg('font', POP_FONTS, PREF.font)}</div>
+    <div class="setting"><label for="popFs">正文字号 <span class="v num" id="popVfs">${PREF.fs}</span></label>
+      <input id="popFs" type="range" min="15" max="21" step="1" value="${PREF.fs}"></div>
+    <div class="setting"><label>正文宽度</label>${popSeg('w', POP_WIDTHS, PREF.w)}</div>
+    <div class="setting"><label for="popLh">行高 <span class="v num" id="popVlh">${(PREF.lh/100).toFixed(2)}</span></label>
+      <input id="popLh" type="range" min="160" max="200" step="5" value="${PREF.lh}"></div>
+    <div class="setting"><button type="button" class="dt-btn" data-pk="focus">${icon('focus',14)} ${FOCUS?'退出专注阅读':'专注阅读'}</button></div>`;
+  box.querySelector('#popFs').oninput=e=>setPref('fs', +e.target.value);
+  box.querySelector('#popLh').oninput=e=>setPref('lh', +e.target.value);
+}
 function openType(){
+  drawType();
   $('#typeWrap').classList.add('on');
   document.body.classList.add('type-on');
   syncPrefControls();
@@ -5365,12 +6127,11 @@ function closeType(){
   document.body.classList.remove('type-on');
 }
 const typeOn = () => $('#typeWrap').classList.contains('on');
-$('#typeScrim').onclick=closeType;
-$$('#typeFont button').forEach(b=>b.onclick=()=>setPref('font', b.dataset.v));
-['typeFs','typeLh','typeW'].forEach((id,i)=>{
-  const el=$('#'+id); if(!el) return;
-  const key=['fs','lh','w'][i];
-  el.oninput=e=>setPref(key, +e.target.value);
+$('#typeWrap').addEventListener('click', e=>{
+  const b=e.target.closest('[data-pk]'); if(!b) return;
+  const k=b.dataset.pk;
+  if(k==='focus'){ closeType(); toggleFocus(); return; }
+  setPref(k, k==='w' ? +b.dataset.v : b.dataset.v);
 });
 
 /* ── 斜杠插入 ─────────────────────────── */
@@ -5510,6 +6271,7 @@ function applyRenamedPath(t, next){
   lastNat='';
   syncTabTitle(t);
   drawTabs();
+  drawDocBar(t); drawDocMeta(t);
   syncChrome();
   pushState();
   if(LISTS) render();
@@ -5583,7 +6345,7 @@ function renderCfg(){
     <div class="cfgrow"><span class="k">行距</span>
       <input type="range" id="lh" min="150" max="220" step="5"><span class="v num" id="vlh"></span></div>
     <div class="cfgrow"><span class="k">栏宽</span>
-      <input type="range" id="w" min="560" max="1000" step="20"><span class="v num" id="vw"></span></div>
+      <input type="range" id="w" min="560" max="1000" step="10"><span class="v num" id="vw"></span></div>
     <div class="cfgbar"><button class="btn" id="rstPref">恢复默认版式</button></div>
   </section>
 
@@ -5704,11 +6466,39 @@ function pushState(){
 }
 
 /* 三态：ok 就绪（绿点）｜ scan 扫描中 ｜ off 断开（灰点＋顶部横幅） */
+let SRV_STATE='ok';
 function setState(s, tip){
-  const d=$('#live'); if(!d) return;
-  d.classList.toggle('off', s!=='ok');
+  SRV_STATE=s;
+  const d=$('#live');
+  if(d) d.classList.toggle('off', s!=='ok');
   const nv=$('#navCfg'); if(nv) nv.title=tip||'';
   bnr('offline', s==='off');
+  syncStatusBar();
+}
+
+/* ── 底部状态栏 ─────────────────────────
+   左边：服务状态 + 收录了多少篇。右边：当前这一屏在干什么。 */
+function statusDetailText(){
+  const t=(typeof active==='function') ? active() : null;
+  if(!t) return '按 ⌘ K 找一篇笔记';
+  if(t.editing) return t.ext ? '库外文档只读' : '边写边存 · ⌘ S 立刻存一次';
+  const k=(typeof kindOfTab==='function') ? kindOfTab(t) : 'start';
+  if(k==='md') return canEditPath(t.path) && !t.ext ? '双击正文开始编辑 · ⌘ E 也可以' : '这一份只读';
+  if(k==='html') return 'HTML 页面 · 在库里原样打开';
+  if(k==='search') return '点一条打开 · ⌘ 点开新标签';
+  if(k==='folder') return '点一张卡片打开 · ⌘ 点开新标签';
+  if(k==='pins') return '收藏起来的都在这儿 · 点 ★ 取消收藏';
+  return '按 ⌘ K 搜一搜，或者写点新的';
+}
+function syncStatusBar(){
+  const dot=$('#statusDot'), txt=$('#statusText'), det=$('#statusDetail');
+  if(!dot || !txt) return;
+  dot.classList.toggle('scan', SRV_STATE==='scan');
+  dot.classList.toggle('off', SRV_STATE==='off');
+  if(SRV_STATE==='off') txt.textContent='服务没起';
+  else if(SRV_STATE==='scan') txt.textContent='扫描中…';
+  else txt.textContent = items.length ? ('就绪 · '+items.length+' 篇') : '就绪';
+  if(det) det.textContent=statusDetailText();
 }
 
 async function syncStatus(){
@@ -5782,11 +6572,12 @@ addEventListener('pointerdown', e=>{
   if(!e.target.closest('#tabpick') && !e.target.closest('#tabmore')) closeTabPick();
   if(!e.target.closest('#obdrop') && !e.target.closest('#omnibox') && !e.target.closest('[data-act="focusomni"],#appmark')) hideOmni(true);
   if(!e.target.closest('#bmdrop') && !e.target.closest('#bmbar')) hideBmDrop();
+  if(typeOn() && !e.target.closest('#typeWrap') && !e.target.closest('#navType')) closeType();
 }, true);
-addEventListener('resize', ()=>{ layoutTabs(); if(tabPickOn()) openTabPick(); });
+addEventListener('resize', ()=>{ layoutTabs(); growAllEd(); if(tabPickOn()) openTabPick(); });
 if(window.ResizeObserver){
   const pane=$('#docpane');
-  if(pane) new ResizeObserver(()=>layoutTabs()).observe(pane);
+  if(pane) new ResizeObserver(()=>{ layoutTabs(); growAllEd(); }).observe(pane);
   const strip=$('#tabstrip');
   if(strip) new ResizeObserver(()=>layoutTabs()).observe(strip);
 }
@@ -5824,7 +6615,7 @@ window.AMN = {
   searchEnter(){ if(hits.length) openDoc(hits[0], {jump:terms()}); },
   quickOpen(){ quickOn() ? closeQuick() : openQuick(); },
   enterEdit(){ const t=active(); if(t && !t.editing) startEdit(); },
-  toggleEdit(){ const t=active(); if(!t) return; t.editing ? endEdit(t) : startEdit(); },
+  toggleEdit(){ const t=active(); if(!t) return; t.editing ? finishEdit() : startEdit(); },
   rescan(){ doRescan(); },
   openNotes(){ openNotesFolder(); },
   openRecent(){ if(!LISTS) setLists(true); goHome(false); },
@@ -5845,6 +6636,7 @@ window.AMN = {
     if(quickOn()){ closeQuick(); return; }
     if(qlOn){ closeQL(); return; }
     if(cfgOn()){ closeCfg(); return; }
+    if(FOCUS){ setFocus(false); return; }
     const t=active();
     if(t && t.editing){ cancelEdit(); return; }
     if(kw){ clearQ(false); return; }
@@ -5909,7 +6701,11 @@ addEventListener('keydown', e=>{
   if(e.metaKey && e.key==='['){ e.preventDefault(); goHist(-1); return; }
   if(e.metaKey && e.key===']'){ e.preventDefault(); goHist(1); return; }
   if(e.metaKey && e.shiftKey && e.key.toLowerCase()==='b'){ e.preventDefault(); toggleBookmarks(); return; }
-  if(e.metaKey && e.key.toLowerCase()==='t'){ e.preventDefault(); newTab(); return; }
+  // ⌘⇧T 把刚关掉的那个标签搬回来。壳菜单没占这一组，页面里绑就行。
+  if(e.metaKey && e.shiftKey && !e.altKey && e.key.toLowerCase()==='t' && !SOLO){
+    e.preventDefault(); reopenClosed(); return;
+  }
+  if(e.metaKey && !e.shiftKey && e.key.toLowerCase()==='t'){ e.preventDefault(); newTab(); return; }
   if(!e.metaKey && !e.ctrlKey && !e.altKey && !inField && e.key.length===1 && !/\s/.test(e.key)){
     const t=active();
     if(isStartTab(t)){
@@ -5971,8 +6767,8 @@ if(EMBED){
   t.raw=EMBED.正文;
   const md=paneOf(t).querySelector('.md');
   renderMd(md, EMBED.正文, dirOf(EMBED.路径));
-  decorateChrome(md, EMBED.路径);
   decorateHistory(md);
+  drawDocMeta(t);
   enterReader(); showTab(t.id);
 }else{
   loadFilters();
@@ -5986,7 +6782,7 @@ if(EMBED){
     drawBmBar();
     if(!SOLO && !TABS.length) openStartTab();
     const at=active();
-    if(at && (kindOfTab(at)==='folder'||kindOfTab(at)==='search'||kindOfTab(at)==='start')) paintPage(at);
+    if(at && isPageKind(kindOfTab(at))) paintPage(at);
   });
   if(!TOKEN_OK && IS_HTTP) bnr('upgrade', true);
   // solo 窗口一律不轮询：它只显示自己那一份，不该替主窗口收件
