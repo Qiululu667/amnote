@@ -2801,24 +2801,45 @@ class Handler(SimpleHTTPRequestHandler):
             self._nosniff_sent = True            # _body 已经发过，别发第二遍
         super().send_header(keyword, value)
 
-    def _is_vault_html(self) -> bool:
-        """库内 html 才套沙箱。
+    #: 自己能跑脚本的三种文档类型。svg 和 xhtml 顶层打开一样是文档、
+    #: 一样能带 <script>，漏掉哪个哪个就成了绕过这道头的口子。
+    _SANDBOX_TYPES = ("text/html", "image/svg+xml", "application/xhtml+xml")
 
-        iframe 已经 sandbox=""；顶层打开（地址栏改成 /某页.html）没有
-        iframe 那层，必须靠响应头再挡一次——脚本一旦跑起来就跟门户同源，
-        能读到页面里的 token。/portal 自己要跑 JS，不套。
+    def _is_vault_html(self) -> bool:
+        """能跑脚本的文档，响应头上再补一层沙箱。
+
+        隔离本来分两处，各管各的：
+
+        ① 门户里的预览框是 iframe sandbox="allow-scripts"（没给 same-origin），
+           文档落进不透明源，读不到门户的 token，fetch 也跨不回服务端；壳那边另有
+           一道守卫，didReceiveScriptMessage: 只认主框（isMainFrame），子框喊 amn
+           通道不算数。这一层跟本方法没关系。
+        ② 地址栏直接打到 /某页.html 是顶层导航，没有 iframe 那一层。在壳里这种导航
+           其实到不了——decidePolicy 那边 isShellMainURL 只放 /portal 和 /__* 过，
+           主框载入库内文件一律 Cancel（app_shell.m 约 L3296）。所以这个头真正兜的是
+           **浏览器模式**：用户拿 Safari / Chrome 开门户，顶层打开一份库内 html 时，
+           CSP sandbox 不带 allow-same-origin，文档照样落进不透明源，脚本能跑、
+           跨不回门户这边。
+
+        判定只看 Content-Type，不问路径：html / svg / xhtml 这三种都能带 <script>，
+        少认一个就是一个口子。/__extasset 回 svg 时也会顺带套上——那条本来就只是把
+        一张图显示出来，多这一层没有副作用。/portal 自己就是门户，不套。
         """
         route = self.path.split("?")[0]
         if route in ("/portal", "/portal/"):
             return False
-        return (getattr(self, "_ctype", "") or "").lower().startswith("text/html")
+        ctype = (getattr(self, "_ctype", "") or "").lower()
+        return ctype.startswith(self._SANDBOX_TYPES)
 
     def end_headers(self):
+        # 会被改写的文档一律不进缓存。后缀表跟 _SANDBOX_TYPES 对齐：库里的 svg 改了，
+        # 门户不能还拿旧的那张来显示。
         if not getattr(self, "_cache_sent", False) \
-                and self.path.endswith((".md", ".html", ".htm", ".json")):
+                and self.path.endswith(
+                    (".md", ".html", ".htm", ".json", ".svg", ".xhtml")):
             self.send_header("Cache-Control", "no-store")
         if self._is_vault_html():
-            self.send_header("Content-Security-Policy", "sandbox")
+            self.send_header("Content-Security-Policy", "sandbox allow-scripts")
             if not getattr(self, "_nosniff_sent", False):
                 self.send_header("X-Content-Type-Options", "nosniff")
         super().end_headers()

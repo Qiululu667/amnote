@@ -131,6 +131,10 @@
   --docw:640px;   /* 正文栏宽，跟 PREF.w 走 */
   --outline-w:248px; /* 左侧大纲栏宽 */
   --ol-inset:24px;   /* 大纲栏离窗格左缘的距离；.doc-layout.ol-on 左右内边距各用它一份，olWider() 现读 */
+  /* 文档头（Row 2）的高。一处定义两处用：.doc-toolbar 自己的 height，
+     和 html 预览 iframe 在 .pane.html 里让出的顶部留白（top ＋ height 都算它），
+     两边同源才不会一边改高、另一边把标题压掉一截。 */
+  --doc-toolbar-h:48px;
 
   /* 书签栏小黄夹：浅色深色都用同一对，夹在灰底上才认得出来。 */
   --folder:#e9b949;
@@ -503,7 +507,9 @@ body.focus-mode #userPop{display:none!important}
 .pane.html .htmlframe{display:block}
 .pane.html .md,.pane.html .ed,.pane.html .pagebox{display:none!important}
 .pane.html .doc-layout{display:none}
-.pane.html .htmlframe{top:48px;height:auto;bottom:0}
+/* iframe 是替换元素：绝对定位下 height:auto 会取它自带的 150px，bottom 直接被丢掉
+   （CSS 2.1 §10.6.5），所以这里必须把高算死，不能靠 top ＋ bottom 撑。 */
+.pane.html .htmlframe{top:var(--doc-toolbar-h);height:calc(100% - var(--doc-toolbar-h));bottom:auto}
 .pane.pg .pagebox{display:block}
 .pane.pg .md,.pane.pg .ed,.pane.pg .htmlframe{display:none!important}
 .pane:not(.html) .htmlframe{display:none}
@@ -953,7 +959,7 @@ kbd{
    编辑」，编辑态换成「保存状态 / 源码 / 完成」。毛玻璃底色让正文从下面透一点过去。 */
 .doc-toolbar{
   position:sticky;top:0;z-index:8;
-  height:48px;flex:none;padding:0 22px;
+  height:var(--doc-toolbar-h);flex:none;padding:0 22px;
   display:flex;align-items:center;gap:6px;
   border-bottom:0;
   background:var(--win-blur);
@@ -973,7 +979,7 @@ body.solo .pane.edit .doc-toolbar .dt-actions,
 body.solo .pane.edit .doc-toolbar .dt-div,
 body.solo .pane.edit .doc-toolbar [data-dt="focus"],
 body.solo .pane.edit .doc-toolbar [data-dt="more"]{display:none}
-body.solo .pane.html .htmlframe{top:0}
+body.solo .pane.html .htmlframe{top:0;height:100%}
 /* ═══ 路径芯片 ═══════════════════════════
    「一件信息只出现一次」：路径只在这里。文件夹图标 ＋ › 分段 ＋ 尾部拷贝图标。
    放不下就从最左边起收成一枚 …，最后一段再交给 text-overflow。
@@ -3251,20 +3257,48 @@ async function loadEntry(t){
   }
   if(k==='md'){ const p=paneOf(t); if(p) pageEnter(p.querySelector('.doc-layout')); }
 }
+/* ── 库内 html 的预览框 ───────────────────
+   沙箱只开 allow-scripts，脚本因此跑在一个不透明源（opaque origin）里：能画图、
+   能算，但跟门户不同源。所以读不到 /portal 上的 <meta name="amn-token">，
+   fetch 回服务端会被同源策略挡下（服务端一条 CORS 头都不发），就算走表单那种
+   「简单请求」，POST 也先过 _gate() 的 Origin 检查——沙箱发出来的是 Origin: null，
+   直接 403。AI 写的汇报页里那些 JS 图表能跑起来，库里的内容和 token 仍旧够不着。
+
+   下面这几样一个都不要加，各有各的破法：
+     · allow-same-origin —— 和 allow-scripts 一起给就等于没有沙箱：页面同源之后
+       能读 token、能读库里任何一页，还能自己把 sandbox 属性摘掉。
+     · allow-modals —— alert / confirm 在壳里弹的是原生 NSAlert，一份 html 就能
+       把整个 app 卡在那儿。
+     · allow-popups、allow-top-navigation —— 前者另开一扇窗，后者把当前这扇窗导走，
+       两条都能在用户以为还在 AM·Note 里的时候把他带去别处。
+     · allow-forms —— 表单提交打出去的 Origin 一样是 null，_gate() 那关照样 403；
+       但那是服务端在兜底，沙箱这层不给 allow-forms，请求根本发不出去。两道都留着，
+       少哪一道都还剩一道。
+
+   referrerpolicy="no-referrer" 管的只有一件事：iframe 自己去取这份 html 的那一次
+   请求，不带 Referer。服务端根本不读 Referer，顶层 URL 里也没有 token，所以它眼下
+   挡不下什么，留着纯粹是纵深防御。别把它当成「这页往外发请求都不带来路」——文档载
+   进来之后自己发的请求，引用策略看的是那份响应自己的头和页面里的 meta，不从这个属性
+   继承下去。
+
+   顺序也得守住：先 setAttribute('sandbox', …) 再赋 src。沙箱标记是文档开始加载
+   的那一刻定下来的，先给 src 再补属性，这一次加载就是没沙箱的。 */
 function loadHtml(t){
   const p=paneOf(t); if(!p) return;
   let ifr=p.querySelector('.htmlframe');
   if(!ifr){
     ifr=document.createElement('iframe');
     ifr.className='htmlframe';
-    ifr.setAttribute('sandbox','');
+    ifr.setAttribute('sandbox','allow-scripts');
+    ifr.setAttribute('referrerpolicy','no-referrer');
     p.appendChild(ifr);
   }
-  ifr.setAttribute('sandbox','');
+  ifr.setAttribute('sandbox','allow-scripts');
+  ifr.setAttribute('referrerpolicy','no-referrer');
   ifr.title=t.title||'';
   const u=url(t.path);
   ifr.src='about:blank';
-  setTimeout(()=>{ ifr.setAttribute('sandbox',''); ifr.src=u; }, 0);
+  setTimeout(()=>{ ifr.setAttribute('sandbox','allow-scripts'); ifr.src=u; }, 0);
   drawDocMeta(t);
 }
 /* 换一页就轻轻淡进来一下。重复调用要先摘掉再挂，不然动画不重放。 */
@@ -4004,6 +4038,7 @@ function wireDocBar(p, t){
     else if(a==='reveal') revealPath(t.path);
     else if(a==='share') shareDoc(t);
     else if(a==='newwin') openSolo(t.path);
+    else if(a==='browser') openExternal(t.path);
     else if(a==='focus') toggleFocus();
     else if(a==='more') docMoreMenu(e, t);
     else if(a==='edit') startEdit();
@@ -4139,6 +4174,9 @@ function drawDocBar(t){
     + dtIco('reveal', TR('在访达中显示'), 'folder', '', '⇧⌘R')
     + dtIco('share',  TR('分享…'), 'share')
     + dtIco('newwin', TR('在新窗口打开'), 'newwin')
+    /* 地球只给 html：跟在「新窗口」后面，两颗合起来是「换个地方看这一页」。
+       md 没有——扔给系统浏览器只会看到一堆源码。走 openExternal → /__external。 */
+    + (k==='html' ? dtIco('browser', TR('在浏览器里打开'), 'globe') : '')
     + `</div>`;
   let right;
   if(t.editing){
@@ -4446,7 +4484,7 @@ function newPane(t){
     +   `<div class="doc-end">${esc(TR('写下来的，都在这里。'))}</div>`
     +   '<p class="editor-hint"></p>'
     + '</div></div>'
-    + '<iframe class="htmlframe" sandbox hidden title=""></iframe>'
+    + '<iframe class="htmlframe" sandbox="allow-scripts" referrerpolicy="no-referrer" hidden title=""></iframe>'
     + '<div class="pagebox" hidden></div>';
   wireDocBar(p, t);
   wireOutline(p, t);

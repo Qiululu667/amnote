@@ -188,6 +188,15 @@ def export_icons(dest_dir):
 
 # ───────────────────────── 后台服务脚本（LaunchAgent 调用）─────────────────────────
 NATIVE_SRC = "app_shell.m"
+# 5.6.1 = 库内 html 改成带 allow-scripts 的沙箱 iframe，壳这边补上「只认主框」两道闸：
+# amn 通道（didReceiveScriptMessage:）丢掉非主框的消息；导航策略里非主框的外链只有用户
+# 真点了（LinkActivated）才交给系统浏览器，脚本改 location.href 那种一律掐掉。
+# LinkActivated 本身不作数（子框里 a.click() 报的也是它），子框外链另要求一秒内有过真实
+# 键鼠输入——本地 NSEvent 监视器记时刻，合成事件伪造不出 NSEvent。四个面板 delegate
+# （alert / confirm / prompt / openPanel）同样加了非主框守卫，非主框静默当取消。
+# 新增只读启动键 `-AMNOpenAtLaunch <库内相对路径>`（验收用，走 queueOpen 那条队列）。
+# 5.6.0 = 个人资料（问候、头像、设置「个人」）+ Agent 协作（amnote CLI / MCP / skill、
+# 库地图、/__search 扩参、Agent 署名）；小云挪到左上当回首页键。
 # 5.5.0 = 界面多语言（简体中文 / 繁體中文（香港）/ English，可跟随系统）：壳的菜单、
 # 弹框、欢迎笔记走 app_shell_i18n.h 的词典，网页走 locales/*.js，服务端消息走
 # portal_i18n.py；新注入 __AMN_LANG__ / __AMN_LANG_PREF__，新桥接 setLanguage。
@@ -204,7 +213,7 @@ NATIVE_SRC = "app_shell.m"
 # （20260903）。有 digest 核 sha256，解开后核对 bundle id。
 # 5.0.0 = 开源首发。
 # 版本号是唯一能在「关于 AM·Note」里看出来跑的是新壳还是旧壳的地方，改了壳就要动它。
-NATIVE_VERSION = ("5.6.0", "30")
+NATIVE_VERSION = ("5.6.1", "31")
 MIN_MACOS = "12.0"
 
 

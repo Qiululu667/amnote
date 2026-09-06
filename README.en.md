@@ -51,6 +51,7 @@ AM·Note doesn't move anything. Pick a folder and you get a window as light as a
 **Read**
 
 - Both .md and .html open in tabs. Web pages in your vault render as they are — no conversion.
+- Vault HTML renders in a sandbox: scripts run and charts draw, but the page can't reach `localStorage`, `sessionStorage`, `cookie` or `indexedDB` (touching them throws a SecurityError), and it can't call the local server. Anything worth keeping goes in a .md — don't let the page remember it for you, because next time it won't.
 - The Start page has "Recently opened" plus a "Continue reading" card, so the note you were last in is right there.
 - Next to "My notes" on the Start page is a small dot that usually reads "Ready · 128 notes", and "Indexing…" while a scan is running. There's no status bar at the bottom of the window any more.
 - Click the ★ on a card to pin it; everything you pin lives behind the "Pinned" chip.

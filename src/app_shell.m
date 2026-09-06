@@ -1029,6 +1029,11 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
     BOOL            _onboarding;    // 本次启动刚选定/新建了库，下一次注入带 __AMN_ONBOARDING__
     WKUserContentController *_ucc;  // 拆 web 时要从它上面把 amn handler 摘掉
 
+    /// 最近一次**真实**用户输入的时刻（systemUptime 轴）。子框外链的那道闸靠它。
+    /// 0 = 这次启动还没有人碰过键鼠，即「什么都还没点」，一切子框外链都不放。
+    NSTimeInterval  _lastUserInput;
+    id              _inputMonitor;  // addLocalMonitorForEventsMatchingMask 的回执
+
     NSURLSession              *_updSession;
     NSURLSessionDownloadTask  *_updTask;
     NSWindow                  *_updWin;
@@ -1068,6 +1073,22 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
         amnDumpMenuTree(NSApp.mainMenu, [self buildStatusMenu]);
         exit(0);
     }
+    [self installUserInputMonitor];
+
+    // `-AMNOpenAtLaunch <库内相对路径>`：启动完直接把这一份打开。给验收用的——
+    // 命令行直接 exec 二进制（`…/MacOS/AM·Note -AMNVaultPath <库> -AMNOpenAtLaunch 某.md`）
+    // 就能落到一份文稿上，不用去点界面、也不用 open/amnote:// 去惊动用户那个常驻实例。
+    // arg 域的偏好是易失的：只在这一次启动里有，不写进持久 defaults，下次启动自己消失。
+    // 走的是双击 md / amnote:// 那同一条队列：库内相对路径 → AMN.openPath，
+    // 绝对路径 → AMN.openExternalPath（deliverOpen: 自己分），库内绝对路径不折成相对。
+    //
+    // 摆在 buildWindow **之前**是故意的：queueOpen: 见窗口已建好但没显示就会把它拉出来，
+    // 那会在门户加载好之前先闪一个空窗（设计约束 N-8 就是为了不出现这个）。放在这儿
+    // _win 还是 nil，它只往 _pendingOpens 里排一条，跟冷启动时 openURLs 早于
+    // didFinishLaunching 到达的情形一模一样，之后由 flushPending 在门户就绪时投递。
+    NSString *at = [NSUserDefaults.standardUserDefaults stringForKey:@"AMNOpenAtLaunch"];
+    if (at.length) [self queueOpen:at];
+
     [self buildWindow];
     [self buildStatusItem];
     [self ensureVault];
@@ -1078,6 +1099,49 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
         [self showWindowIfNeeded];
     }];
     [self scheduleAutoUpdateCheck];
+}
+
+// MARK: 用户手势闸门
+//
+// 记「最近一次真实用户输入是什么时候」，只有一个用处：decidePolicyForNavigationAction:
+// 里判断一条**非主框**的外链到底是人点的，还是库内 .html 的脚本自己发起的。
+//
+// 为什么非要在壳这边记：WKNavigationAction 上那些看着像手势的字段全都不作数。
+//   · navigationType == LinkActivated 不可信——沙箱 iframe（allow-scripts）里
+//     `a.href='https://…'; a.click()` 报的就是 LinkActivated，跟真人点击在公开 API 上
+//     一模一样，isMainFrame 同为 NO。
+//   · buttonNumber / modifierFlags 也不可信——合成 MouseEvent 连按键位都能编
+//     （`dispatchEvent(new MouseEvent('click', {button: 0}))`）。
+// 能分开的只有一件事：合成事件是页面进程里凭空造的，**不产生 NSEvent**。真人按下鼠标
+// 或键盘才会有一条事件流进 AppKit。所以拿「刚刚有没有真的 NSEvent」当闸，脚本伪造不了。
+//
+// 键盘也算输入：Tab 挪焦点 + Enter 激活链接是正经的无障碍点法，漏了它等于把键盘用户挡在外面。
+//
+// 闸门是 1 秒。真人点击到 decidePolicy 之间只隔一次事件派发，1 秒远远够；而脚本要蹭这个
+// 窗口，就得赶在用户刚点过别处的一秒内发链接——蹭到也只是把这一条放过去，比常开强得多。
+- (void)installUserInputMonitor {
+    // 本地监视器：只看**发给本 app** 的事件，不需要辅助功能授权（全局监视器才要 TCC，
+    // 而且那会变成偷看别的 app）。handler 原样把事件返回，不改变任何既有的输入行为。
+    // 时间轴用 NSProcessInfo.systemUptime：单调、不受用户改系统时钟影响，而且只在
+    // Foundation 里——CACurrentMediaTime() 要连 QuartzCore，那个 framework 现在没链
+    // （build_app.py 只给了 AppKit + WebKit），为它多链一个不值。
+    if (_inputMonitor) return;
+    NSEventMask mask = NSEventMaskLeftMouseDown  | NSEventMaskLeftMouseUp |
+                       NSEventMaskRightMouseDown | NSEventMaskOtherMouseDown |
+                       NSEventMaskKeyDown;
+    __weak typeof(self) weakSelf = self;
+    _inputMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:mask
+                                                          handler:^NSEvent *(NSEvent *e) {
+        typeof(self) me = weakSelf;
+        if (me) me->_lastUserInput = NSProcessInfo.processInfo.systemUptime;
+        return e;
+    }];
+}
+
+/// 一秒之内有没有过真实键鼠输入。_lastUserInput 还是 0（这次启动没人碰过）时必然为 NO。
+- (BOOL)hasRecentUserInput {
+    if (_lastUserInput <= 0) return NO;
+    return (NSProcessInfo.processInfo.systemUptime - _lastUserInput) < 1.0;
 }
 
 /// 库根准备。**5.4 起不再弹「选择一个文件夹 / 退出」**：那个框一取消 app 就没了，
@@ -1287,6 +1351,11 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
     // 一个环。AppDelegate 本来就活到进程结束（gDelegate 强持有），不额外做弱代理。
     // 但关窗口要把这一整块拆掉，所以留个引用，detachWebView 里从它上面摘 handler——
     // 不要去读 _web.configuration，那是一份 copy，靠它摘是靠实现细节。
+    //
+    // 注意：handler 注册在 controller 上，WebKit 会把它注入这块 webview 的**每一个
+    // frame**，不只主框。库内 .html 现在在 iframe 里带 allow-scripts 跑，那份文档的
+    // 脚本同样能摸到 window.webkit.messageHandlers.amn。所以收件那头
+    // （didReceiveScriptMessage:）必须自己核 frameInfo.isMainFrame，只认主框。
     _ucc = cfg.userContentController;
     [_ucc addScriptMessageHandler:self name:@"amn"];
 
@@ -1896,6 +1965,19 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
       didReceiveScriptMessage:(WKScriptMessage *)message {
     if (![message.body isKindOfClass:NSDictionary.class]) return;
     NSDictionary *m = message.body;
+
+    // 只认主框。handler 是注册在 userContentController 上的，对这块 webview 的每一个
+    // frame 都可见；库内 .html 在门户里是沙箱 iframe，从 5.6.1 起带 allow-scripts
+    // （opaque origin），那份文档里的脚本照样能拿到 messageHandlers.amn。它们不是门户，
+    // 不该借壳去开外链、写剪贴板、弹原生分享/确认/菜单或建目录，一律在这里掐掉。
+    // 这一道必须排在所有分发之前，包括下面按 webview 分岔的 solo 分支——独立文稿窗口和
+    // 浏览器辅窗都是各自的主框在发件，不受影响。
+    //
+    // 写成 `!frameInfo || !isMainFrame` 而不是 `frameInfo && !isMainFrame`：SDK 里
+    // frameInfo 标了 nonnull，这条分支实际到不了，但安全闸一律 fail-closed——问不出来源
+    // 就当它不是主框。下面四个面板 delegate 的守卫同理。
+    if (!message.frameInfo || !message.frameInfo.isMainFrame) return;
+
     NSString *type = [m[@"type"] isKindOfClass:NSString.class] ? m[@"type"] : nil;
     if (!type.length) return;
 
@@ -3246,14 +3328,42 @@ static BOOL isShellMainURL(NSURL *u) {
                     decisionHandler:(void (^)(WKNavigationActionPolicy))done {
     NSURL *u = act.request.URL;
     if (!u) { done(WKNavigationActionPolicyAllow); return; }
+
+    // 判定提到外链分支之前用，定义没变：targetFrame 为 nil = 这条要开一块新框
+    // （target=_blank / window.open），没有目标框可问，仍当主框待遇——辅窗和独立文稿窗
+    // 就是这么开出来的（放行后走 createWebViewWithConfiguration:）。库内 .html 的沙箱
+    // 只给了 allow-scripts、没给 allow-popups，开新窗那条它走不到。
+    BOOL mainFrame = !act.targetFrame || act.targetFrame.isMainFrame;
+
     if (!isLocalURL(u)) {
-        // 库外的链接不在门户里开，交给系统默认浏览器
-        [NSWorkspace.sharedWorkspace openURL:u];
+        // 库外的链接不在门户里开，交给系统默认浏览器。
+        //
+        // 但配开浏览器的只有两种：门户自己（主框），以及用户**真点了一下**库内 html 里的
+        // 外链。库内 .html 从 5.6.1 起在沙箱 iframe 里带脚本跑，那份文档的脚本一句
+        // location.href='https://…' 就是一次非主框导航；不设闸的话，一份笔记光是被看一眼
+        // 就能把系统浏览器叫起来，还能顺着 URL 把内容带出去。
+        //
+        // 闸不能设在 navigationType 上：沙箱子框里 `a.href=…; a.click()` 报的**就是**
+        // LinkActivated，isMainFrame 同为 NO，跟真人点击在公开 API 上分不开；buttonNumber
+        // 也白搭，合成 MouseEvent 连按键位都能编。唯一伪造不了的是 NSEvent——脚本造的事件
+        // 只活在页面进程里，进不了 AppKit 的事件流。所以子框这条另外要求「一秒内有过真实
+        // 键鼠输入」（见 installUserInputMonitor；Tab+Enter 那种键盘点法也算）。
+        //
+        // 剩下的外泄面是有意留着的：`<img src=https://…>`、CSS、fetch 这些子资源根本不进
+        // 导航策略，壳这一层看不见也管不着，何况现在的 CSP 没有 img-src / connect-src。
+        // 那个口子要堵得在服务端的 CSP 上堵，不在壳里——这里只负责「不把系统浏览器交出去」。
+        BOOL allowExternal = mainFrame ||
+            (act.navigationType == WKNavigationTypeLinkActivated && [self hasRecentUserInput]);
+        if (allowExternal) {
+            if (!mainFrame) NSLog(@"[amn] 子框外链 交给系统浏览器：%@", u.absoluteString);
+            [NSWorkspace.sharedWorkspace openURL:u];
+        } else if (!mainFrame) {
+            NSLog(@"[amn] 子框外链 已拦（无用户手势）：%@", u.absoluteString);
+        }
         done(WKNavigationActionPolicyCancel);
         return;
     }
     // iframe 里的库文件（HTML 阅读器）必须放行；顶栏导航到同一份则拦掉。
-    BOOL mainFrame = !act.targetFrame || act.targetFrame.isMainFrame;
     if (!mainFrame) { done(WKNavigationActionPolicyAllow); return; }
     if (isShellMainURL(u)) { done(WKNavigationActionPolicyAllow); return; }
     done(WKNavigationActionPolicyCancel);
@@ -3303,6 +3413,14 @@ static BOOL isBenignNavError(NSError *e) {
     NSURL *u = act.request.URL;
     if ([self isSoloURL:u]) return [self makeSoloWebWithConfiguration:cfg features:feat];
     if ([self isAuxURL:u])  return [self makeBrowserWebWithConfiguration:cfg features:feat];
+    // 兜底这条会把地址交给系统浏览器，所以跟导航策略里那条一样只认主框。开 solo / 辅窗的
+    // 是门户自己的 window.open，sourceFrame 就是主框，不受影响。库内 .html 的沙箱眼下没给
+    // allow-popups，子框走不到这儿；但这道闸是给「哪天真放开了 popups」留的，别让它静默失守。
+    // 非主框直接返回 nil＝这次 window.open 什么都不发生。
+    if (!act.sourceFrame || !act.sourceFrame.isMainFrame) {
+        NSLog(@"[amn] 子框外链 已拦（新窗口）：%@", u.absoluteString);
+        return nil;
+    }
     if (u) [NSWorkspace.sharedWorkspace openURL:u];
     return nil;
 }
@@ -3498,6 +3616,12 @@ static BOOL isBenignNavError(NSError *e) {
     runJavaScriptAlertPanelWithMessage:(NSString *)msg
                       initiatedByFrame:(WKFrameInfo *)frame
                      completionHandler:(void (^)(void))done {
+    // 只有主框配弹原生框。库内 .html 在沙箱 iframe 里没拿到 allow-modals，alert() 现在
+    // 连代理都到不了；这里是第二道闸，免得哪天 template.html 放开 modals，alert /
+    // confirm / prompt 三条同时开门。非主框静默丢掉，但**必须叫 completionHandler**：
+    // 不叫的话 WebKit 一直等着，那个 frame 之后再弹也没反应。（独立文稿窗、浏览器辅窗
+    // 各是自己的主框在弹，不受这条影响。）
+    if (!frame || !frame.isMainFrame) { done(); return; }
     NSAlert *a = [NSAlert new];
     a.messageText = @"AM·Note";
     a.informativeText = msg;
@@ -3515,12 +3639,18 @@ static BOOL isBenignNavError(NSError *e) {
 ///     第 1 段固定 AMN2，用来认这个协议；第 4 段两颗按钮用半角竖线分开，第一颗是确认
 ///     （返回 YES）；第 5 段是 "0" 表示确认那颗要标红，空串表示不标。正文可以是空串。
 ///
-/// 二、认不出 AMN2 前缀的，按老样子弹「AM·Note ／ 好 ／ 取消」。老门户、iframe 里的
-///     页面、以及门户没来得及改的调用点还靠这条，删不得。
+/// 二、认不出 AMN2 前缀的，按老样子弹「AM·Note ／ 好 ／ 取消」。老门户、以及门户里
+///     还没改成结构化的调用点靠这条，删不得。（iframe 里的库内页面 5.6.1 起不在此列：
+///     沙箱没给 allow-modals，它们的 confirm() 到不了代理；下面那道非主框守卫再兜一层。）
 - (void)webView:(WKWebView *)w
     runJavaScriptConfirmPanelWithMessage:(NSString *)msg
                         initiatedByFrame:(WKFrameInfo *)frame
                        completionHandler:(void (^)(BOOL))done {
+    // 只认主框，这条尤其漏不得：它认上面那套 AMN2\x01… 结构化协议，非主框要是喂得进来，
+    // 一份库内 .html 就能伪造出标题、正文、按钮文案全自定的原生 sheet，看着完全像门户
+    // 自己在问话。眼下沙箱没给 allow-modals 已经挡在代理之前，这里是第二道闸。
+    // 非主框一律当「取消」回 NO——但**必须回**，不叫 completionHandler 会把那个 frame 挂住。
+    if (!frame || !frame.isMainFrame) { done(NO); return; }
     NSString *sep = [NSString stringWithFormat:@"%C", (unichar)0x01];
     if ([msg hasPrefix:[@"AMN2" stringByAppendingString:sep]]) {
         NSArray<NSString *> *p = [msg componentsSeparatedByString:sep];
@@ -3567,6 +3697,9 @@ static BOOL isBenignNavError(NSError *e) {
                               defaultText:(NSString *)def
                          initiatedByFrame:(WKFrameInfo *)frame
                         completionHandler:(void (^)(NSString *))done {
+    // 同 alert：沙箱没给 allow-modals，prompt() 现在也到不了代理，这里是第二道闸。
+    // 非主框回 nil＝当用户按了取消，**必须回**，不然那个 frame 会挂在这儿。
+    if (!frame || !frame.isMainFrame) { done(nil); return; }
     NSAlert *a = [NSAlert new];
     a.messageText = @"AM·Note";
     a.informativeText = prompt;
@@ -3594,6 +3727,10 @@ static BOOL isBenignNavError(NSError *e) {
     runOpenPanelWithParameters:(WKOpenPanelParameters *)parameters
               initiatedByFrame:(WKFrameInfo *)frame
              completionHandler:(void (^)(NSArray<NSURL *> *))done {
+    // 这条**不归沙箱管**：allow-scripts 的 iframe 里一个 <input type=file> 就能把系统
+    // 选文件面板贴到主窗口上，看着像门户自己在要你的文件。配开这个面板的只有主框
+    // （5.6 设置里「个人」那页换头像）。非主框回 nil＝取消，照样必须回（见下面那段）。
+    if (!frame || !frame.isMainFrame) { done(nil); return; }
     NSOpenPanel *panel = [NSOpenPanel openPanel];
     panel.allowsMultipleSelection = parameters.allowsMultipleSelection;
     panel.canChooseFiles = YES;
