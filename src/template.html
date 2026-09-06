@@ -37,6 +37,9 @@
    去分割线去描边、表格 B、篇内目录短横线轨道、文档历史折叠。
    ═══════════════════════════════════════════════════════════════ */
 
+:root:lang(zh-HK){
+  --ui:-apple-system,BlinkMacSystemFont,'PingFang HK','Hiragino Sans CNS','PingFang SC',sans-serif;
+}
 :root{
   /* 浏览器自己画的那些东西（滑杆、文本光标、滚动条）跟着主题走。
      不声明的话它们恒为浅色，深色主题下在深底上一片惨白。 */
@@ -115,6 +118,10 @@
   /* ── 字体栈 ── */
   --ui:-apple-system,BlinkMacSystemFont,'PingFang SC','Hiragino Sans GB',sans-serif;
   --mono:ui-monospace,SFMono-Regular,"SF Mono",Menlo,monospace;
+  /* 界面文案的占位串：bootI18n() 按当前语言写进来（CSS content: 里不能调 JS）。 */
+  --i18n-ph-h1:"\65E0\6807\9898";
+  --i18n-ph-p:"\5199\70B9\4EC0\4E48\2026";
+  --i18n-ph-src:"\6539\6E90\7801";
 
   /* ── 骨架尺寸 ── */
   --sbw:224px;    /* 边栏宽，可拖，存 localStorage */
@@ -1174,11 +1181,26 @@ body.solo .pane.html .htmlframe{top:0}
 .pane.edit .md p[data-ph]::before{
   position:absolute;left:0;top:0;right:0;
   color:var(--t4);letter-spacing:0;pointer-events:none;user-select:none}
-.pane.edit .md h1[data-ph]::before{content:"无标题";font-weight:500}
-.pane.edit .md p[data-ph]::before{content:"写点什么…";font-weight:400}
+.pane.edit .md h1[data-ph]::before{content:var(--i18n-ph-h1);font-weight:500}
+.pane.edit .md p[data-ph]::before{content:var(--i18n-ph-p);font-weight:400}
 .f-sans{font-family:var(--ui)}
 .f-serif{font-family:ui-serif,"New York",Georgia,"Songti SC","Noto Serif CJK SC",serif}
 .f-mono{font-family:var(--mono)}
+/* 新细明体：本机装了就直接用（两条 local()），没装的话由门户服务把 Office 里那份
+   mingliu.ttc 抽出来当 web font 借出来；服务也拿不到时整条落到宋體-繁那一档。
+   swap ＝ 22 MB 的字体在路上时先拿回退字面把字排出来，不留白屏。 */
+@font-face{font-family:"AMN PMingLiU";src:local("PMingLiU"),local("新細明體"),
+  url("/__font/pmingliu") format("truetype");font-display:swap}
+.f-hk{font-family:"PingFang HK","PingFang SC",-apple-system,BlinkMacSystemFont,sans-serif}
+.f-ming{font-family:"AMN PMingLiU","PMingLiU","新細明體","MingLiU_HKSCS","MingLiU","Songti TC","LiSong Pro","Apple LiSung",serif}
+/* 苹方-港有 100–600 六个真字面（没有 700）。正文字重由 .md 上的内联 --rw 传进来——
+   applyPref 会整条重写 class，内联 style 不受影响，所以字重走属性不走类名。
+   全局 font-synthesis:none ＝ 没有假粗体，加粗只能往上挑一个真字面：
+   正文 +200 封顶 600，四级以下标题 +100。--rw 到 600 时粗体与正文同重，是字体的上限。 */
+.md.f-hk{font-weight:var(--rw,400)}
+.md.f-hk strong,.md.f-hk b,.md.f-hk th,
+.md.f-hk h1,.md.f-hk h2,.md.f-hk h3{font-weight:min(600, calc(var(--rw,400) + 200))}
+.md.f-hk h4,.md.f-hk h5,.md.f-hk h6{font-weight:min(600, calc(var(--rw,400) + 100))}
 /* 搜索命中点开：跳到命中段并闪一下 */
 @keyframes hitflash{0%,70%{background:var(--hl)}100%{background:transparent}}
 .md .flash{animation:hitflash 1.4s ease-out 1;border-radius:6px}
@@ -1196,7 +1218,7 @@ body.solo .pane.html .htmlframe{top:0}
 .pane.edit .md>[data-lock]{position:relative;background:var(--field);border-radius:6px;
   box-shadow:inset 2px 0 0 var(--t3);
   -webkit-user-modify:read-only;user-select:text}
-.pane.edit .md>[data-lock]::after{content:"改源码";position:absolute;top:2px;right:2px;
+.pane.edit .md>[data-lock]::after{content:var(--i18n-ph-src);position:absolute;top:2px;right:2px;
   font-size:11px;color:var(--t2);background:var(--pop);box-shadow:var(--popshadow);
   border-radius:6px;padding:1px 7px;cursor:pointer;opacity:0;transition:opacity .15s ease}
 .pane.edit .md>[data-lock]:hover::after{opacity:1}
@@ -1295,6 +1317,12 @@ body.solo .pane.html .htmlframe{top:0}
   font-size:10px;color:var(--t2);white-space:nowrap}
 .setting .filters button:hover{color:var(--t1)}
 .setting .filters button.on{background:var(--pop);color:var(--t1);box-shadow:var(--segshadow)}
+/* 260px 的浮层里五种字体排不下一行，换行成 3＋2；字重六档一行放得下。 */
+.setting .filters.wrap{flex-wrap:wrap}
+.setting .filters.wrap button{flex:1 1 28%}
+.setting .filters.fw button{font-family:"PingFang HK","PingFang SC",var(--ui)}
+/* 没装新细明体那一句。260px 的浮层里跟着字体那一行走，比设置面板的 .hint 再小一号。 */
+.setting .pop-hint{margin:8px 0 0;font-size:10px;line-height:1.5;color:var(--t3)}
 .setting input[type=range]{width:100%;accent-color:var(--accent)}
 .setting .dt-btn{width:100%}
 @keyframes arrive{from{opacity:0;transform:translateY(-6px) scale(.985)}to{opacity:1;transform:none}}
@@ -1428,17 +1456,25 @@ body.focus-mode.peek .doc-toolbar{transform:none;opacity:1;pointer-events:auto;
 /* 类名不能叫 .split：三栏那两条分隔条已经占着这个名字（width:0）。 */
 #viewCfg .mw.half{clip-path:polygon(0 0,64% 0,36% 100%,0 100%)}
 
-/* 字体预览卡：样句用真的字体栈渲染，所见即所得 */
-#viewCfg .fcards{display:flex;gap:8px}
-#viewCfg .fcard{flex:1;min-width:0;text-align:left;padding:10px 11px 12px;border-radius:var(--r-md);
+/* 字体预览卡：样句用真的字体栈渲染，所见即所得。
+   五张卡在 420px 的控件区里排一行会挤成条，所以摆成 3＋2：六列网格，
+   前三张各占两列，后两张各占三列，两行都是满的，不留半截空档。 */
+#viewCfg .fcards{display:grid;grid-template-columns:repeat(6,1fr);gap:8px}
+#viewCfg .fcard{grid-column:span 2;min-width:0;text-align:left;padding:10px 11px 12px;border-radius:var(--r-md);
   background:var(--card-face);box-shadow:var(--el-1);
   transition:box-shadow var(--d-base) var(--ease-out),transform var(--d-base) var(--ease-out)}
 #viewCfg .fcard:hover{transform:translateY(-1px);box-shadow:var(--el-2)}
 #viewCfg .fcard.on{box-shadow:0 0 0 2px var(--accent),var(--el-1)}
 #viewCfg .fcard .nm{display:block;font-family:var(--ui);font-size:11px;color:var(--t2);margin-bottom:6px}
 #viewCfg .fcard.on .nm{color:var(--accent);font-weight:500}
+#viewCfg .fcard.wide{grid-column:span 3}
 #viewCfg .fcard .sm{display:block;font-size:12px;line-height:1.62;color:var(--t1)}
 #viewCfg .fcard.f-mono .sm{font-size:11px;letter-spacing:-.01em}
+/* 字重那一档：每颗按钮用它自己那一档字重、拿苹方-港画出来，按下去就是正文的样子。
+   字重写在 style 上（内联压得过 .seg button.on 的 500）。 */
+#viewCfg .seg[data-k="fw"] button{font-family:"PingFang HK","PingFang SC",var(--ui)}
+/* .frow 是 display:flex，压得过浏览器自带的 [hidden]，得自己写一条。 */
+#viewCfg .frow[hidden]{display:none}
 
 /* 字号滑杆：轨道自己画，左半段是强调色 */
 #viewCfg .srow{display:flex;align-items:center;gap:14px;height:26px}
@@ -1569,6 +1605,15 @@ body.focus-mode.peek .doc-toolbar{transform:none;opacity:1;pointer-events:auto;
   margin-top:24px;font-size:12px}
 #viewCfg .about .links i{color:var(--t4);font-style:normal}
 #viewCfg .about .fine{margin:16px 0 0;font-size:11px;color:var(--t4)}
+
+/* 英文的词比中文长：左标签 58px（照四个汉字量的）装不下 Line spacing，只读行的
+   64px 装不下 Access token，说明句一行也说不完。这三条只在 :lang(en) 下生效，
+   简体／繁體两版的排版一个像素都不动。左标签放到 90px 之后控件区还剩 388px，
+   主题那三张 120px 的卡（共 384px）仍排得下一行。 */
+:root:lang(en) #viewCfg .flab{width:90px}
+:root:lang(en) #viewCfg .kvrow b{width:110px}
+:root:lang(en) #viewCfg .lblrow .ih{white-space:normal;overflow:visible;
+  text-overflow:clip;line-height:1.5}
 
 /* ═══ 新用户引导 ═══════════════════════════
    壳里才出现：整窗 --win 底，中间一张 600px 卡片，背后什么都不留。
@@ -1742,9 +1787,39 @@ body.solo #chrome{display:none!important}
   .doc-layout.ol-on,.doc-layout.ol-on.ol-3{grid-template-columns:minmax(0,1fr);padding-left:0;padding-right:0}
   .document{max-width:none}
   .md{max-width:none}
+  /* 苹方-港的 100/200 印在纸上会断线，打印时把正文兜到 300，粗体跟着抬同样一档。 */
+  .md.f-hk{font-weight:max(300, var(--rw,400))}
+  .md.f-hk strong,.md.f-hk b,.md.f-hk th,
+  .md.f-hk h1,.md.f-hk h2,.md.f-hk h3{font-weight:min(600, calc(max(300, var(--rw,400)) + 200))}
+  .md.f-hk h4,.md.f-hk h5,.md.f-hk h6{font-weight:min(600, calc(max(300, var(--rw,400)) + 100))}
   .histbox>.tw{display:block!important}
 }
 </style>
+<script>
+/* 语言要在首屏之前定下来：<html lang> 决定 :lang(zh-HK) 那条界面字体规则。
+   解析顺序＝壳注入 → tp-pref.lang（非 auto）→ navigator.language。
+   主脚本读 __AMN_LANG_RESOLVED__，两边不会算出两个答案。 */
+(function(){
+  var s=String(window.__AMN_LANG__||'').trim(), L;
+  if(s==='zh-Hans'||s==='zh-HK'||s==='en') L=s;
+  else{
+    var p='auto';
+    try{ p=(JSON.parse(localStorage.getItem('tp-pref')||'{}').lang)||'auto'; }catch(e){}
+    if(p==='zh-Hans'||p==='zh-HK'||p==='en') L=p;
+    else{
+      var n=String(navigator.language||'').toLowerCase();
+      L = (n==='zh'||n==='zh-cn'||n==='zh-sg'||n.indexOf('zh-hans')===0) ? 'zh-Hans'
+        : (n.indexOf('zh-hant')===0||n.indexOf('zh-hk')===0||n.indexOf('zh-tw')===0
+           ||n.indexOf('zh-mo')===0||n.indexOf('yue')===0) ? 'zh-HK' : 'en';
+    }
+  }
+  window.__AMN_LANG_RESOLVED__=L;
+  document.documentElement.lang = L==='zh-HK' ? 'zh-HK' : (L==='en' ? 'en' : 'zh-CN');
+})();
+</script>
+<!-- 界面词典。两份都加载，几十 KB，省掉一次按语言分支；任一份出错都不影响启动。 -->
+<script src="/__i18n/en.js"></script>
+<script src="/__i18n/zh-HK.js"></script>
 </head>
 <body>
 
@@ -1889,6 +1964,56 @@ const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 
+/* ═══ 界面语言 ═══════════════════════════
+   键＝简体中文源串本身（含 {占位符}）。译文在 /__i18n/en.js、/__i18n/zh-HK.js 里，
+   <head> 里已经阻塞加载完，这里只查表。简体中文查不到就回落到键，所以它不需要词典。
+
+   语言只在启动时定一次。改语言走 AMN.setLang()：先落盘，再让壳重载（浏览器里自己
+   location.reload()）——运行时热切语言要重画每一处，不值当。 */
+const LANGS = ['zh-Hans','zh-HK','en'];
+const LANG = (function(){
+  const l = window.__AMN_LANG_RESOLVED__;
+  if(LANGS.indexOf(l)>=0) return l;
+  const inj = window.__AMN_LANG__;
+  if(LANGS.indexOf(inj)>=0) return inj;
+  let pref='auto';
+  try{ pref=(JSON.parse(localStorage.getItem('tp-pref')||'{}').lang)||'auto'; }catch(e){}
+  if(LANGS.indexOf(pref)>=0) return pref;
+  const n=String(navigator.language||'').toLowerCase();
+  if(n==='zh'||n==='zh-cn'||n==='zh-sg'||n.indexOf('zh-hans')===0) return 'zh-Hans';
+  if(n.indexOf('zh-hant')===0||n.indexOf('zh-hk')===0||n.indexOf('zh-tw')===0
+     ||n.indexOf('zh-mo')===0||n.indexOf('yue')===0) return 'zh-HK';
+  return 'en';
+})();
+document.documentElement.lang = LANG==='zh-HK' ? 'zh-HK' : (LANG==='en' ? 'en' : 'zh-CN');
+const I18N = (window.AMN_I18N && window.AMN_I18N[LANG]) || null;
+window.__i18nMissing = new Set();
+/* t('键') / t('有 {n} 篇', {n:3})。值可以是字符串，也可以是 {one, other}（按 n===1 挑）。
+   查不到＝回落到键本身，并去掉 ##语境 后缀。 */
+function t(key, params){
+  let v = I18N ? I18N[key] : undefined;
+  if(v===undefined || v===null){
+    if(I18N) window.__i18nMissing.add(key);
+    v = String(key==null?'':key).replace(/##.*$/, '');
+  }
+  if(v && typeof v==='object') v = (params && +params.n===1) ? (v.one!=null?v.one:v.other) : (v.other!=null?v.other:v.one);
+  v = String(v==null?'':v);
+  if(params) v = v.replace(/\{(\w+)\}/g, (m,k)=> params[k]==null ? m : String(params[k]));
+  return v;
+}
+/* 文件里到处有叫 t 的局部变量（标签对象、一段文本、一个时间戳），会把 t() 挡住。
+   所以页面里一律调 TR()——同一个函数，换一个不会撞车的名字。t 这个名字留着，
+   壳／别的模块／控制台里照样能用。 */
+const TR = t;
+/* 取键标记：这一串要先原样留着（拿去比较、当键、或者晚一点才显示），
+   显示的时候再 TR() 一次。运行时它什么都不做，只是让校验脚本认得出这是个键。 */
+const K = s => s;
+/* 「标签 ＋ 快捷键」。默认拿普通空格隔开（工具条气泡、浮条按钮历来如此）；
+   只有文档头那几颗（大纲／收起大纲／在访达中显示）从来用的是全角空格，
+   第三个参数为真才走宽的那一版——而且全角只在简体里有，别的语言一律普通空格。 */
+const KBDSEP = LANG==='zh-Hans' ? '　' : ' ';
+const withKbd = (label, kbd, wide) => kbd ? label + (wide ? KBDSEP : ' ') + kbd : label;
+
 /* ═══ 符号 ═══════════════════════════════
    界面原来一个图标都没有，全靠文字。这里是一套 24×24、描边 1.6 的内联 SVG，
    跟 SF Symbols 同一种视觉语言（自己画的，不是苹果的路径数据）。
@@ -1929,12 +2054,12 @@ function post(o){
    浏览器里退回普通 confirm。 */
 const ASEP=String.fromCharCode(1);
 function ask(title, body, ok, cancel, destructive){
-  ok=ok||'好'; cancel=cancel||'取消';
+  ok=ok||TR('好'); cancel=cancel||TR('取消');
   if(SHELL) return confirm(['AMN2',title,body||'',ok+'|'+cancel,destructive?'0':''].join(ASEP));
   return confirm(title + (body?'\n\n'+body:''));
 }
 function tell(title, body){
-  if(SHELL){ confirm(['AMN2',title,body||'','好|','' ].join(ASEP)); return; }
+  if(SHELL){ confirm(['AMN2',title,body||'',TR('好')+'|','' ].join(ASEP)); return; }
   alert(title + (body?'\n\n'+body:''));
 }
 
@@ -1947,7 +2072,7 @@ const TOKEN_PH = '__AMN' + '_TOKEN__';
 const TOKEN = (document.querySelector('meta[name="amn-token"]') || {}).content || '';
 const TOKEN_OK = !!TOKEN && TOKEN !== TOKEN_PH;
 function hdrs(extra){
-  const h = Object.assign({'Content-Type':'application/json'}, extra||{});
+  const h = Object.assign({'Content-Type':'application/json', 'X-AMN-Lang': LANG}, extra||{});
   if(TOKEN_OK) h['X-AMN-Token'] = TOKEN;
   return h;
 }
@@ -1960,6 +2085,50 @@ function bnr(id, on){
   document.body.classList.toggle('bnr-on', !!n);
   // 三条同时挂出来的时候（升级 ＋ 离线），标签条要按实际条数往下让
   document.documentElement.style.setProperty('--bnr-h', (n*33)+'px');
+}
+
+/* 写死在 <body> 里的那些字。键＝trim 并把连续空白压成一个空格之后的原文；
+   「标签 ＋ 快捷键」（后退 ⌘[、关闭 Esc）只把标签部分当键，快捷键原样接回去。
+   alt="AM·Note"（没有中日韩字）和空属性一律不动。 */
+const I18N_ATTRS = ['title','placeholder','aria-label','alt'];
+const KBD_TAIL = /^([\s\S]*?)[\s　]+((?:[⌘⌥⇧⌃][^\s　]*)|Esc)$/;
+function tPhrase(str){
+  const m = KBD_TAIL.exec(str);
+  if(m && CJK.test(m[1])) return withKbd(TR(m[1]), m[2]);
+  return TR(str);
+}
+function bootI18n(){
+  /* CSS 的 content: 只认字面量，翻不了；先把三条占位写进自定义属性。 */
+  const css = document.documentElement.style;
+  css.setProperty('--i18n-ph-h1', JSON.stringify(TR('无标题')));
+  css.setProperty('--i18n-ph-p', JSON.stringify(TR('写点什么…')));
+  css.setProperty('--i18n-ph-src', JSON.stringify(TR('改源码')));
+  if(LANG==='zh-Hans') return;                 // 源语言：markup 本来就是对的
+  const w=document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+  const jobs=[]; let n;
+  while((n=w.nextNode())){
+    const tag=(n.parentNode && n.parentNode.tagName)||'';
+    if(tag==='SCRIPT'||tag==='STYLE') continue;
+    if(!CJK.test(n.nodeValue||'')) continue;
+    jobs.push(n);
+  }
+  jobs.forEach(node=>{
+    const m=/^(\s*)([\s\S]*?)(\s*)$/.exec(node.nodeValue);
+    const src=m[2].replace(/\s+/g,' ');
+    if(!src) return;
+    const out=tPhrase(src);
+    if(out!==src) node.nodeValue=m[1]+out+m[3];
+  });
+  document.querySelectorAll('*').forEach(el=>{
+    I18N_ATTRS.forEach(a=>{
+      const v=el.getAttribute(a);
+      if(!v) return;
+      const src=v.replace(/\s+/g,' ').trim();
+      if(!src || !CJK.test(src)) return;
+      const out=tPhrase(src);
+      if(out!==src) el.setAttribute(a, out);
+    });
+  });
 }
 
 /* ═══ 会话状态 ═══════════════════════════
@@ -2053,8 +2222,8 @@ async function openExternal(rel){
   try{
     const r=await (await fetch('/__external',{method:'POST',
       headers:hdrs(), body:JSON.stringify({路径:rel})})).json();
-    if(!r.ok) tell('打不开', r.错误||'');
-  }catch(e){ tell('打不开','服务没应答'); }
+    if(!r.ok) tell(TR('打不开'), r.错误||'');
+  }catch(e){ tell(TR('打不开'), TR('服务没应答')); }
 }
 /* 在访达里打开库根。服务端现在还要求非空路径（Phase B 放宽 /__reveal），
    被拒了就退回「当前这份文档」那条老路，两条都不行才出一句提示。 */
@@ -2068,15 +2237,15 @@ async function revealVault(){
   }
   const t=(typeof active==='function') ? active() : null;
   if(t && t.path && !t.ext){ revealPath(t.path); return; }
-  flash('这个版本还打不开库根，先从访达里自己进去');
+  flash(TR('这个版本还打不开库根，先从访达里自己进去'));
 }
 async function revealPath(path){
   if(!path || !IS_HTTP) return;
   try{
     const r=await (await fetch('/__reveal',{method:'POST',
       headers:hdrs(), body:JSON.stringify({路径:path})})).json();
-    if(!r.ok) flash(r.错误||'打不开访达');
-  }catch(e){ flash('服务没应答'); }
+    if(!r.ok) flash(r.错误||TR('打不开访达'));
+  }catch(e){ flash(TR('服务没应答')); }
 }
 /* 所有「拷到剪贴板」都走这一条：壳里 NSPasteboard，浏览器里 navigator.clipboard。
    返回 Promise<boolean>——浏览器那条在没有用户手势时会被拒，不能一律报「已拷贝」。 */
@@ -2098,10 +2267,10 @@ function clipPath(rel, opt){
   let txt=opt.text||'';
   if(!txt){
     if(!rel) return;
-    if(!LIBROOT){ flash('还没连上服务'); return; }
+    if(!LIBROOT){ flash(TR('还没连上服务')); return; }
     txt='file://'+LIBROOT+'/'+rel;
   }
-  copyText(txt).then(ok=>flash(ok ? (opt.msg||'路径已拷贝') : '拷不了'));
+  copyText(txt).then(ok=>flash(ok ? (opt.msg||TR('路径已拷贝')) : TR('拷不了')));
 }
 /* 一句话的回执，两秒多自己消失。窗口底部居中一张小卡片。
    持久的事（断线、升级、冲突）走顶部横幅 bnr()，不走这里。
@@ -2142,8 +2311,8 @@ function flash(t){ notify(t); }
 /* ── 阅读版式 ─────────────────────────────
    默认 17 / 1.8 / 690。每一代默认值变了就加一条 prefsGen：只把「值还停在上一代
    默认」的人迁过来，自己调过的一律不动。 */
-const DEF_PREF = {font:'f-sans', fs:17, lh:180, w:690, theme:'auto'};
-const RESETTABLE = ['font','fs','lh','w'];
+const DEF_PREF = {font:'f-sans', fw:400, fs:17, lh:180, w:690, theme:'auto', lang:'auto'};
+const RESETTABLE = ['font','fw','fs','lh','w'];
 const PREF = Object.assign({}, DEF_PREF,
   (()=>{ try{ return JSON.parse(localStorage.getItem('tp-pref')||'{}') }catch(e){ return {} } })());
 const savePref = () => { try{ localStorage.setItem('tp-pref', JSON.stringify(PREF)); }catch(e){} };
@@ -2169,8 +2338,21 @@ const savePref = () => { try{ localStorage.setItem('tp-pref', JSON.stringify(PRE
     if(+PREF.lh===195) PREF.lh=180;
     PREF.prefsGen = 4;
   }
+  // 界面语言：只认这四个值，别的（老档案、手改坏的）一律回「跟随系统」
+  if(['auto','zh-Hans','zh-HK','en'].indexOf(PREF.lang)<0) PREF.lang='auto';
+  // 阅读字体与字重同理：值直接当 class 名和 font-weight 用，脏值必须挡在这里。
+  // 这两项都是新加的，老档案里本来就没有，所以不用为它们加 prefsGen。
+  if(['f-sans','f-serif','f-mono','f-hk','f-ming'].indexOf(PREF.font)<0) PREF.font=DEF_PREF.font;
+  PREF.fw = [100,200,300,400,500,600].indexOf(+PREF.fw)<0 ? DEF_PREF.fw : +PREF.fw;
   savePref();
 })();
+
+/* 有壳的时候，语言偏好的正主是壳（NSUserDefaults["AMNLanguage"]），不是 localStorage：
+   -AMNLanguage en 起动、清过站点数据、换过机器，都会让这边落后于壳。启动时抄一份过来，
+   设置里那一行才亮在真的偏好上，setLang 的「没变就不用切」也才判得准。 */
+const SHELL_LANG_PREF = (SHELL && ['auto','zh-Hans','zh-HK','en'].indexOf(window.__AMN_LANG_PREF__)>=0)
+  ? window.__AMN_LANG_PREF__ : null;
+if(SHELL_LANG_PREF && PREF.lang!==SHELL_LANG_PREF){ PREF.lang=SHELL_LANG_PREF; savePref(); }
 
 function applyPref(){
   // 每个标签一份正文，设置对所有已开的标签一起生效
@@ -2178,6 +2360,8 @@ function applyPref(){
     const id=d.id;
     d.className = 'md ' + PREF.font;
     if(id) d.id=id;
+    // className 是整条重写的，字重只能走内联属性；只有 .f-hk 认它，别的字体无害。
+    d.style.setProperty('--rw', String(PREF.fw));
     d.style.fontSize = PREF.fs+'px';
     d.style.lineHeight = (PREF.lh/100).toFixed(2);
     d.style.maxWidth = PREF.w+'px';
@@ -2209,6 +2393,9 @@ function syncPrefControls(){
     const k=b.parentElement.dataset.k;
     b.classList.toggle('on', String(PREF[k])===String(b.dataset.v));
   });
+  // 字重只对苹方-港有意义（别的字体没有六个真字面），整行跟着字体走。
+  const fwr=$('#cfgFwRow'); if(fwr) fwr.hidden = PREF.font!=='f-hk';
+  const mh=$('#cfgMingHint'); if(mh) mh.hidden = !mingMissing();
   const tc=$('#cfgToc');
   if(tc){
     const on=ST.toc!==false;
@@ -2240,6 +2427,54 @@ function syncPopControls(){
   });
 }
 function setPref(k, v){ PREF[k]=v; savePref(); applyPref(); }
+/* 本机／Office 里有没有新细明体，问服务端一次就够了（整段会话缓存住）。
+   问不到（老服务、断网）＝当作「不知道」，不报没装——宁可不说，也别说错。
+   设置页第一次画的时候才发这一发，画面不等它。 */
+let FONTS_INFO = null;
+let fontsProbe = null;
+function probeFonts(){
+  if(FONTS_INFO) return Promise.resolve(FONTS_INFO);
+  if(!fontsProbe){
+    fontsProbe = fetch('/__fonts')
+      .then(r=> r.ok ? r.json() : null)
+      .then(j=>{ FONTS_INFO = (j && typeof j==='object') ? j : {}; return FONTS_INFO; })
+      .catch(()=>{ FONTS_INFO = {}; return FONTS_INFO; });
+  }
+  return fontsProbe;
+}
+const mingMissing = () =>
+  !!(FONTS_INFO && FONTS_INFO.pmingliu && FONTS_INFO.pmingliu.available===false);
+/* 换界面语言。壳和网页要一起换，所以只走「落盘 → 整页重来」这一条：
+   壳收到 setLanguage 之后自己重建菜单再 reload，浏览器里页面自己 reload。
+   正在编辑的先存好，存不下就停在原地（语言偏好已经写下了，下次打开生效）。 */
+async function setLang(v){
+  if(['auto','zh-Hans','zh-HK','en'].indexOf(v)<0) return;
+  if((SHELL_LANG_PREF || PREF.lang || 'auto')===v) return;
+  // 先全存住再写偏好：存不下就停在原地，偏好也不能改——写了它下次打开就换了语言，
+  // 而这一份还没落盘的字，用户以为「我按了取消」。
+  if(!(await saveAllForReload())){ notify(TR('先把这一份存好，再换语言')); return; }
+  PREF.lang=v; savePref();
+  if(SHELL){
+    /* 壳收到之后自己重建菜单再 reload。但 AppKit 自带的那几项（服务、字体、
+       输入法…）是按 AppleLanguages 在启动时定的，这一轮换不掉，重载回来说一声。 */
+    try{ localStorage.setItem('tp-lang-switched','1'); }catch(e){}
+    post({type:'setLanguage', lang:v});
+  }
+  else location.reload();
+}
+/* 这一页所有还在编辑的标签，挨个落盘。全存住返回真，哪一份没存住返回假（原因
+   saveBeforeLeave 自己提示过了）；不抛异常——壳等着这个结果决定什么时候重载。
+   壳换语言前会对每块 webview 调一次：主窗自己在 setLang 里走过这一遭，独立窗
+   （⌥⌘O）没有别的落盘时机，只有 pagehide 那条 keepalive，而 keepalive 的请求体
+   有 64KiB 上限，长笔记根本发不出去，重载就等于把字扔了。 */
+async function saveAllForReload(){
+  let ok=true;
+  for(const tb of TABS.slice()){
+    try{ if(tb.editing && !(await saveBeforeLeave(tb))) ok=false; }
+    catch(e){ ok=false; }
+  }
+  return ok;
+}
 function toggleTheme(){
   const dark = PREF.theme==='dark' || (PREF.theme==='auto' && matchMedia('(prefers-color-scheme:dark)').matches);
   setPref('theme', dark?'light':'dark');
@@ -2301,7 +2536,7 @@ function md2html(src, base, off0){
       // 不加 loading="lazy"。库里的图示是 width="100%" 的 SVG，没有固有尺寸，
       // 渲染出来是 0×0；0×0 永远不进视口，lazy 就永远不去加载，死锁（20260817 实测）。
       return s ? `<img src="${esc(s)}" alt="${a}" title="${a}" data-u="${u}">`
-               : `<span class="imgbad">图片地址不合法：${a||u}</span>`;
+               : `<span class="imgbad">${esc(TR('图片地址不合法：{u}', {u:a||u}))}</span>`;
     })
     .replace(/\[([^\]]+)\]\(([^)]+)\)/g,(m,a,u)=>
       `<a href="${esc(resolveRef(u,base,false))}" data-u="${u}" target="_blank" rel="noopener">${a}</a>`)
@@ -2568,12 +2803,12 @@ function kindOfTab(t){
   return 'start';
 }
 function titleOfEntry(e){
-  if(!e) return '开始';
-  if(e.kind==='start') return '开始';
-  if(e.kind==='search') return e.q || e.title || '搜索';
-  if(e.kind==='folder') return e.folder || e.title || '文件夹';
-  if(e.kind==='pins') return '已收藏';
-  return e.title || (e.path||'').split('/').pop() || '无标题';
+  if(!e) return TR('开始');
+  if(e.kind==='start') return TR('开始');
+  if(e.kind==='search') return e.q || e.title || TR('搜索');
+  if(e.kind==='folder') return e.folder || e.title || TR('文件夹');
+  if(e.kind==='pins') return TR('已收藏');
+  return e.title || (e.path||'').split('/').pop() || TR('无标题');
 }
 function makeEntry(kind, extra){
   return Object.assign({kind:kind||'start', path:'', title:'', q:'', folder:''}, extra||{});
@@ -2598,7 +2833,7 @@ function applyEntry(t, e){
   t.type = e.kind==='html' ? 'html' : 'md';
 }
 function makeTab(entry){
-  const e=entry||makeEntry('start', {title:'开始'});
+  const e=entry||makeEntry('start', {title:TR('开始')});
   const t={
     id:'t'+(++tabSeq),
     path:e.path||'',
@@ -2637,7 +2872,7 @@ function currentPath(t){
   if(!e) return '';
   if(e.kind==='search') return e.q||'';
   if(e.kind==='folder') return (e.folder||'')+'/';
-  if(e.kind==='pins') return '已收藏';
+  if(e.kind==='pins') return TR('已收藏');
   if(e.kind==='start') return '';
   return e.path||t.path||'';
 }
@@ -2802,7 +3037,7 @@ function togglePin(rel){
   const at=arr.indexOf(rel);
   if(at>=0) arr.splice(at,1); else arr.unshift(rel);
   ST.pins=arr; saveST();
-  notify(at>=0 ? '已取消收藏' : '已放进「已收藏」');
+  notify(at>=0 ? TR('已取消收藏') : TR('已放进「已收藏」'));
   repaintPages();
 }
 function prunePins(){
@@ -2813,7 +3048,7 @@ function prunePins(){
   if(next.length!==arr.length){ ST.pins=next; saveST(); }
 }
 function openPins(newTab){
-  navigate(makeEntry('pins', {title:'已收藏'}), {newTab:!!newTab});
+  navigate(makeEntry('pins', {title:TR('已收藏')}), {newTab:!!newTab});
 }
 
 /* ── 卡片清单 ────────────────────────────
@@ -2845,7 +3080,7 @@ function resumeDoc(){
 }
 function folderLabel(rel){
   const p=String(rel||''), at=p.lastIndexOf('/');
-  return at<0 ? '库根' : p.slice(0, at);
+  return at<0 ? TR('库根') : p.slice(0, at);
 }
 /* 卡片上那两行摘录。/__tree 给的「预览」是原始 md，井号、星号、表格竖线
    全在里面；先洗一遍，再把开头重复的标题去掉，不然卡片上标题会写两遍。 */
@@ -2869,7 +3104,7 @@ function greetingHtml(ico, eyebrow, title, sub, opts){
       <h1>${esc(title)}</h1>
       <p class="home-sub">${esc(sub)}</p>
     </div>
-    <button type="button" class="hbtn key hero-new" data-act="newnote">${icon('plus',16)}<span class="lbl">新建随手记</span></button>
+    <button type="button" class="hbtn key hero-new" data-act="newnote">${icon('plus',16)}<span class="lbl">${esc(TR('新建随手记'))}</span></button>
   </div>`;
 }
 /* 顶层文件夹芯片行：数据跟书签栏是同一份（TREE.目录），点开文件夹页，⌘ 点开新标签。
@@ -2878,19 +3113,19 @@ function greetingHtml(ico, eyebrow, title, sub, opts){
    位置不动，所以上面的问候区不会跟着跳。一个顶层文件夹都没有时不出收放件。 */
 function chipsOpen(){ return ST.chipsOpen!==false; }
 function favChipHtml(){
-  return `<button type="button" class="dirchip fav" data-act="pins" title="已收藏">${icon('star',13)}<span>已收藏</span></button>`;
+  return `<button type="button" class="dirchip fav" data-act="pins" title="${esc(TR('已收藏'))}">${icon('star',13)}<span>${esc(TR('已收藏'))}</span></button>`;
 }
 function startChipsHtml(){
   const dirs=(TREE&&TREE.目录)||[];
   if(!dirs.length) return `<div class="dirchips">${favChipHtml()}</div>`;
   if(!chipsOpen()){
     return `<div class="dirchips folded">${favChipHtml()}<button type="button" class="chipfold"
-      data-act="chipsfold" aria-expanded="false" title="展开文件夹">${icon('folder',14)}<span>${dirs.length} 个文件夹</span><span class="ar" aria-hidden="true">›</span></button></div>`;
+      data-act="chipsfold" aria-expanded="false" title="${esc(TR('展开文件夹'))}">${icon('folder',14)}<span>${esc(TR('{n} 个文件夹',{n:dirs.length}))}</span><span class="ar" aria-hidden="true">›</span></button></div>`;
   }
   return `<div class="dirchips">${dirs.map(d=>
       `<button type="button" class="dirchip" data-folder="${esc(d.名称)}" title="${esc(d.名称)}">${icon('folder',13)}<span>${esc(d.显示名||d.名称)}</span></button>`
     ).join('')}${favChipHtml()}<button type="button" class="chipfold"
-      data-act="chipsfold" aria-expanded="true" title="收起文件夹">${icon('chevron-up',13)}<span>收起</span></button></div>`;
+      data-act="chipsfold" aria-expanded="true" title="${esc(TR('收起文件夹'))}">${icon('chevron-up',13)}<span>${esc(TR('收起'))}</span></button></div>`;
 }
 /* 就地重画，滚动位置由 repaintPages 留住；设置页开着就顺手把那颗开关也拨过去。 */
 function setChipsOpen(on){
@@ -2903,40 +3138,40 @@ function tipsCardHtml(){
   if(ST.tips!==true) return '';
   const row=(ic,txt)=>`<div class="tc-col"><span class="tc-ico">${icon(ic,14)}</span><p>${txt}</p></div>`;
   return `<div class="tipcard">
-    <div class="tc-head"><h3>第一次来？三件事就够了</h3>
-      <button type="button" class="tc-x" data-act="tipsok">知道了</button></div>
+    <div class="tc-head"><h3>${esc(TR('第一次来？三件事就够了'))}</h3>
+      <button type="button" class="tc-x" data-act="tipsok">${esc(TR('知道了'))}</button></div>
     <div class="tc-cols">
-      ${row('search','<kbd>⌘K</kbd> 找任何一篇笔记')}
-      ${row('edit','双击正文即可编辑，边写边存')}
-      ${row('focus','专注模式，屏幕上只剩正文')}
+      ${row('search','<kbd>⌘K</kbd> '+esc(TR('找任何一篇笔记')))}
+      ${row('edit',esc(TR('双击正文即可编辑，边写边存')))}
+      ${row('focus',esc(TR('专注模式，屏幕上只剩正文')))}
     </div>
   </div>`;
 }
 function sectionHead(label, n){
   const f=homeFilter(), list=homeList();
-  const segs=[['all','全部'],['md','Markdown'],['html','HTML']].map(x=>
+  const segs=[['all',TR('全部')],['md','Markdown'],['html','HTML']].map(x=>
     `<button type="button" data-filter="${x[0]}" class="${f===x[0]?'on':''}" aria-pressed="${f===x[0]?'true':'false'}">${x[1]}</button>`
   ).join('');
-  const swap=list?'换成卡片':'换成列表';
+  const swap=list?TR('换成卡片'):TR('换成列表');
   return `<div class="section-head">
-    <h2>${esc(label)}</h2><span class="section-meta num">${n} 篇</span><span class="fill"></span>
-    <div class="filters" role="group" aria-label="文件类型">${segs}</div>
-    <button type="button" class="view-toggle" data-view="1" title="${swap}" aria-label="${swap}">${icon(list?'grid':'list',14)}</button>
+    <h2>${esc(label)}</h2><span class="section-meta num">${esc(TR('{n} 篇',{n}))}</span><span class="fill"></span>
+    <div class="filters" role="group" aria-label="${esc(TR('文件类型'))}">${segs}</div>
+    <button type="button" class="view-toggle" data-view="1" title="${esc(swap)}" aria-label="${esc(swap)}">${icon(list?'grid':'list',14)}</button>
   </div>`;
 }
 function cardHtml(i){
   const rel=i.路径, html=kindOf(i)==='html', pinned=isPinned(rel);
   const title=cleanTitle(i), ex=cardText(i);
-  const pinTip=pinned?'取消收藏':'收藏';
+  const pinTip=pinned?TR('取消收藏'):TR('收藏');
   return `<div class="note-card">
-    <button type="button" class="card-open" data-open="${esc(rel)}" data-kind="${html?'html':'md'}" aria-label="打开 ${esc(title)}">
+    <button type="button" class="card-open" data-open="${esc(rel)}" data-kind="${html?'html':'md'}" aria-label="${esc(TR('打开 {title}',{title}))}">
       <span class="card-top"><span class="file-icon${html?' html':''}">${icon(html?'globe':'doc',15)}</span><span class="kind-label">${html?'HTML':'MD'}</span></span>
       <h3>${esc(title)}</h3>
       <p class="card-excerpt">${esc(ex)}</p>
       <span class="card-footer">${icon('folder',11)}<span class="fdr">${esc(folderLabel(rel))}</span><span class="when num">${esc(fmtWhen(i.修改时间))}</span></span>
     </button>
     <button type="button" class="card-pin${pinned?' pinned':''}" data-pin="${esc(rel)}"
-      title="${pinTip}" aria-label="${pinTip} ${esc(title)}" aria-pressed="${pinned?'true':'false'}">${icon('star',13)}</button>
+      title="${esc(pinTip)}" aria-label="${esc(pinTip+' '+title)}" aria-pressed="${pinned?'true':'false'}">${icon('star',13)}</button>
   </div>`;
 }
 function cardsHtml(list, fallback){
@@ -2947,20 +3182,20 @@ function cardsHtml(list, fallback){
 function emptyHtml(title, text, opts){
   const o=opts||{};
   const btns=o.buttons
-    || `<button type="button" class="hbtn key" data-act="newnote">${icon('plus',15)}<span class="lbl">新建随手记</span></button>`;
+    || `<button type="button" class="hbtn key" data-act="newnote">${icon('plus',15)}<span class="lbl">${esc(TR('新建随手记'))}</span></button>`;
   return `<div class="empty${o.big?' big':''}">
     <div class="empty-mark">${icon(o.mark||'new-note',30)}</div>
     <h2>${esc(title)}</h2><p>${text}</p>
     <div class="empty-btns">${btns}</div></div>`;
 }
 function resumeHtml(i){
-  const ex=cardText(i) || '写下来的想法，下次还可以接着想。';
+  const ex=cardText(i) || TR('写下来的想法，下次还可以接着想。');
   return `<button type="button" class="resume" data-open="${esc(i.路径)}" data-kind="md">
     <span class="rs-text">
-      <span class="overline">${icon('clock',12)} 继续阅读</span>
+      <span class="overline">${icon('clock',12)} ${esc(TR('继续阅读'))}</span>
       <h2>${esc(cleanTitle(i))}</h2>
       <p class="excerpt">${esc(ex)}</p>
-      <span class="resume-bottom"><span>${esc(folderLabel(i.路径))} · ${esc(fmtWhen(i.修改时间))}</span><span class="continue">接着读 ${icon('arrow',13)}</span></span>
+      <span class="resume-bottom"><span>${esc(folderLabel(i.路径))} · ${esc(fmtWhen(i.修改时间))}</span><span class="continue">${esc(TR('接着读'))} ${icon('arrow',13)}</span></span>
     </span>
     <span class="paper-art" aria-hidden="true">
       <span class="paper-front"><b></b><i></i><i></i><i></i><i></i><i></i></span>
@@ -2971,14 +3206,14 @@ function resumeHtml(i){
 
 function paintStart(box){
   if(!box) return;
-  const tip=`<p class="home-tip">${icon('search',13)} 想找以前写过的内容？按 <kbd>⌘ K</kbd> 搜一搜。</p>`;
+  const tip=`<p class="home-tip">${icon('search',13)} ${TR('想找以前写过的内容？按 {kbd} 搜一搜。',{kbd:'<kbd>⌘ K</kbd>'})}</p>`;
   if(!items.length){
     // 空库：⌘K 也搜不到东西，底下那行提示和文件夹芯片一起收起来
-    const btns=`<button type="button" class="hbtn key" data-act="newnote">${icon('edit',15)}<span class="lbl">写下第一篇</span></button>
-      <button type="button" class="hbtn" data-act="revealvault">${icon('folder',15)}<span class="lbl">在访达中打开这个文件夹</span></button>`;
+    const btns=`<button type="button" class="hbtn key" data-act="newnote">${icon('edit',15)}<span class="lbl">${esc(TR('写下第一篇'))}</span></button>
+      <button type="button" class="hbtn" data-act="revealvault">${icon('folder',15)}<span class="lbl">${esc(TR('在访达中打开这个文件夹'))}</span></button>`;
     box.innerHTML=`<div class="home">
-      ${greetingHtml(icon('leaf',13),'我的笔记','今天，想记下什么？','笔记库已经就位，就差第一篇。',{scan:true})}
-      ${emptyHtml('这里还空着','把 Markdown 或网页放进笔记库，它们会自动出现在这里。<br>文件留在原地，不上传，不改格式。',{big:true, buttons:btns})}
+      ${greetingHtml(icon('leaf',13),TR('我的笔记'),TR('今天，想记下什么？'),TR('笔记库已经就位，就差第一篇。'),{scan:true})}
+      ${emptyHtml(TR('这里还空着'),esc(TR('把 Markdown 或网页放进笔记库，它们会自动出现在这里。'))+'<br>'+esc(TR('文件留在原地，不上传，不改格式。')),{big:true, buttons:btns})}
       </div>`;
     return;
   }
@@ -2988,15 +3223,15 @@ function paintStart(box){
   // 标题右边那个数报的是这一屏画了几张，不是库里一共几篇——数跟眼睛看到的对得上。
   // 装不下的走下面那条去库根，文件夹页里接着翻。
   const more=all.length>shown.length
-    ? `<button type="button" class="see-all" data-folder="">${icon('folder',14)}<span>看全部 ${all.length} 篇</span></button>`
+    ? `<button type="button" class="see-all" data-folder="">${icon('folder',14)}<span>${esc(TR('看全部 {n} 篇',{n:all.length}))}</span></button>`
     : '';
   box.innerHTML=`<div class="home">
-    ${greetingHtml(icon('leaf',13),'我的笔记','今天，想记下什么？','从上次的思路，轻松继续。',{scan:true})}
+    ${greetingHtml(icon('leaf',13),TR('我的笔记'),TR('今天，想记下什么？'),TR('从上次的思路，轻松继续。'),{scan:true})}
     ${startChipsHtml()}
     ${last?resumeHtml(last):''}
     ${tipsCardHtml()}
-    ${sectionHead('最近打开', shown.length)}
-    ${cardsHtml(shown, emptyHtml('这一类还没有','换个类型看看，或者写点新的。'))}
+    ${sectionHead(TR('最近打开'), shown.length)}
+    ${cardsHtml(shown, emptyHtml(TR('这一类还没有'),esc(TR('换个类型看看，或者写点新的。'))))}
     ${more}
     ${tip}</div>`;
 }
@@ -3005,9 +3240,9 @@ function paintPins(t, box){
   if(!box) return;
   const list=pageDocs('pins');
   box.innerHTML=`<div class="home">
-    ${greetingHtml(icon('star',13),'收藏','已收藏','把常看的、喜欢的，留在手边。')}
-    ${sectionHead('收藏的笔记', list.length)}
-    ${cardsHtml(list, emptyHtml('还没有收藏','在卡片右上角点一下 ★，它就放进这里了。'))}
+    ${greetingHtml(icon('star',13),TR('收藏##eyebrow'),TR('已收藏'),TR('把常看的、喜欢的，留在手边。'))}
+    ${sectionHead(TR('收藏的笔记'), list.length)}
+    ${cardsHtml(list, emptyHtml(TR('还没有收藏'),esc(TR('在卡片右上角点一下 ★，它就放进这里了。'))))}
   </div>`;
 }
 function paintSerp(t, box){
@@ -3023,15 +3258,15 @@ function paintSerp(t, box){
   });
   const list=docsMatching(q);
   if(!list.length && !folders.length){
-    box.innerHTML=`<div class="serp"><p class="serp-q">在库中搜索</p>
-      <div class="vacant"><h2>没有找到「${esc(q)}」</h2><p>换个词，或点书签栏里的文件夹看看。</p></div></div>`;
+    box.innerHTML=`<div class="serp"><p class="serp-q">${esc(TR('在库中搜索'))}</p>
+      <div class="vacant"><h2>${esc(TR('没有找到「{q}」',{q}))}</h2><p>${esc(TR('换个词，或点书签栏里的文件夹看看。'))}</p></div></div>`;
     return;
   }
   box.innerHTML=`<div class="serp">
-    <p class="serp-q">找到 ${list.length+folders.length} 条 · ${esc(q)}</p>
+    <p class="serp-q">${esc(TR('找到 {n} 条',{n:list.length+folders.length}))} · ${esc(q)}</p>
     ${folders.map(d=>`<button type="button" class="search-row" data-folder="${esc(d.名称)}">
       <span class="ico">${icon('folder',17)}</span>
-      <span class="search-info"><strong>${esc(d.显示名||d.名称)}</strong><small>根目录下的子文件夹 · ${esc(d.名称)}/</small></span>
+      <span class="search-info"><strong>${esc(d.显示名||d.名称)}</strong><small>${esc(TR('根目录下的子文件夹'))} · ${esc(d.名称)}/</small></span>
       <span class="enter">↵</span>
     </button>`).join('')}
     ${list.map(i=>{
@@ -3082,7 +3317,7 @@ function paintFolder(t, box){
   const folder=t.folder || (ensureStack(t).folder) || '';
   const list=pageDocs('folder', folder);
   const subs=subfoldersOf(folder);
-  const name=folder.split('/').filter(Boolean).pop() || '库根';
+  const name=folder.split('/').filter(Boolean).pop() || TR('库根');
   const chips=subs.length
     ? `<div class="dirchips">${subs.map(s=>{
         const path=s.path || (folder ? folder+'/'+s.名称 : s.名称);
@@ -3090,15 +3325,15 @@ function paintFolder(t, box){
       }).join('')}</div>`
     : '';
   box.innerHTML=`<div class="home">
-    ${greetingHtml(folderMark(14),'文件夹', name, list.length+' 篇'+(folder?' · '+folder:''))}
+    ${greetingHtml(folderMark(14),TR('文件夹'), name, TR('{n} 篇',{n:list.length})+(folder?' · '+folder:''))}
     ${chips}
-    ${sectionHead('这个文件夹里', list.length)}
-    ${cardsHtml(list, emptyHtml(subs.length?'这一层还没有文件':'空文件夹', subs.length?'点上面的子文件夹看看。':'这里还没有 md 或 html。'))}
+    ${sectionHead(TR('这个文件夹里'), list.length)}
+    ${cardsHtml(list, emptyHtml(subs.length?TR('这一层还没有文件'):TR('空文件夹'), esc(subs.length?TR('点上面的子文件夹看看。'):TR('这里还没有 md 或 html。'))))}
   </div>`;
 }
 function openStartTab(){
   if(SOLO) return;
-  const t=makeTab(makeEntry('start', {title:'开始'}));
+  const t=makeTab(makeEntry('start', {title:TR('开始')}));
   TABS.push(t); newPane(t);
   enterReader(); showTab(t.id);
   loadEntry(t);
@@ -3110,7 +3345,7 @@ function newTab(){
 function goAppHome(){
   const t=active();
   if(isStartTab(t)){ focusOmnibox({pulse:true}); return; }
-  navigate(makeEntry('start', {title:'开始'}));
+  navigate(makeEntry('start', {title:TR('开始')}));
 }
 
 /* 5.4 起标签条上只剩「能不能前进后退」要跟着当前标签走；
@@ -3127,7 +3362,7 @@ function syncChrome(){
 function tabFolder(t){
   const p=String((t && (t.ext ? (t.abs||t.path) : t.path)) || '');
   const parts=p.split('/').filter(Boolean);
-  if(t && t.ext) return parts.length>=2 ? parts[parts.length-2] : '库外';
+  if(t && t.ext) return parts.length>=2 ? parts[parts.length-2] : TR('库外');
   return parts.length>1 ? parts[parts.length-2] : '';
 }
 function commonPrefixLen(a, b){
@@ -3161,9 +3396,9 @@ function tabIcon(t){
   return 'doc-text';
 }
 function tabLabel(t, all){
-  const title=String((t && t.title) || '').trim() || '无标题';
+  const title=String((t && t.title) || '').trim() || TR('无标题');
   const others=(all||[]).filter(x=>x && x!==t)
-    .map(x=>String(x.title||'').trim() || '无标题');
+    .map(x=>String(x.title||'').trim() || TR('无标题'));
   if(others.some(o=>o===title)){
     const folder=tabFolder(t);
     return {kind:'plain', text: folder ? title+' · '+folder : title};
@@ -3207,11 +3442,11 @@ function drawTabs(){
     const tip=esc(t.title||'')+(t.path?' — '+esc(t.path):'');
     return `<div class="tab${t.id===curTab?' on':''}${dirty(t)?' dirty':''}" data-id="${t.id}" title="${tip}" role="tab" aria-selected="${t.id===curTab?'true':'false'}">
        <span class="fav" aria-hidden="true">${icon(tabIcon(t),14)}</span>
-       ${tt}<i class="ddot" title="未保存"></i>
-       <button type="button" class="tx" data-close="${t.id}" title="关掉">${icon('close',11)}</button>
+       ${tt}<i class="ddot" title="${esc(TR('未保存'))}"></i>
+       <button type="button" class="tx" data-close="${t.id}" title="${esc(TR('关掉'))}">${icon('close',11)}</button>
      </div>`;
   }).join('')
-    + `<button type="button" class="tabmore" id="tabmore" aria-haspopup="menu" aria-expanded="false" title="其余标签">${icon('chevron-down',12)}<span class="n"></span></button>`;
+    + `<button type="button" class="tabmore" id="tabmore" aria-haspopup="menu" aria-expanded="false" title="${esc(TR('其余标签'))}">${icon('chevron-down',12)}<span class="n"></span></button>`;
   $$('#tabbar .tab').forEach(el=>{
     el.onclick=e=>{
       if(e.target.closest('[data-close]')) return;
@@ -3270,8 +3505,8 @@ function layoutTabs(){
   }
   if(!n){ bar.classList.remove('has-more'); if(tabPickOn()) closeTabPick(); return; }
   more.querySelector('.n').textContent=String(n);
-  more.title='其余 '+n+' 份';
-  more.setAttribute('aria-label','其余 '+n+' 份');
+  more.title=TR('其余 {n} 份',{n});
+  more.setAttribute('aria-label', TR('其余 {n} 份',{n}));
 }
 
 function tabPickOn(){ const p=$('#tabpick'); return !!(p && p.classList.contains('on')); }
@@ -3292,9 +3527,9 @@ function openTabPick(){
   p.innerHTML=hidden.map(t=>{
     const folder=tabFolder(t);
     return `<button type="button" class="tprow" data-id="${t.id}">
-      <span class="nm"><span class="a">${esc(t.title||'无标题')}</span>
+      <span class="nm"><span class="a">${esc(t.title||TR('无标题'))}</span>
       ${folder?`<span class="b">${esc(folder)}</span>`:''}</span>
-      <span class="x" data-close="${t.id}" title="关掉">${icon('close',11)}</span>
+      <span class="x" data-close="${t.id}" title="${esc(TR('关掉'))}">${icon('close',11)}</span>
     </button>`;
   }).join('');
   p.querySelectorAll('.tprow').forEach(el=>{
@@ -3325,12 +3560,12 @@ function tabMenu(e, id){
   const t=TABS.find(x=>x.id===id); if(!t) return;
   const i=TABS.findIndex(x=>x.id===id);
   popMenu(e, [
-    {id:'close', label:'关闭'},
-    {id:'others', label:'关闭其他', enabled:TABS.length>1},
-    {id:'right', label:'关闭右侧', enabled:i>=0 && i<TABS.length-1},
+    {id:'close', label:TR('关闭')},
+    {id:'others', label:TR('关闭其他'), enabled:TABS.length>1},
+    {id:'right', label:TR('关闭右侧'), enabled:i>=0 && i<TABS.length-1},
     {sep:true},
-    {id:'reveal', label:'在访达中显示'},
-    {id:'copyurl', label:'拷贝路径'},
+    {id:'reveal', label:TR('在访达中显示')},
+    {id:'copyurl', label:TR('拷贝路径')},
   ], mid=>{
     if(mid==='close') closeTab(id);
     else if(mid==='others') closeOtherTabs(id);
@@ -3395,7 +3630,7 @@ function rememberClosed(t){
 async function reopenClosed(){
   if(SOLO) return;
   const rec=CLOSED.pop();
-  if(!rec){ notify('没有刚关掉的标签'); return; }
+  if(!rec){ notify(TR('没有刚关掉的标签')); return; }
   const t=makeTab(rec.stack[rec.idx]);
   t.stack=rec.stack;
   t.idx=rec.idx;
@@ -3403,7 +3638,7 @@ async function reopenClosed(){
   TABS.push(t); newPane(t);
   enterReader(); showTab(t.id);
   await loadEntry(t);
-  notify('已恢复「' + (t.title||'开始') + '」');
+  notify(TR('已恢复「{title}」', {title: t.title||TR('开始')}));
 }
 
 /* opt.forget：不进 ⌘⇧T 的恢复栈。文件已经不在了（移到废纸篓那条路），
@@ -3417,7 +3652,7 @@ async function closeTab(id, opt){
   const t=TABS.find(x=>x.id===id); if(!t) return true;
   if(t.editing && dirty(t)){
     if(!(await saveBeforeLeave(t))){                // 存住了 saveBeforeLeave 自己会收编辑态
-      if(!ask(`要关掉「${t.title||''}」吗？`,'这份改动还没存进去，关掉就丢了。','不保存并关闭','取消',true)) return false;
+      if(!ask(TR('要关掉「{title}」吗？',{title:t.title||''}), TR('这份改动还没存进去，关掉就丢了。'), TR('不保存并关闭'), TR('取消'), true)) return false;
       clearTimeout(t.autoT); t.autoT=null;
       endEdit(t);
     }
@@ -3444,20 +3679,20 @@ async function closeTab(id, opt){
    toggleSrc / fmtAction / retype / hopCell / saveEdit），编辑引擎一点没换。 */
 
 const FMTBAR=[
-  ['undo','撤销'], ['redo','重做'], ['sep'],
-  ['p','正文'], ['h2','二级标题'], ['bold','加粗'], ['italic','斜体'], ['sep'],
-  ['ul','项目列表'], ['quote','引用'], ['link','插入链接'], ['table','插入表格'],
-  ['row','在表格里加一行'], ['col','在表格里加一列'],
+  ['undo',TR('撤销')], ['redo',TR('重做')], ['sep'],
+  ['p',TR('正文')], ['h2',TR('二级标题')], ['bold',TR('加粗')], ['italic',TR('斜体')], ['sep'],
+  ['ul',TR('项目列表')], ['quote',TR('引用')], ['link',TR('插入链接')], ['table',TR('插入表格')],
+  ['row',TR('在表格里加一行')], ['col',TR('在表格里加一列')],
 ];
 const FMTFACE={
   undo:()=>icon('undo',15), redo:()=>icon('redo',15),
-  p:()=>'正文', h2:()=>'H2', bold:()=>'<b>B</b>', italic:()=>'<em>I</em>',
+  p:()=>esc(TR('正文')), h2:()=>'H2', bold:()=>'<b>B</b>', italic:()=>'<em>I</em>',
   ul:()=>icon('list',15), quote:()=>icon('quote',15),
   link:()=>icon('link',15), table:()=>icon('table',15),
-  row:()=>'+ 行', col:()=>'+ 列',
+  row:()=>esc(TR('+ 行')), col:()=>esc(TR('+ 列')),
 };
 function fmtBarHtml(){
-  return '<div class="formatbar" role="toolbar" aria-label="文字格式">'
+  return `<div class="formatbar" role="toolbar" aria-label="${esc(TR('文字格式'))}">`
     + FMTBAR.map(x=> x[0]==='sep' ? '<i aria-hidden="true"></i>'
         : `<button type="button" data-format="${x[0]}" title="${esc(x[1])}" aria-label="${esc(x[1])}">${(FMTFACE[x[0]]||(()=>''))()}</button>`
       ).join('')
@@ -3520,7 +3755,7 @@ function pathSegs(t){
     return all.slice(Math.max(0, all.length-2)).map(x=>({t:x}));
   }
   const parts=String(t.path||'').split('/').filter(Boolean);
-  if(parts.length<2) return [{t:'库根', f:''}, {t:parts[0]||String(t.title||'')}];
+  if(parts.length<2) return [{t:TR('库根'), f:''}, {t:parts[0]||String(t.title||'')}];
   const acc=[];
   return parts.map((x,i)=>{
     if(i<parts.length-1){ acc.push(x); return {t:x, f:acc.join('/')}; }
@@ -3529,13 +3764,13 @@ function pathSegs(t){
 }
 function pathFull(t){ return t.ext ? String(t.abs||t.path||'') : String(t.path||''); }
 function pathChipHtml(t){
-  return `<button type="button" class="pathchip has-tip" data-dt="path" aria-label="拷贝路径"`
+  return `<button type="button" class="pathchip has-tip" data-dt="path" aria-label="${esc(TR('拷贝路径'))}"`
     + ` data-segs="${esc(JSON.stringify(pathSegs(t)))}">`
     + `<span class="fi">${icon('folder',14)}</span>`
     + `<span class="pc-body"></span>`
     + `<span class="cp"><span class="ic-copy">${icon('copy',13)}</span>`
     +   `<span class="ic-done">${icon('check',13)}</span></span>`
-    + `<span class="tip"><b>${esc(pathFull(t))}</b>点击拷贝路径</span></button>`;
+    + `<span class="tip"><b>${esc(pathFull(t))}</b>${esc(TR('点击拷贝路径'))}</span></button>`;
 }
 function fitPathChip(chip){
   if(!chip) return;
@@ -3565,12 +3800,12 @@ function pathChipClick(e, chip, t){
   const seg=e.target.closest('[data-folder]');
   if(seg && (e.metaKey||e.ctrlKey)){
     const f=seg.dataset.folder||'';
-    navigate(makeEntry('folder',{folder:f, title:f?f.split('/').pop():'库根', path:f?f+'/':'/'}),
+    navigate(makeEntry('folder',{folder:f, title:f?f.split('/').pop():TR('库根'), path:f?f+'/':'/'}),
              {newTab:true});
     return;
   }
-  if(t.ext) clipPath('', {text:pathFull(t), msg:'已拷贝路径'});
-  else clipPath(t.path, {msg:'已拷贝路径'});
+  if(t.ext) clipPath('', {text:pathFull(t), msg:TR('已拷贝路径')});
+  else clipPath(t.path, {msg:TR('已拷贝路径')});
   chip.classList.remove('is-copied');
   void chip.offsetWidth;
   chip.classList.add('is-copied');
@@ -3582,7 +3817,7 @@ function pathChipClick(e, chip, t){
 function shareDoc(t){
   if(!t || t.ext) return;
   if(SHELL) post({type:'share', path:LIBROOT+'/'+t.path});
-  else notify('分享要在 AM·Note 里用。');
+  else notify(TR('分享要在 AM·Note 里用。'));
 }
 
 /* 文档头（Row 2，48px）：
@@ -3590,10 +3825,9 @@ function shareDoc(t){
    编辑态右边换成「保存状态 ｜ </> ｜ ✓ 完成」，图标簇整组收起来；
    HTML 页没有编辑按钮，尾巴上挂一枚 HTML 标签；库外文档只读，图标簇也不给
    （访达／分享／新窗都要库内相对路径，库外那几份服务端一条都不认）。 */
-function dtIco(act, lbl, name, cls){
-  const bare=String(lbl).split('\u3000')[0];
+function dtIco(act, lbl, name, cls, kbd){
   return `<button type="button" class="dt-ico has-tip${cls||''}" data-dt="${act}"`
-    + ` aria-label="${esc(bare)}">${icon(name,16)}<span class="tip">${esc(lbl)}</span></button>`;
+    + ` aria-label="${esc(lbl)}">${icon(name,16)}<span class="tip">${esc(withKbd(lbl, kbd, true))}</span></button>`;
 }
 function drawDocBar(t){
   const p=t && paneOf(t); if(!p) return;
@@ -3606,38 +3840,38 @@ function drawDocBar(t){
              canEditPath(t.path)?1:0, FOCUS?1:0, pinned?1:0].join('|');
   if(bar.dataset.sig===sig){ paintSaveState(t); return; }
   bar.dataset.sig=sig;
-  const fLbl=FOCUS?'退出专注阅读':'专注阅读';
+  const fLbl=FOCUS?TR('退出专注阅读'):TR('专注阅读');
   const bFocus=dtIco('focus', fLbl, 'focus');
-  const bMore=dtIco('more', '更多', 'more');
+  const bMore=dtIco('more', TR('更多'), 'more');
   const cluster=`<div class="dt-actions">`
-    + dtIco('pin',    pinned?'取消收藏':'收藏', 'star', pinned?' pinned':'')
-    + dtIco('reveal', '在访达中显示\u3000⇧⌘R', 'folder')
-    + dtIco('share',  '分享…', 'share')
-    + dtIco('newwin', '在新窗口打开', 'newwin')
+    + dtIco('pin',    pinned?TR('取消收藏'):TR('收藏'), 'star', pinned?' pinned':'')
+    + dtIco('reveal', TR('在访达中显示'), 'folder', '', '⇧⌘R')
+    + dtIco('share',  TR('分享…'), 'share')
+    + dtIco('newwin', TR('在新窗口打开'), 'newwin')
     + `</div>`;
   let right;
   if(t.editing){
-    const sLbl=src?'回到排版':'看 Markdown 源码';
+    const sLbl=src?TR('回到排版'):TR('看 Markdown 源码');
     right=`<span class="save-state" data-dt="savestate"></span>`
       + dtIco('src', sLbl, src?'doc':'source')
-      + `<button type="button" class="dt-btn soft" data-dt="done">${icon('check',14)} 完成</button>`;
+      + `<button type="button" class="dt-btn soft" data-dt="done">${icon('check',14)} ${esc(TR('完成'))}</button>`;
   }else if(k==='html'){
     right=cluster+`<span class="dt-div"></span>`+bFocus+bMore
       + `<span class="dt-tag">HTML</span>`;
   }else if(t.ext){
-    right=bFocus+`<span class="dt-tag">只读</span>`;
+    right=bFocus+`<span class="dt-tag">${esc(TR('只读'))}</span>`;
   }else{
     right=cluster+`<span class="dt-div"></span>`+bFocus+bMore
       + (canEditPath(t.path)
-          ? `<button type="button" class="dt-btn soft" data-dt="edit">${icon('edit',14)} 编辑</button>` : '');
+          ? `<button type="button" class="dt-btn soft" data-dt="edit">${icon('edit',14)} ${esc(TR('编辑'))}</button>` : '');
   }
   /* 大纲那颗常挂着，露不露交给 syncToc——标题数在编辑时随时会变，
      每变一次就重画整条顶栏太吵，sig 也会跟着来回抖。 */
   const olBtn = k==='md'
-    ? `<button type="button" class="dt-ico dt-ol has-tip" data-dt="outline" aria-label="大纲" hidden>`
+    ? `<button type="button" class="dt-ico dt-ol has-tip" data-dt="outline" aria-label="${esc(TR('大纲'))}" hidden>`
       + `<svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="1.45" stroke-linecap="round" stroke-linejoin="round">`
       + `<path d="M4 6.5h16"/><path d="M8 12h12"/><path d="M12 17.5h8"/></svg>`
-      + `<span class="tip">大纲\u3000⌥⌘I</span></button>`
+      + `<span class="tip">${esc(withKbd(TR('大纲'),'⌥⌘I',true))}</span></button>`
     : '';
   bar.innerHTML=olBtn + pathChipHtml(t) + `<div class="dt-fill"></div>` + right;
   const chip=bar.querySelector('.pathchip');
@@ -3645,8 +3879,8 @@ function drawDocBar(t){
   requestAnimationFrame(()=>fitPathChip(chip));
   const hint=p.querySelector('.editor-hint');
   if(hint) hint.textContent = !t.editing ? ''
-    : (src ? '直接改 Markdown，随时切回排版。'
-           : '直接在正文里输入。选中一段文字，可以加粗、加链接；⌘ Z 撤销。');
+    : (src ? TR('直接改 Markdown，随时切回排版。')
+           : TR('直接在正文里输入。选中一段文字，可以加粗、加链接；⌘ Z 撤销。'));
   paintSaveState(t);
   if(t.id===curTab) syncToc();
 }
@@ -3661,15 +3895,15 @@ function paintSaveState(t){
   el.className='save-state';
   if(!t.editing){ el.textContent=''; return; }
   if(t.pendingBad && t.pendingBad.length){
-    el.textContent='有 '+t.pendingBad.length+' 处存不进 · 点看'; el.classList.add('act'); return;
+    el.textContent=TR('有 {n} 处存不进 · 点看',{n:t.pendingBad.length}); el.classList.add('act'); return;
   }
-  if(t.conflict){ el.textContent='有冲突 · 点看'; el.classList.add('act'); return; }
-  if(t.saving){ el.textContent='正在保存…'; el.classList.add('pending'); return; }
+  if(t.conflict){ el.textContent=TR('有冲突 · 点看'); el.classList.add('act'); return; }
+  if(t.saving){ el.textContent=TR('正在保存…'); el.classList.add('pending'); return; }
   // 这里看 touched / autoT 两个便宜的标记，不调 dirty()——它每次都要把正文重新反解一遍，
   // 而这一格是每敲一个字都要刷的。
-  if(t.touched || t.autoT){ el.textContent='正在编辑'; el.classList.add('pending'); return; }
+  if(t.touched || t.autoT){ el.textContent=TR('正在编辑'); el.classList.add('pending'); return; }
   // 刚进编辑一个字都没动，说「已保存」是骗人的——这一趟根本还没写过文件。
-  el.textContent = t.savedAt ? '已保存 '+t.savedAt : '就绪';
+  el.textContent = t.savedAt ? TR('已保存 {at}',{at:t.savedAt}) : TR('就绪');
 }
 function savePillClick(t){
   if(!t || !t.editing) return;
@@ -3696,16 +3930,16 @@ function drawDocMeta(t){
   const el=p.querySelector('.doc-meta'); if(!el) return;
   const k=kindOfTab(t);
   if(isPageKind(k)){ el.innerHTML=''; return; }
-  if(k==='html'){ el.innerHTML=icon('globe',12)+'<span>HTML 页面</span>'; return; }
+  if(k==='html'){ el.innerHTML=icon('globe',12)+`<span>${esc(TR('HTML 页面'))}</span>`; return; }
   const md=p.querySelector('.md');
   const n=md ? (md.textContent||'').replace(/\s/g,'').length : 0;
   const it=items.find(i=>i.路径===t.path);
   const at=rawAtSec(t.rawAt) || (it ? it.修改时间 : 0);
   const bits=['Markdown'];
-  if(t.ext) bits.push('只读');
+  if(t.ext) bits.push(TR('只读'));
   const w=t.ext ? '' : fmtWhen(at);
-  if(w) bits.push('改于 '+w);
-  bits.push(n+' 字');
+  if(w) bits.push(TR('改于 {when}',{when:w}));
+  bits.push(TR('{n} 字',{n}));
   el.innerHTML=icon('doc',12)+bits.map(x=>`<span>${esc(x)}</span>`).join('<span>·</span>');
 }
 
@@ -3718,17 +3952,17 @@ function docMoreMenu(e, t){
   const del = !t.ext && canTrashPath(t.path);
   const dir = dirOf(String(t.path||''));
   popMenu(e, [
-    {id:'type',    label:'阅读与外观…'},
-    {id:'copyurl', label:'拷贝路径'},
-    {id:'folder',  label:'打开所在文件夹'},
-    {id:'print',   label:'打印…'},
-    ...(del ? [{sep:true},{id:'trash', label:'移到废纸篓'}] : []),
+    {id:'type',    label:TR('阅读与外观…')},
+    {id:'copyurl', label:TR('拷贝路径')},
+    {id:'folder',  label:TR('打开所在文件夹')},
+    {id:'print',   label:TR('打印…')},
+    ...(del ? [{sep:true},{id:'trash', label:TR('移到废纸篓')}] : []),
   ], id=>{
     if(id==='type') openType();
     else if(id==='copyurl') clipPath(t.path);
     else if(id==='folder'){
       navigate(makeEntry('folder',
-        {folder:dir, title:dir?dir.split('/').pop():'库根', path:dir?dir+'/':'/'}));
+        {folder:dir, title:dir?dir.split('/').pop():TR('库根'), path:dir?dir+'/':'/'}));
     }
     else if(id==='print') AMN.print();
     else if(id==='trash') trashDoc(t.path);
@@ -3753,30 +3987,30 @@ function docFmt(name){
   }
   if(name==='row' || name==='col'){
     const cell=fmtCell();
-    if(!cell){ notify('先把光标放进表格，再添加行或列。'); return; }
+    if(!cell){ notify(TR('先把光标放进表格，再添加行或列。')); return; }
     if(name==='row') tblAddRow(t, cell); else tblAddCol(t, cell);
     t.touched=true; autoKick(t); syncBar(); return;
   }
   if(!caretInDoc()) ensureCaret(t);
   const blk=curBlock(t);
-  if(!blk){ notify('先将光标放进正文，或选中一段文字。'); return; }
+  if(!blk){ notify(TR('先将光标放进正文，或选中一段文字。')); return; }
   if(name==='bold' || name==='italic'){
     const s=getSelection();
     const tag=name==='bold'?'STRONG':'EM';
     if((!s || s.isCollapsed) && !closestTag(s && s.anchorNode, tag)){
-      notify('先将光标放进正文，或选中一段文字。'); return;
+      notify(TR('先将光标放进正文，或选中一段文字。')); return;
     }
     fmtAction(name); return;
   }
   if(name==='link'){
     const s=getSelection();
     if((!s || s.isCollapsed) && !closestTag(s && s.anchorNode,'A')){
-      notify('先将光标放进正文，或选中一段文字。'); return;
+      notify(TR('先将光标放进正文，或选中一段文字。')); return;
     }
     fmtAction('link'); return;
   }
   if(name==='table'){
-    if(blk.hasAttribute('data-lock')){ notify('先将光标放进正文，或选中一段文字。'); return; }
+    if(blk.hasAttribute('data-lock')){ notify(TR('先将光标放进正文，或选中一段文字。')); return; }
     // 光标那一块还有字就别顶掉它，在它下面新起一块再变成表
     let host=blk;
     if(tidyTxt(blk.textContent).trim()){
@@ -3830,7 +4064,7 @@ async function saveBeforeLeave(t){
   const p=paneOf(t);
   // toggleSrc 认的是当前标签；t 不是当前标签就别回排版，saveEdit 自己会读源码框里的字
   if(p && p.classList.contains('src') && t.id===curTab) toggleSrc();   // 先回排版，再按正文那条路存
-  if(t.conflict){ bnr('conflict', true); notify('这份在外部被改过了，先挑一个再走。'); return false; }
+  if(t.conflict){ bnr('conflict', true); notify(TR('这份在外部被改过了，先挑一个再走。')); return false; }
   if(t.finishing) return false;
   t.finishing=true;
   let ok=false;
@@ -3842,10 +4076,10 @@ async function saveBeforeLeave(t){
   }finally{ t.finishing=false; }
   if(!t.editing) return false;                           // 这中间被别处收了编辑态
   if(t.pendingBad && t.pendingBad.length){
-    syncBar(); notify('有 '+t.pendingBad.length+' 处存不进 · 点上面看看'); return false;
+    syncBar(); notify(TR('有 {n} 处存不进 · 点上面看看',{n:t.pendingBad.length})); return false;
   }
-  if(t.conflict){ syncBar(); notify('有冲突，先处理一下'); return false; }
-  if(!ok){ syncBar(); notify('没存进去，改动还在'); return false; }
+  if(t.conflict){ syncBar(); notify(TR('有冲突，先处理一下')); return false; }
+  if(!ok){ syncBar(); notify(TR('没存进去，改动还在')); return false; }
   /* 存住了就在这儿收编辑态，别留给调用方。四个出口都是 .then(ok=>{ if(ok) 再走一遍 })，
      而重入那一遍的判据里有「源码框开着」这一条——t 不是当前标签时上面那句
      toggleSrc 不会跑，.src 一直挂着，于是每一遍都判成「有东西要存」，无限重入。 */
@@ -3858,7 +4092,7 @@ async function finishEdit(){
   const t=active(); if(!t || !t.editing) return;
   if(!(await saveBeforeLeave(t))) return;
   endEdit(t); paintWork(t); buildToc(); syncProg(); drawDocMeta(t);
-  notify('已保存，继续阅读。');
+  notify(TR('已保存，继续阅读。'));
 }
 
 /* 源码框跟着内容长高，不自己开一层滚动条。 */
@@ -3891,7 +4125,7 @@ function setFocus(on){
   closeOlFloat();
   TABS.forEach(x=>drawDocBar(x));
   requestAnimationFrame(()=>{ layoutTabs(); syncProg(); refitPaths(); });
-  notify(FOCUS ? '已进入专注阅读 · 按 Esc 返回' : '已回到浏览模式');
+  notify(FOCUS ? TR('已进入专注阅读 · 按 Esc 返回') : TR('已回到浏览模式'));
 }
 function toggleFocus(){ setFocus(!FOCUS); }
 /* 顶边召回：壳里标签条还占着 42px，判据从那条下面算起。 */
@@ -3911,13 +4145,13 @@ function newPane(t){
      .md 仍是块台账的容器，里面的结构一个属性都没动，只是外面多包了两层。 */
   p.innerHTML='<div class="doc-toolbar"></div>'
     + '<div class="doc-layout">'
-    +   '<nav class="outline" aria-label="大纲"></nav>'
+    +   `<nav class="outline" aria-label="${esc(TR('大纲'))}"></nav>`
     +   '<div class="document">'
     +   '<div class="doc-meta"></div>'
     +   fmtBarHtml()
-    +   '<div class="md f-sans"></div>'
+    +   `<div class="md ${PREF.font}" style="--rw:${PREF.fw}"></div>`
     +   '<textarea class="ed" spellcheck="false" autocomplete="off"></textarea>'
-    +   '<div class="doc-end">写下来的，都在这里。</div>'
+    +   `<div class="doc-end">${esc(TR('写下来的，都在这里。'))}</div>`
     +   '<p class="editor-hint"></p>'
     + '</div></div>'
     + '<iframe class="htmlframe" sandbox hidden title=""></iframe>'
@@ -3953,7 +4187,7 @@ function newPane(t){
     const fol=e.target.closest('[data-folder]');
     if(fol){
       const f=fol.dataset.folder||'';            // 空串＝库根，跟面包屑那条路一致
-      navigate(makeEntry('folder', {folder:f, title:f?f.split('/').pop():'库根', path:f?f+'/':'/'}),
+      navigate(makeEntry('folder', {folder:f, title:f?f.split('/').pop():TR('库根'), path:f?f+'/':'/'}),
         {newTab:e.metaKey||e.ctrlKey});
     }
   });
@@ -4132,7 +4366,7 @@ function openByPath(rel, opt){
     const root=LIBROOT ? LIBROOT.replace(/\/$/,'')+'/' : '';
     if(root && rel.startsWith(root)) return openByPath(rel.slice(root.length), opt);
     if(/\.md$/i.test(rel)) return openExtPath(rel);
-    tell('打不开','库外的文件只能读 .md：'+rel);
+    tell(TR('打不开'), TR('库外的文件只能读 .md：{path}',{path:rel}));
     return;
   }
   const it=items.find(i=>i.路径===rel);
@@ -4171,7 +4405,7 @@ function wikiMatches(name){
 }
 function openWiki(name, e){
   const c=wikiMatches(name);
-  if(!c.length){ flash(`库里没有叫「${name}」的产出`); return; }
+  if(!c.length){ flash(TR('库里没有叫「{name}」的产出',{name})); return; }
   if(c.length===1) return openDoc(c[0], {newTab:!!(e&&(e.metaKey||e.ctrlKey))});
   let pk=$('#wlpick');
   if(!pk){ pk=document.createElement('div'); pk.id='wlpick'; document.body.appendChild(pk);
@@ -4215,7 +4449,7 @@ function wireImg(root){
     s.className = 'imgbad';
     let p = im.getAttribute('src') || '';
     try{ p = decodeURI(p); }catch(e){}
-    s.textContent = '图片没找到：' + p;
+    s.textContent = TR('图片没找到：{path}',{path:p});
     im.replaceWith(s);
   }, {once:true}));
 }
@@ -4235,8 +4469,8 @@ async function loadMd(t){
     decorateHistory(md);
   }catch(err){
     md.textContent='';
-    tell('读不出这一份', IS_HTTP ? '服务没应答。' :
-      '浏览器不允许网页读本地文件。从 Dock 上的 AM·Note 图标进来就能读。\n\n'+LIBROOT+'/'+t.path);
+    tell(TR('读不出这一份'), IS_HTTP ? TR('服务没应答。') :
+      TR('浏览器不允许网页读本地文件。从 Dock 上的 AM·Note 图标进来就能读。')+'\n\n'+LIBROOT+'/'+t.path);
   }
   applyPref();
   drawDocMeta(t);
@@ -4249,15 +4483,15 @@ async function loadMd(t){
    不进最近、不进索引、不可编辑。 */
 async function openExtPath(abs){
   if(!abs) return;
-  if(!IS_HTTP){ tell('打不开','要服务在跑。双击 AM·Note.app 打开就行。'); return; }
+  if(!IS_HTTP){ tell(TR('打不开'), TR('要服务在跑。双击 AM·Note.app 打开就行。')); return; }
   const old=TABS.find(t=>t.ext && t.abs===abs);
   if(old){ enterReader(); showTab(old.id); return; }
   let r;
   try{
     r=await (await fetch('/__extopen',{method:'POST', headers:hdrs(),
       body:JSON.stringify({路径:abs})})).json();
-  }catch(e){ tell('打不开','服务没应答'); return; }
-  if(!r || !r.ok){ tell('打不开', (r&&r.错误)||'这个文件读不了'); return; }
+  }catch(e){ tell(TR('打不开'), TR('服务没应答')); return; }
+  if(!r || !r.ok){ tell(TR('打不开'), (r&&r.错误)||TR('这个文件读不了')); return; }
   const t={id:'t'+(++tabSeq), path:abs, abs:abs, extId:r.id, ext:true,
            title:r.名称||abs.split('/').pop(), type:'md', kind:'md', noEdit:true, blobs:[],
            stack:[makeEntry('md', {path:abs, title:r.名称||abs.split('/').pop()})], idx:0};
@@ -4293,14 +4527,14 @@ async function loadExt(t){
         t.blobs.push(b); im.src=b;
       }catch(e){
         const s=document.createElement('span');
-        s.className='imgbad'; s.textContent='图片没找到：'+u;
+        s.className='imgbad'; s.textContent=TR('图片没找到：{path}',{path:u});
         im.replaceWith(s);
       }
     });
     decorateHistory(md);
   }catch(e){
     md.textContent='';
-    tell('读不出这一份','库外文件读取失败');
+    tell(TR('读不出这一份'), TR('库外文件读取失败'));
   }
   applyPref();
   drawDocMeta(t);
@@ -4332,7 +4566,7 @@ function decorateHistory(md){
     box.setAttribute('data-hist-deco','1');
     const pill=document.createElement('button');
     pill.className='histpill num';
-    pill.textContent=`文档历史 · ${n} 版`;
+    pill.textContent=TR('文档历史 · {n} 版',{n});
     el.replaceWith(box);
     box.appendChild(pill);
     box.appendChild(el);
@@ -4381,14 +4615,14 @@ function olReady(){ return !document.body.classList.contains('solo') && heads().
 function olSig(hs){ return hs.map(h=>h.tagName+'|'+(h.textContent||'')).join('\n'); }
 function olHtml(hs, float){
   const shut = float
-    ? `<button type="button" class="ol-x" data-ol="close" title="关闭" aria-label="关闭">${icon('close',14)}</button>`
-    : `<button type="button" class="ol-x" data-ol="hide" title="收起大纲　⌥⌘I" aria-label="收起大纲">${icon('chevron-left',14)}</button>`;
+    ? `<button type="button" class="ol-x" data-ol="close" title="${esc(TR('关闭'))}" aria-label="${esc(TR('关闭'))}">${icon('close',14)}</button>`
+    : `<button type="button" class="ol-x" data-ol="hide" title="${esc(withKbd(TR('收起大纲'),'⌥⌘I',true))}" aria-label="${esc(TR('收起大纲'))}">${icon('chevron-left',14)}</button>`;
   // 缩进按「离本篇最浅标题几级」算：整篇从 ## 起头的笔记，二级标题就该顶格，不白缩一层。
   const base=Math.min(...hs.map(h=>+h.tagName.charAt(1)));
-  return `<div class="ol-head"><span class="ol-t">大纲</span><span class="ol-n num">${hs.length}</span>${shut}</div>`
+  return `<div class="ol-head"><span class="ol-t">${esc(TR('大纲'))}</span><span class="ol-n num">${hs.length}</span>${shut}</div>`
     + `<div class="ol-list">`
     + hs.map((h,i)=>{
-        const txt=esc((h.textContent||'').trim() || '无标题');
+        const txt=esc((h.textContent||'').trim() || TR('无标题'));
         return `<button type="button" class="ol-i l${+h.tagName.charAt(1)-base+1}" data-oi="${i}" title="${txt}">${txt}</button>`;
       }).join('')
     + `</div>`;
@@ -4426,10 +4660,10 @@ function syncToc(){
     if(b){
       b.hidden=!ready;
       b.classList.toggle('on', OL_ON || (!wide && olFloatOn()));
-      const lbl = wide ? (OL_ON?'隐藏大纲':'显示大纲') : '大纲';
+      const lbl = wide ? (OL_ON?TR('隐藏大纲'):TR('显示大纲')) : TR('大纲');
       b.removeAttribute('title');                 // 气泡自己画，别再叠一层原生的
       b.setAttribute('aria-label', lbl);
-      const tp=b.querySelector('.tip'); if(tp) tp.textContent=lbl+'\u3000⌥⌘I';
+      const tp=b.querySelector('.tip'); if(tp) tp.textContent=withKbd(lbl,'⌥⌘I',true);
     }
   }
   if(!ready || wide) closeOlFloat();          // 栏宽回来了，大纲就在左边，浮层没用了
@@ -4845,7 +5079,7 @@ function syncTabTitle(t){
   const md=paneOf(t)&&paneOf(t).querySelector('.md');
   const h1=md && md.firstElementChild && md.firstElementChild.tagName==='H1'
     ? tidyTxt(md.firstElementChild.textContent).trim() : '';
-  const title=h1 || '无标题';
+  const title=h1 || TR('无标题');
   if(t.title===title) return;
   t.title=title;
   const e=ensureStack(t); if(e && e.kind==='md') e.title=title;
@@ -4966,6 +5200,10 @@ function closeSrcBlk(t, ta, keep){
 /* ── 排版动作 ───────────────────────────
    都走「拿到这一块的纯文本 → 按新的块类型重新渲染一块 → 换上去」这条，
    不去手搓 DOM，样子一定跟正常渲染出来的一致。 */
+/* 插入表格时垫的表头。这是要写进 .md 文件的字节，跟界面语言走，
+   但不走词典——伪翻译、缺译都不该落到磁盘上。 */
+const TABLE_HEAD = LANG==='en' ? '| Item | Note |'
+                 : LANG==='zh-HK' ? '| 項目 | 備註 |' : '| 项目 | 备注 |';
 const MARK={p:'', h1:'# ', h2:'## ', h3:'### ', h4:'#### ',
             h5:'##### ', h6:'###### ',
             quote:'> ', ul:'- ', ol:'1. ', task:'- [ ] '};
@@ -4982,7 +5220,7 @@ function retype(t, el, kind, text){
   const body = text!==undefined ? text : plainOf(el);
   const src = kind==='pre'   ? '```\n'+body+'\n```'
             : kind==='hr'    ? '---'
-            : kind==='table' ? '| 项目 | 备注 |\n| --- | --- |\n|  |  |'
+            : kind==='table' ? TABLE_HEAD+'\n| --- | --- |\n|  |  |'
             : (MARK[kind]||'') + body;
   const box=document.createElement('div');
   box.innerHTML=md2html(src.trim()?src:' ', dirOf(t.path), 0);
@@ -5146,12 +5384,12 @@ function wrapInline(tag, attrs){
 
 /* ── 选中文字时浮出来的那一条 ─────────── */
 const FMT=[
-  ['bold','<b>B</b>','加粗 ⌘B'], ['italic','<i>I</i>','斜体 ⌘I'],
-  ['del','<s>S</s>','删除线 ⌘⇧X'], ['code','<code>&lt;&gt;</code>','行内代码 ⌘E'],
-  ['link','链接','加链接'], ['sep'],
-  ['h2','H2','二级标题'], ['h3','H3','三级标题'], ['p','正文','正文'],
-  ['ul','列表','无序列表'], ['quote','引用','引用'], ['sep'],
-  ['src','源码','这一块按 markdown 源码改 ⌥⌘E'],
+  ['bold','<b>B</b>',withKbd(TR('加粗'),'⌘B')], ['italic','<i>I</i>',withKbd(TR('斜体'),'⌘I')],
+  ['del','<s>S</s>',withKbd(TR('删除线'),'⌘⇧X')], ['code','<code>&lt;&gt;</code>',withKbd(TR('行内代码'),'⌘E')],
+  ['link',esc(TR('链接')),TR('加链接')], ['sep'],
+  ['h2','H2',TR('二级标题')], ['h3','H3',TR('三级标题')], ['p',esc(TR('正文')),TR('正文')],
+  ['ul',esc(TR('列表')),TR('无序列表')], ['quote',esc(TR('引用')),TR('引用')], ['sep'],
+  ['src',esc(TR('源码')),withKbd(TR('这一块按 markdown 源码改'),'⌥⌘E')],
 ];
 function buildFmtBar(){
   if($('#fmt')) return;
@@ -5179,7 +5417,7 @@ function fmtAction(a){
     const cur=closestTag(getSelection().anchorNode,'A');
     if(cur){ unwrapEl(cur); }
     else{
-      const u=prompt('链接地址'); if(!u) return;
+      const u=prompt(TR('链接地址')); if(!u) return;
       wrapInline('A', {href:u, 'data-u':u, target:'_blank', rel:'noopener'});
     }
   }
@@ -5447,29 +5685,29 @@ function onPaste(t, e){
    不然存盘时会把解析后的完整 URL 写回 markdown。
    v17 起：全库可编辑的 md 都能贴图（服务端同一道判据再拦一次）。 */
 async function pasteImg(t, file){
-  if(!IS_HTTP){ flash('贴图要服务在跑'); return; }
-  if(!canEditPath(t.path) || t.ext){ flash('这一份不能改'); return; }
+  if(!IS_HTTP){ flash(TR('贴图要服务在跑')); return; }
+  if(!canEditPath(t.path) || t.ext){ flash(TR('这一份不能改')); return; }
   const p=paneOf(t), md=p && p.querySelector('.md');
   if(!md) return;
   const keep=saveSel(md);          // 上传要等一会儿，光标位置先记下来
-  flash('图片上传中');
+  flash(TR('图片上传中'));
   try{
     const b64=await new Promise((ok,no)=>{
       const fr=new FileReader();
       fr.onload=()=>ok(String(fr.result).split(',')[1]||'');
-      fr.onerror=()=>no(new Error('读不了这张图'));
+      fr.onerror=()=>no(new Error(TR('读不了这张图')));
       fr.readAsDataURL(file);
     });
     const r=await (await fetch('/__save',{method:'POST', headers:hdrs(),
       body:JSON.stringify({路径:t.path, 图片:{数据:b64}})})).json();
-    if(!r.ok){ flash(r.错误||'图片没写进去'); return; }
+    if(!r.ok){ flash(r.错误||TR('图片没写进去')); return; }
     restoreSel(md, keep);
     const u=r.相对路径;
     document.execCommand('insertHTML', false,
       `<img src="${esc(resolveRef(u, dirOf(t.path), true))}" alt="" title="" data-u="${esc(u)}" data-fresh="1">`);
     settleImg(md);
     t.touched=true; autoKick(t);
-  }catch(err){ flash('图片上传失败'); }
+  }catch(err){ flash(TR('图片上传失败')); }
 }
 
 /* 刚插进去的那张图归位。
@@ -5505,12 +5743,12 @@ function syncStatusLine(){
   m.classList.remove('act');
   if(!t || !t.editing){ m.textContent=''; return; }
   if(t.pendingBad && t.pendingBad.length){
-    m.textContent=`有 ${t.pendingBad.length} 处存不进 · 点看`;
+    m.textContent=TR('有 {n} 处存不进 · 点看',{n:t.pendingBad.length});
     m.classList.add('act');
     return;
   }
-  if(t.saving){ m.textContent='保存中'; return; }
-  m.textContent = t.savedAt ? `正在编辑 · 已保存 ${t.savedAt}` : '正在编辑';
+  if(t.saving){ m.textContent=TR('保存中'); return; }
+  m.textContent = t.savedAt ? TR('正在编辑 · 已保存 {at}',{at:t.savedAt}) : TR('正在编辑');
 }
 /* 老代码里的一句话回执沿用这个名字，路由到同一格。 */
 function edSay(cls, txt){ if(txt) flash(txt); else syncStatusLine(); }
@@ -5571,7 +5809,7 @@ function forgetPath(rel){
 async function trashDoc(rel){
   rel=String(rel||'');
   if(!rel || !IS_HTTP) return false;
-  if(!canTrashPath(rel)){ flash('这一份不能删'); return false; }
+  if(!canTrashPath(rel)){ flash(TR('这一份不能删')); return false; }
   if(trashBusy) return false;
   trashBusy=true;
   const mine=TABS.filter(t=>!t.ext && t.path===rel);
@@ -5591,8 +5829,8 @@ async function trashDoc(rel){
     try{
       r=await (await fetch('/__trash',{method:'POST', headers:hdrs(),
         body:JSON.stringify({路径:rel})})).json();
-    }catch(e){ flash('服务没应答'); return false; }
-    if(!r || !r.ok){ flash((r&&r.错误)||'删不掉'); return false; }
+    }catch(e){ flash(TR('服务没应答')); return false; }
+    if(!r || !r.ok){ flash((r&&r.错误)||TR('删不掉')); return false; }
     /* 文件这会儿才真的挪走了，收编辑态才安全。收完 t.editing 就是假，
        flushAll / flushSave / saveBeforeLeave / saveEdit 四个入口第一行都在判它，
        pagehide 和 visibilitychange 那两条也走 flushAll——所以挪走之后
@@ -5607,14 +5845,14 @@ async function trashDoc(rel){
     /* solo 窗里就这一份，关掉标签只剩一块白板。窗口本来就是 window.open 开的，
        关掉它才是这一步的收尾；关不掉（浏览器里直开的那种）就留着字，报一句。 */
     if(SOLO){
-      notify('已移到废纸篓，可以关掉这个窗口', {ms:8000});
+      notify(TR('已移到废纸篓，可以关掉这个窗口'), {ms:8000});
       try{ window.close(); }catch(e){}
       return true;
     }
     // 关掉所有开着它的标签。**不进 CLOSED**：⌘⇧T 恢复出来的会是一个开不了的标签
     for(const t of mine) await closeTab(t.id, {forget:true});
     refreshTree();
-    notify('已移到废纸篓', {ms:8000, action:{label:'撤销', fn:()=>untrashDoc(rel)}});
+    notify(TR('已移到废纸篓'), {ms:8000, action:{label:TR('撤销'), fn:()=>untrashDoc(rel)}});
     return true;
   }finally{
     trashBusy=false;
@@ -5630,10 +5868,10 @@ async function untrashDoc(rel){
   try{
     r=await (await fetch('/__untrash',{method:'POST', headers:hdrs(),
       body:JSON.stringify({路径:rel})})).json();
-  }catch(e){ flash('服务没应答'); return; }
-  if(!r || !r.ok){ flash((r&&r.错误)||'放不回去'); return; }
+  }catch(e){ flash(TR('服务没应答')); return; }
+  if(!r || !r.ok){ flash((r&&r.错误)||TR('放不回去')); return; }
   TRASHED.delete(rel);
-  notify('已放回');
+  notify(TR('已放回'));
   await refreshTree();
   openByPath(rel);
 }
@@ -5676,11 +5914,11 @@ async function startEdit(opt){
   if(!t || t.ext || !canEditPath(t.path) || t.editing) return;
   const p=paneOf(t);
   try{
-    const r=await (await fetch('/__raw?path='+encodeURIComponent(t.path),
+    const r=await (await fetch('/__raw?path='+encodeURIComponent(t.path)+'&lang='+LANG,
                                {cache:'no-store'})).json();
-    if(!r.ok){ tell('进不了编辑', r.错误||'读不到源码'); return; }
+    if(!r.ok){ tell(TR('进不了编辑'), r.错误||TR('读不到源码')); return; }
     t.raw=r.正文; t.rawAt=r.改于;
-  }catch(e){ tell('进不了编辑','服务没应答'); return; }
+  }catch(e){ tell(TR('进不了编辑'), TR('服务没应答')); return; }
   // ⌘E 走「鼠标停在第几块」；双击走双击的那一块
   const md0=p.querySelector('.md');
   undecorateHistory(md0);
@@ -5745,7 +5983,7 @@ function endEdit(t){
 
 function cancelEdit(){
   const t=active(); if(!t||!t.editing) return;
-  if(dirty(t) && !ask('要放弃这次修改吗？','改过的内容会回到打开时的样子。','放弃修改','取消',true)) return;
+  if(dirty(t) && !ask(TR('要放弃这次修改吗？'), TR('改过的内容会回到打开时的样子。'), TR('放弃修改'), TR('取消'), true)) return;
   endEdit(t); paintWork(t); buildToc(); syncProg();
 }
 
@@ -5822,11 +6060,11 @@ async function saveEdit(force, opt){
     if(bad.length){
       if(auto){ t.pendingBad=bad; if(t.id===curTab) syncStatusLine(); return false; }
       if(!ask(
-        `有 ${bad.length} 块存下去会变样，仍然保存吗？`,
-        '多半是打了 markdown 会认的记号，比如表格格子里的竖线、落单的星号：\n\n'
+        TR('有 {n} 块存下去会变样，仍然保存吗？',{n:bad.length}),
+        TR('多半是打了 markdown 会认的记号，比如表格格子里的竖线、落单的星号：')+'\n\n'
         + bad.slice(0,6).map(x=>'· '+x).join('\n')
-        + (bad.length>6?`\n…还有 ${bad.length-6} 块`:''),
-        '仍然保存','取消',true)){ t.pendingBad=bad; syncStatusLine(); return false; }
+        + (bad.length>6?'\n'+TR('…还有 {n} 块',{n:bad.length-6}):''),
+        TR('仍然保存'), TR('取消'), true)){ t.pendingBad=bad; syncStatusLine(); return false; }
     }
     t.pendingBad=null;
     body=serializeBody(t);
@@ -5845,22 +6083,22 @@ async function saveEdit(force, opt){
   if(opt.keepalive) req.keepalive=true;
   let r=null;
   try{ r=await (await fetch('/__save', req)).json(); }
-  catch(e){ t.saving=false; if(t.id===curTab) flash('服务没应答'); return false; }
+  catch(e){ t.saving=false; if(t.id===curTab) flash(TR('服务没应答')); return false; }
   t.saving=false;
 
   if(!r.ok){
     if(r.需确认){
       t.conflict=body;
       if(auto){ showConflict(t, r.错误||''); return false; }
-      if(ask('这份在外部被改过了，仍然保存吗？',
-             (r.错误||'')+'\n外部那一版会被你这一版覆盖，覆盖前会先留档。',
-             '仍然保存','取消',true)) return saveEdit(true, {tab:t});
+      if(ask(TR('这份在外部被改过了，仍然保存吗？'),
+             (r.错误||'')+'\n'+TR('外部那一版会被你这一版覆盖，覆盖前会先留档。'),
+             TR('仍然保存'), TR('取消'), true)) return saveEdit(true, {tab:t});
       // 手动这条路上按了「取消」＝不存了，冲突就此揭过，别让 pill 和「完成」一直卡着
       t.conflict=null;
       if(t.id===curTab) syncStatusLine();
       return false;
     }
-    if(t.id===curTab) flash(r.错误||'写失败');
+    if(t.id===curTab) flash(r.错误||TR('写失败'));
     return false;
   }
   t.raw=body; t.touched=false; t.conflict=null;
@@ -5870,7 +6108,7 @@ async function saveEdit(force, opt){
   else if(t.id===curTab) syncTabTitle(t);
   // 留档只在手动 ⌘S 之后报一句；自动保存不吭声，状态字里只有「已保存 HH:MM」
   if(!auto && r.留档 && t.id===curTab){
-    flash('已保存 · 留档 '+r.留档);
+    flash(TR('已保存 · 留档 {name}',{name:r.留档}));
   }
   // 存完文件的 mtime 变了，下一次的「基于」得跟着换，不然会被当成外部改动
   if(r.改于) t.rawAt=r.改于; else await refreshRawAt(t);
@@ -5892,7 +6130,7 @@ async function refreshRawAt(t){
 let conflictTab=null;
 function showConflict(t, why){
   conflictTab=t;
-  $('#conflictT').textContent = why || '这份在外部被改过了';
+  $('#conflictT').textContent = why || TR('这份在外部被改过了');
   bnr('conflict', true);
   if(t.id===curTab) syncStatusLine();
 }
@@ -5904,13 +6142,13 @@ $('#takeTheirs').onclick=async()=>{
   const t=conflictTab; bnr('conflict', false); conflictTab=null;
   if(!t) return;
   try{
-    const r=await (await fetch('/__raw?path='+encodeURIComponent(t.path),
+    const r=await (await fetch('/__raw?path='+encodeURIComponent(t.path)+'&lang='+LANG,
                                {cache:'no-store'})).json();
-    if(!r.ok){ flash(r.错误||'读不到源码'); return; }
+    if(!r.ok){ flash(r.错误||TR('读不到源码')); return; }
     t.raw=r.正文; t.rawAt=r.改于; t.work=r.正文; t.touched=false; t.conflict=null;
     paintWork(t); prepEdit(t); buildToc(); ensureCaret(t);
     if(t.id===curTab) syncStatusLine();
-  }catch(e){ flash('服务没应答'); }
+  }catch(e){ flash(TR('服务没应答')); }
 };
 
 /* 探针：D 路在沙箱里验「双击之后光标在正文」用的就是这个。 */
@@ -5975,6 +6213,23 @@ function prepItems(){
 const ymd = t => { const d=new Date((t||0)*1000), z=n=>String(n).padStart(2,'0');
   return d.getFullYear()+'-'+z(d.getMonth()+1)+'-'+z(d.getDate()); };
 
+/* 英文的月份缩写。Intl 取不到（旧内核）就退回写死的一张表。 */
+const MONTH_ABBR = (()=>{
+  try{
+    const f=new Intl.DateTimeFormat('en',{month:'short'});
+    return Array.from({length:12},(_,m)=>f.format(new Date(2021,m,15)));
+  }catch(e){ return ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec']; }
+})();
+/* 日期：中文 9月3日 ／ 2025年12月1日，英文 Sep 3 ／ Dec 1, 2025。
+   数字和分隔符是格式不是文案，所以按语言分支，不进词典。 */
+function fmtDate(d, withYear){
+  if(LANG==='en'){
+    const s=MONTH_ABBR[d.getMonth()]+' '+d.getDate();
+    return withYear ? s+', '+d.getFullYear() : s;
+  }
+  const s=(d.getMonth()+1)+'月'+d.getDate()+'日';
+  return withYear ? d.getFullYear()+'年'+s : s;
+}
 /* 「多久之前」只有这一把梯子：刚刚 → N 分钟前 → 今天 09:12 → 昨天 16:40
    → 9月3日 → 2025年12月1日。卡片、最近列表、继续阅读大卡都走它。 */
 function fmtWhen(sec){
@@ -5982,21 +6237,19 @@ function fmtWhen(sec){
   if(!ms) return '';
   const d=new Date(ms), z=n=>String(n).padStart(2,'0');
   const gap=Date.now()-ms;
-  if(gap>=0 && gap<60e3) return '刚刚';
-  if(gap>=0 && gap<3600e3) return Math.floor(gap/60e3)+' 分钟前';
+  if(gap>=0 && gap<60e3) return TR('刚刚');
+  if(gap>=0 && gap<3600e3) return TR('{n} 分钟前',{n:Math.floor(gap/60e3)});
   const hm=z(d.getHours())+':'+z(d.getMinutes());
   const b=dayBucket(sec);
-  if(b!=='更早') return b+' '+hm;
-  if(d.getFullYear()===new Date().getFullYear()) return (d.getMonth()+1)+'月'+d.getDate()+'日';
-  return d.getFullYear()+'年'+(d.getMonth()+1)+'月'+d.getDate()+'日';
+  if(b!=='older') return dayLabel(b)+' '+hm;
+  return fmtDate(d, d.getFullYear()!==new Date().getFullYear());
 }
 /* 时间怎么写：窄栏（wide）走上面那把梯子，列表栏挤，只写时刻。 */
 function whenLabel(sec, wide){
   if(wide) return fmtWhen(sec);
   const ms=(sec||0)*1000, d=new Date(ms), z=n=>String(n).padStart(2,'0');
-  const b=dayBucket(sec);
-  return b==='更早' ? (d.getMonth()+1)+'月'+d.getDate()+'日'
-                    : z(d.getHours())+':'+z(d.getMinutes());
+  return dayBucket(sec)==='older' ? fmtDate(d, false)
+                                  : z(d.getHours())+':'+z(d.getMinutes());
 }
 
 function setTree(t){
@@ -6099,7 +6352,7 @@ function buildNav(){
   paintIcons($('#dirList'));
   $$('#dirList [data-d]').forEach(b=>{
     b.onclick=()=>gotoDir(b.dataset.d, b.dataset.s||null);
-    b.oncontextmenu=e=>popMenu(e,[{id:'reveal', label:'在访达中显示'}],
+    b.oncontextmenu=e=>popMenu(e,[{id:'reveal', label:TR('在访达中显示')}],
       id=>{ if(id==='reveal') revealPath(b.dataset.s ? b.dataset.d+'/'+b.dataset.s : b.dataset.d); });
   });
 }
@@ -6249,22 +6502,26 @@ function cleanTitle(i){
   return s.replace(TAILDATE,'').replace(TAILZHDATE,'').trim() || s;
 }
 
-/* 「今天 ／ 昨天 ／ 更早」。找刚写完的那份，问的是「多久之前」。 */
+/* 「今天 ／ 昨天 ／ 更早」。找刚写完的那份，问的是「多久之前」。
+   返回的是稳定 id（分组的键、各处的比较都靠它），显示的时候才翻。 */
 function dayBucket(t){
   const d=new Date(); d.setHours(0,0,0,0);
   const ms=(t||0)*1000;
-  if(ms>=d.getTime()) return '今天';
-  if(ms>=d.getTime()-864e5) return '昨天';
-  return '更早';
+  if(ms>=d.getTime()) return 'today';
+  if(ms>=d.getTime()-864e5) return 'yesterday';
+  return 'older';
+}
+function dayLabel(id){
+  return id==='today' ? TR('今天') : id==='yesterday' ? TR('昨天') : TR('更早');
 }
 
 /* 行上的次要动作三颗：拷贝路径 / 访达 / 浏览器打开（html 才有），hover 才出。 */
 const acts = (i, idx) =>
   `<span class="racts">`
   + ((i.类型||'md')==='html'
-      ? `<button class="iba" data-ext="${idx}" title="在浏览器里打开">${icon('globe',15)}</button>` : '')
-  + `<button class="iba" data-clip="${idx}" title="拷贝路径">${icon('copy',15)}</button>`
-  + `<button class="iba" data-rev="${idx}" title="在访达中显示">${icon('folder',15)}</button>`
+      ? `<button class="iba" data-ext="${idx}" title="${esc(TR('在浏览器里打开'))}">${icon('globe',15)}</button>` : '')
+  + `<button class="iba" data-clip="${idx}" title="${esc(TR('拷贝路径'))}">${icon('copy',15)}</button>`
+  + `<button class="iba" data-rev="${idx}" title="${esc(TR('在访达中显示'))}">${icon('folder',15)}</button>`
   + `</span>`;
 
 /* 一行。普通行和搜索结果两种形状，走同一套选中、拖动、右键。 */
@@ -6318,7 +6575,7 @@ function render(){
   listNow=[]; selSet.clear();
 
   if(!list.length){
-    const empty = (searching || fNotes) ? '' : (fKind==='html' ? '没有 HTML 文件' : fKind==='md' ? '没有 Markdown 文件' : '');
+    const empty = (searching || fNotes) ? '' : (fKind==='html' ? TR('没有 HTML 文件') : fKind==='md' ? TR('没有 Markdown 文件') : '');
     $('#out').innerHTML = empty ? `<div class="kindempty">${empty}</div>` : '';
     selSeq=-1; saveFilters(); pushState(); return;
   }
@@ -6339,15 +6596,15 @@ function render(){
     /* 三栏里的最近仍按今天／昨天／更早分组，信息结构不变。 */
     const arr=list.slice().sort(byRecent).slice(0,PAGE);
     const rest = arr;
-    const g={今天:[], 昨天:[], 更早:[]};
+    const g={today:[], yesterday:[], older:[]};
     rest.forEach(i=>g[dayBucket(i.修改时间)].push(i));
-    ['今天','昨天','更早'].forEach(k=>{ if(g[k].length) h+=sec(k, g[k]); });
+    ['today','yesterday','older'].forEach(k=>{ if(g[k].length) h+=sec(dayLabel(k), g[k]); });
   }else{
     // 在大类里：按子文件夹分组，直接摊在大类根下的排最前
     const g=new Map(); const root=[];
     list.slice().sort(byRecent).forEach(i=>{
       if(!i._d1) root.push(i); else { if(!g.has(i._d1)) g.set(i._d1,[]); g.get(i._d1).push(i); } });
-    if(root.length) h+=sec('直接放在这一层', root);
+    if(root.length) h+=sec(TR('直接放在这一层'), root);
     [...g.keys()].sort().forEach(k=> h+=sec(stripNo(k), g.get(k), ` data-gs="${esc(k)}"`));
   }
   $('#out').innerHTML=h;
@@ -6430,26 +6687,26 @@ function closeCtx(){ const b=$('#ctx'); if(b) b.classList.remove('on'); }
 
 function rowMenu(e, seq){
   const i=listNow[seq]; if(!i) return;
-  const many=selSet.size>1 ? `（${selSet.size} 份）` : '';
+  const many=selSet.size>1 ? TR('（{n} 份）',{n:selSet.size}) : '';
   const md=(i.类型||'md')==='md';
   popMenu(e, [
-    {id:'open', label:'打开'},
-    ...(!md?[{id:'browser', label:'在浏览器里打开'}]:[]),
-    ...(IS_HTTP?[{id:'newwin', label:'在新窗口打开'}]:[]),
+    {id:'open', label:TR('打开')},
+    ...(!md?[{id:'browser', label:TR('在浏览器里打开')}]:[]),
+    ...(IS_HTTP?[{id:'newwin', label:TR('在新窗口打开')}]:[]),
     {sep:true},
-    {id:'copyurl',label:'拷贝路径'+many},
-    {id:'reveal', label:'在访达中显示'+many},
-    {id:'copyrel',label:'拷贝库内相对路径'+many},
+    {id:'copyurl',label:TR('拷贝路径')+many},
+    {id:'reveal', label:TR('在访达中显示')+many},
+    {id:'copyrel',label:TR('拷贝库内相对路径')+many},
   ], id=>{
     const picked=(selSet.size?[...selSet]:[seq]).map(s=>listNow[s]).filter(Boolean);
     if(id==='open') openDoc(i, {jump:terms()});
     else if(id==='browser') openExternal(i.路径);
     else if(id==='newwin') openSolo(i.路径);
     else if(id==='reveal') picked.forEach(x=>revealPath(x.路径));
-    else if(id==='copyrel') copyText(picked.map(x=>x.路径).join('\n')).then(ok=>flash(ok?'路径已拷贝':'拷不了'));
+    else if(id==='copyrel') copyText(picked.map(x=>x.路径).join('\n')).then(ok=>flash(ok?TR('路径已拷贝'):TR('拷不了')));
     else if(id==='copyurl'){
       copyText(picked.map(x=>'file://'+LIBROOT+'/'+x.路径).join('\n'))
-        .then(ok=>flash(!ok ? '拷不了' : (picked.length>1?`${picked.length} 条路径已拷贝`:'路径已拷贝')));
+        .then(ok=>flash(!ok ? TR('拷不了') : (picked.length>1?TR('{n} 条路径已拷贝',{n:picked.length}):TR('路径已拷贝'))));
     }
   });
 }
@@ -6461,12 +6718,12 @@ function cardMenu(e, rel, kind){
   const it=items.find(i=>i.路径===rel)
     || {路径:rel, 标题:rel.split('/').pop(), 类型:kind||'md'};
   popMenu(e, [
-    {id:'open',    label:'打开'},
-    {id:'newtab',  label:'在新标签打开'},
-    {id:'pin',     label:isPinned(rel)?'取消收藏':'收藏'},
-    {id:'reveal',  label:'在访达中显示'},
-    {id:'copyurl', label:'拷贝路径'},
-    ...(canTrashPath(rel) ? [{sep:true},{id:'trash', label:'移到废纸篓'}] : []),
+    {id:'open',    label:TR('打开')},
+    {id:'newtab',  label:TR('在新标签打开')},
+    {id:'pin',     label:isPinned(rel)?TR('取消收藏'):TR('收藏')},
+    {id:'reveal',  label:TR('在访达中显示')},
+    {id:'copyurl', label:TR('拷贝路径')},
+    ...(canTrashPath(rel) ? [{sep:true},{id:'trash', label:TR('移到废纸篓')}] : []),
   ], id=>{
     if(id==='open') openDoc(it);
     else if(id==='newtab') openDoc(it, {newTab:true});
@@ -6485,14 +6742,14 @@ function docMenu(e, t){
   if(e.target.closest('a,img,textarea,iframe,.pagebox')) return;
   const ed=!!t.editing, src=paneOf(t).classList.contains('src');
   popMenu(e, [
-    ...(!ed && !t.ext && canEditPath(t.path) ? [{id:'edit', label:'进入编辑'},{sep:true}] : []),
-    ...(ed ? [{id:'src', label:src?'回到正文':'整篇源码'},
-              {id:'cancel', label:'放弃这次修改'},{sep:true}] : []),
-    ...(t.ext ? [] : [{id:'newwin', label:'在新窗口打开'}]),
-    {id:'copyurl',label:'拷贝路径'},
-    {id:'reveal', label:'在访达中显示'},
-    {id:'type', label:'排版'},
-    ...(t.ext ? [] : [{id:'share', label:'分享'}]),
+    ...(!ed && !t.ext && canEditPath(t.path) ? [{id:'edit', label:TR('进入编辑')},{sep:true}] : []),
+    ...(ed ? [{id:'src', label:src?TR('回到正文'):TR('整篇源码')},
+              {id:'cancel', label:TR('放弃这次修改')},{sep:true}] : []),
+    ...(t.ext ? [] : [{id:'newwin', label:TR('在新窗口打开')}]),
+    {id:'copyurl',label:TR('拷贝路径')},
+    {id:'reveal', label:TR('在访达中显示')},
+    {id:'type', label:TR('排版')},
+    ...(t.ext ? [] : [{id:'share', label:TR('分享')}]),
   ], id=>{
     if(id==='edit') startEdit();
     else if(id==='src') toggleSrc();
@@ -6500,7 +6757,7 @@ function docMenu(e, t){
     else if(id==='newwin') openSolo(t.path);
     else if(id==='copyurl'){
       const s = t.ext ? t.abs : (LIBROOT+'/'+t.path);
-      copyText('file://'+s).then(ok=>flash(ok?'路径已拷贝':'拷不了'));
+      copyText('file://'+s).then(ok=>flash(ok?TR('路径已拷贝'):TR('拷不了')));
     }
     else if(id==='reveal') revealPath(t.path);
     else if(id==='type') openType();
@@ -6521,7 +6778,7 @@ async function quickLook(i){
       const r=await fetch(url(i.路径)); const t=await r.text();
       const body=t.replace(/^---[\s\S]*?\n---\n/, '');           // 标签块不进预览
       const cut=body.split('\n').slice(0,60).join('\n');
-      b.innerHTML=`<div class="md ${PREF.font}">${md2html(cut, dirOf(i.路径), 0)}</div>`;
+      b.innerHTML=`<div class="md ${PREF.font}" style="--rw:${PREF.fw}">${md2html(cut, dirOf(i.路径), 0)}</div>`;
       return;
     }
     b.innerHTML=`<div class="md"><p>${esc(i.路径)}</p></div>`;
@@ -6553,7 +6810,7 @@ function focusOmnibox(opts){
    点了报一句就完事，state().bookmarks 恒 false，菜单上的勾永远不打。 */
 function toggleBookmarks(){
   if(ST.bookmarks!==false){ ST.bookmarks=false; saveST(); }
-  notify('文件夹入口已并入开始页');
+  notify(TR('文件夹入口已并入开始页'));
 }
 
 (function wireChromeBtns(){
@@ -6561,7 +6818,7 @@ function toggleBookmarks(){
         mark=$('#appmark'), sp=$('#topSearch'), cfg=$('#navCfgTop');
   if(back) back.onclick=()=>goHist(-1);
   if(fwd) fwd.onclick=()=>goHist(1);
-  if(home) home.onclick=()=>{ navigate(makeEntry('start', {title:'开始'})); home.blur(); };
+  if(home) home.onclick=()=>{ navigate(makeEntry('start', {title:TR('开始')})); home.blur(); };
   if(plus) plus.onclick=()=>{ newTab(); plus.blur(); };
   if(sp) sp.onclick=()=>{ sp.blur(); AMN.quickOpen(); };
   if(cfg) cfg.onclick=()=>{ cfg.blur(); openCfg(); };
@@ -6573,14 +6830,25 @@ function toggleBookmarks(){
    走的正是原来地址栏回车那条路（setKw ＋ 搜索页），⌘回车开新标签；
    下面照旧是动作和笔记，排序没动。 */
 let ckList=[], ckSel=0;
+/* title 存的是简体源串（当键用），显示时 TR() 一次；kw 是别名，
+   让人用英文、繁体或者近义词也搜得到同一个动作。 */
 const CK_ACTS=[
-  {id:'tab', title:'新建标签页', kbd:'⌘T', go(){ newTab(); }},
-  {id:'new', title:'新建随手记', kbd:'', go(){ newNote(); }},
-  {id:'win', title:'新建窗口', kbd:'⌘N', go(){ AMN.newWindow(); }},
-  {id:'edit', title:'进入编辑', kbd:'⌘E', go(){ AMN.enterEdit(); }},
-  {id:'type', title:'阅读与外观', kbd:'', go(){ openType(); }},
-  {id:'finder', title:'在访达中显示', kbd:'⇧⌘R', go(){ AMN.reveal(); }},
-  {id:'home', title:'回到开始页', kbd:'', go(){ navigate(makeEntry('start', {title:'开始'})); }},
+  {id:'tab', title:K('新建标签页'), kbd:'⌘T',
+   kw:['new tab','tab','标签','標籤','分页','分頁'], go(){ newTab(); }},
+  {id:'new', title:K('新建随手记'), kbd:'',
+   kw:['new note','note','quick note','新建','笔记','筆記','随手','隨手'], go(){ newNote(); }},
+  {id:'win', title:K('新建窗口'), kbd:'⌘N',
+   kw:['new window','window','窗口','視窗','视窗'], go(){ AMN.newWindow(); }},
+  {id:'edit', title:K('进入编辑'), kbd:'⌘E',
+   kw:['edit','write','编辑','編輯'], go(){ AMN.enterEdit(); }},
+  {id:'type', title:K('阅读与外观'), kbd:'',
+   kw:['appearance','typography','theme','font','外观','外觀','字体','字體','主题','主題','排版'],
+   go(){ openType(); }},
+  {id:'finder', title:K('在访达中显示'), kbd:'⇧⌘R',
+   kw:['reveal','reveal in finder','finder','访达','訪達'], go(){ AMN.reveal(); }},
+  {id:'home', title:K('回到开始页'), kbd:'',
+   kw:['home','start','start page','开始','開始','首页','首頁'],
+   go(){ navigate(makeEntry('start', {title:TR('开始')})); }},
 ];
 /* seed 预填一段文字。opt.select 为真＝全选（AMN.search），否则光标停在末尾
    （开始页敲第一个字那条路：接着敲第二个字不能把第一个顶掉）。 */
@@ -6621,8 +6889,12 @@ function ckItems(q){
   const raw=String(q||'').trim();
   const low=raw.toLowerCase();
   const head=raw ? [{kind:'q', q:raw}] : [];
-  const acts=CK_ACTS.filter(a=>!low || a.title.toLowerCase().includes(low))
-    .map(a=>({kind:'act', a}));
+  /* 三处都认：译文（眼睛看到的那串）、简体源串、别名。 */
+  const acts=CK_ACTS.filter(a=>{
+    if(!low) return true;
+    const hay=[TR(a.title), a.title].concat(a.kw||[]).join(' ').toLowerCase();
+    return hay.includes(low);
+  }).map(a=>({kind:'act', a}));
   const notes=ckNotes(raw).map(i=>({kind:'note', i}));
   return head.concat(acts, notes);
 }
@@ -6633,7 +6905,7 @@ const CK_ICON={tab:'plus', new:'new-note', win:'newwin',
 function runSearch(q, newTab){
   q=String(q||'').trim(); if(!q) return;
   setKw(q);
-  navigate(makeEntry('search', {q, title:q, path:'搜索: '+q}), {newTab:!!newTab});
+  navigate(makeEntry('search', {q, title:q, path:TR('搜索: {q}',{q})}), {newTab:!!newTab});
 }
 function runCk(it, newTab){
   closeQuick();
@@ -6669,19 +6941,19 @@ function ckRender(){
   const qrow=ckList.find(x=>x.kind==='q');
   if(qrow){
     html+=row(ckList.indexOf(qrow), icon('search',17),
-      '在全部笔记中搜索“'+esc(qrow.q)+'”', '', '<span class="enter">↩</span>');
+      esc(TR('在全部笔记中搜索“{q}”',{q:qrow.q})), '', '<span class="enter">↩</span>');
   }
   if(acts.length){
-    html+=`<div class="search-label">动作</div>`;
+    html+=`<div class="search-label">${esc(TR('动作'))}</div>`;
     acts.forEach(it=>{
       const n=ckList.indexOf(it);
-      html+=row(n, icon(CK_ICON[it.a.id]||'arrow',17), esc(it.a.title), '',
+      html+=row(n, icon(CK_ICON[it.a.id]||'arrow',17), esc(TR(it.a.title)), '',
         it.a.kbd ? `<kbd>${esc(it.a.kbd)}</kbd>` : '<span class="enter">↵</span>');
     });
   }
   if(notes.length){
     const typed=String(q||'').trim();
-    html+=`<div class="search-label">${typed?('找到 '+notes.length+' 篇'):'最近的笔记'}</div>`;
+    html+=`<div class="search-label">${esc(typed?TR('找到 {n} 篇',{n:notes.length}):TR('最近的笔记'))}</div>`;
     notes.forEach(it=>{
       const n=ckList.indexOf(it);
       const isHtml=kindOf(it.i)==='html';
@@ -6691,9 +6963,9 @@ function ckRender(){
     });
   }
   if(!ckList.length || (ckList.length===1 && qrow)){
-    html+=`<div class="modal-empty"><h2>还没找到这篇笔记</h2>`
-      + `<p>换一个短一点的词试试。</p>`
-      + `<button type="button" class="hbtn" id="ckNew">${icon('plus',15)}<span>先记下这个想法</span></button></div>`;
+    html+=`<div class="modal-empty"><h2>${esc(TR('还没找到这篇笔记'))}</h2>`
+      + `<p>${esc(TR('换一个短一点的词试试。'))}</p>`
+      + `<button type="button" class="hbtn" id="ckNew">${icon('plus',15)}<span>${esc(TR('先记下这个想法'))}</span></button></div>`;
   }
   $('#ckList').innerHTML=html;
   $$('#ckList .search-row').forEach(el=>{
@@ -6719,28 +6991,37 @@ $('#ckEsc').onclick=closeQuick;
 /* ── 阅读与外观 ─────────────────────────
    主题走 PREF.theme + applyPref()（applyPref 里会 post 一条 theme 给壳，别绕过它）。
    字体、行高沿用设置页那三档；字号 15–21 实时；宽度三个预设。 */
-const POP_THEMES=[['auto','跟随系统'],['light','浅色'],['dark','深色']];
-const POP_FONTS=[['f-sans','系统'],['f-serif','宋体'],['f-mono','等宽']];
-const POP_WIDTHS=[[620,'紧凑'],[690,'舒适'],[820,'宽阔']];
-function popSeg(k, arr, cur){
-  return `<div class="filters" role="group">` + arr.map(x=>{
+const POP_THEMES=[['auto',TR('跟随系统')],['light',TR('浅色')],['dark',TR('深色')]];
+const POP_FONTS=[['f-sans',TR('系统')],['f-serif',TR('宋体')],['f-mono',TR('等宽')],
+                 ['f-hk',TR('苹方-港')],['f-ming',TR('新细明体')]];
+const POP_FW=[[100,TR('极细')],[200,TR('纤细')],[300,TR('细')],
+              [400,TR('标准')],[500,TR('中黑')],[600,TR('中粗')]];
+const POP_WIDTHS=[[620,TR('紧凑')],[690,TR('舒适')],[820,TR('宽阔')]];
+function popSeg(k, arr, cur, cls){
+  return `<div class="filters${cls?' '+cls:''}" role="group">` + arr.map(x=>{
     const on = String(cur)===String(x[0]);
-    return `<button type="button" data-pk="${k}" data-v="${x[0]}" class="${on?'on':''}" aria-pressed="${on?'true':'false'}">${esc(x[1])}</button>`;
+    const st = k==='fw' ? ` style="font-weight:${x[0]}"` : '';   // 每档拿自己的字重画
+    return `<button type="button" data-pk="${k}" data-v="${x[0]}" class="${on?'on':''}" aria-pressed="${on?'true':'false'}"${st}>${esc(x[1])}</button>`;
   }).join('') + `</div>`;
 }
 function drawType(){
   const box=$('#typeWrap'); if(!box) return;
-  box.innerHTML=`<div class="pop-title">阅读与外观</div>
-    <div class="setting"><label>主题</label>${popSeg('theme', POP_THEMES, PREF.theme)}</div>
-    <div class="setting"><label>字体</label>${popSeg('font', POP_FONTS, PREF.font)}</div>
-    <div class="setting"><label for="popFs">正文字号 <span class="v num" id="popVfs">${PREF.fs}</span></label>
+  box.innerHTML=`<div class="pop-title">${esc(TR('阅读与外观'))}</div>
+    <div class="setting"><label>${esc(TR('主题'))}</label>${popSeg('theme', POP_THEMES, PREF.theme)}</div>
+    <div class="setting"><label>${esc(TR('字体'))}</label>${popSeg('font', POP_FONTS, PREF.font, 'wrap')}
+      ${mingMissing() ? `<p class="pop-hint">${esc(TR('未安装新细明体，暂以宋體-繁代替'))}</p>` : ''}</div>
+    ${PREF.font==='f-hk' ? `<div class="setting"><label>${esc(TR('字重'))}</label>${popSeg('fw', POP_FW, PREF.fw, 'fw')}</div>` : ''}
+    <div class="setting"><label for="popFs">${esc(TR('正文字号'))} <span class="v num" id="popVfs">${PREF.fs}</span></label>
       <input id="popFs" type="range" min="15" max="21" step="1" value="${PREF.fs}"></div>
-    <div class="setting"><label>正文宽度</label>${popSeg('w', POP_WIDTHS, PREF.w)}</div>
-    <div class="setting"><label for="popLh">行高 <span class="v num" id="popVlh">${(PREF.lh/100).toFixed(2)}</span></label>
+    <div class="setting"><label>${esc(TR('正文宽度'))}</label>${popSeg('w', POP_WIDTHS, PREF.w)}</div>
+    <div class="setting"><label for="popLh">${esc(TR('行高'))} <span class="v num" id="popVlh">${(PREF.lh/100).toFixed(2)}</span></label>
       <input id="popLh" type="range" min="160" max="200" step="5" value="${PREF.lh}"></div>
-    <div class="setting"><button type="button" class="dt-btn" data-pk="focus">${icon('focus',14)} ${FOCUS?'退出专注阅读':'专注阅读'}</button></div>`;
+    <div class="setting"><button type="button" class="dt-btn" data-pk="focus">${icon('focus',14)} ${esc(FOCUS?TR('退出专注阅读'):TR('专注阅读'))}</button></div>`;
   box.querySelector('#popFs').oninput=e=>setPref('fs', +e.target.value);
   box.querySelector('#popLh').oninput=e=>setPref('lh', +e.target.value);
+  /* 有没有新细明体不影响这层画出来（跟设置面板一样，问一次就缓存住）；
+     问回来了再补那句提示，浮层这会儿要是已经关了就别白重画。 */
+  if(!FONTS_INFO) probeFonts().then(()=>{ if(typeOn()) drawType(); });
 }
 /* 原来挂在地址栏那颗滑块按钮下面，那颗按钮 5.4 起没了。
    现在从文档头的 ⋯ 菜单和 ⌘K 的「阅读与外观」进，浮层就贴 ⋯ 那颗按钮下方；
@@ -6773,19 +7054,20 @@ $('#typeWrap').addEventListener('click', e=>{
   const b=e.target.closest('[data-pk]'); if(!b) return;
   const k=b.dataset.pk;
   if(k==='focus'){ closeType(); toggleFocus(); return; }
-  setPref(k, k==='w' ? +b.dataset.v : b.dataset.v);
+  setPref(k, (k==='w'||k==='fw') ? +b.dataset.v : b.dataset.v);
+  if(k==='font') drawType();       // 字重那一行只在苹方-港底下有，换字体得重画
 });
 
 /* ── 斜杠插入 ─────────────────────────── */
 const SLASH=[
-  {id:'h1', title:'标题一', k:'#'},
-  {id:'h2', title:'标题二', k:'##'},
-  {id:'h3', title:'标题三', k:'###'},
-  {id:'quote', title:'引用', k:'>'},
-  {id:'task', title:'待办', k:'[]'},
-  {id:'ul', title:'列表', k:'-'},
-  {id:'pre', title:'代码块', k:'```'},
-  {id:'hr', title:'分割线', k:'---'},
+  {id:'h1', title:TR('标题一'), k:'#'},
+  {id:'h2', title:TR('标题二'), k:'##'},
+  {id:'h3', title:TR('标题三'), k:'###'},
+  {id:'quote', title:TR('引用'), k:'>'},
+  {id:'task', title:TR('待办'), k:'[]'},
+  {id:'ul', title:TR('列表'), k:'-'},
+  {id:'pre', title:TR('代码块'), k:'```'},
+  {id:'hr', title:TR('分割线'), k:'---'},
 ];
 let slashI=0, slashBlk=null;
 function slashOn(){ return $('#slash').classList.contains('on'); }
@@ -6794,7 +7076,7 @@ function hideSlash(){
   slashBlk=null;
 }
 function paintSlash(){
-  $('#slash').innerHTML='<div class="sh">插入</div>'+SLASH.map((s,i)=>
+  $('#slash').innerHTML=`<div class="sh">${esc(TR('插入'))}</div>`+SLASH.map((s,i)=>
     `<button type="button" class="${i===slashI?'on':''}" data-id="${s.id}"><span>${s.title}</span><span class="k">${s.k}</span></button>`
   ).join('');
   $$('#slash button').forEach((b,i)=>{
@@ -6844,8 +7126,15 @@ function syncNotePv(){
   ((TREE&&TREE.随手记)||[]).forEach(n=>{ if(n.预览) NOTEPV.set(n.路径, n.预览); });
   items.forEach(i=>{ const pv=NOTEPV.get(i.路径); if(pv) i.预览=pv; });
 }
-const UNTITLED = '无标题';
-const UNTITLED_FN = /^无标题(?:_\d+)?_20\d{6}\.md$/i;
+/* 「无标题」有三个身份，不能混：
+     · 显示  → TR('无标题')，跟界面语言走；
+     · 写盘  → UNTITLED_LOCAL，一级标题和文件名主干用它。这是落到磁盘上的字节，
+               所以按语言写死，不走词典（伪翻译、缺译都不该进文件）；
+     · 认名  → UNTITLED_FN / UNTITLED_ANY，三种写法一起认——换过语言之后，
+               早先建的那些无标题笔记还要能自动改名。 */
+const UNTITLED_LOCAL = LANG==='en' ? 'Untitled' : (LANG==='zh-HK' ? '無標題' : '无标题');
+const UNTITLED_FN = /^(?:无标题|無標題|Untitled)(?:_\d+)?_20\d{6}\.md$/i;
+const UNTITLED_ANY = /^(?:无标题|無標題|Untitled)$/i;
 function ymdParts(d){
   d=d||new Date();
   const z=n=>String(n).padStart(2,'0');
@@ -6889,7 +7178,7 @@ function suggestRename(rel, title){
   if(!stamp) return null;
   const 日=stamp.replace(/(\d{4})(\d{2})(\d{2})/,'$1-$2-$3');
   const stem=safeNoteStem(title, 日);
-  if(!stem || stem===UNTITLED) return null;
+  if(!stem || UNTITLED_ANY.test(stem)) return null;
   const dir=rel.includes('/') ? rel.slice(0, rel.lastIndexOf('/')) : '';
   const used=takenPaths();
   used.delete(rel);
@@ -6920,35 +7209,40 @@ function applyRenamedPath(t, next){
 let newNoteBusy=false;
 async function newNote(){
   if(newNoteBusy) return;
-  if(!IS_HTTP){ tell('新建要服务在跑','双击 AM·Note.app 打开就行。'); return; }
+  if(!IS_HTTP){ tell(TR('新建要服务在跑'), TR('双击 AM·Note.app 打开就行。')); return; }
   const cur=active(); if(cur && cur.editing) flushSave(cur);
   const {日, 紧}=ymdParts();
-  const body='# '+UNTITLED+'\n\n';
+  const body='# '+UNTITLED_LOCAL+'\n\n';
   newNoteBusy=true;
   try{
     const used=takenPaths();
     for(let i=1;i<=20;i++){
-      const rel=`${NOTE_DIR}/${UNTITLED}${i>1?'_'+i:''}_${紧}.md`;
+      const rel=`${NOTE_DIR}/${UNTITLED_LOCAL}${i>1?'_'+i:''}_${紧}.md`;
       if(used.has(rel)) continue;
       let r;
       try{
         r=await (await fetch('/__save',{method:'POST', headers:hdrs(),
           body:JSON.stringify({路径:rel, 正文:body, 新建:true})})).json();
-      }catch(e){ tell('建不了','服务没应答'); return; }
+      }catch(e){ tell(TR('建不了'), TR('服务没应答')); return; }
       if(r && r.ok){ await openFreshNote(r.路径||rel, 日); return; }
-      if(!/已经有了|刚被建走/.test((r&&r.错误)||'')){ tell('建不了', (r&&r.错误)||''); return; }
+      /* 「这个名字被占了」要靠稳定的短码认，别去匹配服务端的中文文案——
+         那句话现在会跟着语言变。老服务不给「代码」，退回原来那条正则。 */
+      const code=(r&&r.代码)||'';
+      const taken = code ? code==='exists'
+                         : /已经有了|刚被建走/.test((r&&r.错误)||'');
+      if(!taken){ tell(TR('建不了'), (r&&r.错误)||''); return; }
       used.add(rel);
     }
-    tell('建不了','今天的无标题已经建了 20 份了');
+    tell(TR('建不了'), TR('今天的无标题已经建了 20 份了'));
   }finally{ newNoteBusy=false; }
 }
 async function openFreshNote(rel, 日){
   const now=Date.now()/1000;
   if(!items.some(i=>i.路径===rel)){
-    items.unshift({路径:rel, 标题:UNTITLED, 类型:'md', 修改时间:now, 日期:日||ymdParts().日});
+    items.unshift({路径:rel, 标题:UNTITLED_LOCAL, 类型:'md', 修改时间:now, 日期:日||ymdParts().日});
     prepItems();
   }
-  await openDoc({路径:rel, 标题:UNTITLED, 类型:'md'}, {newTab:!isStartTab(active())});
+  await openDoc({路径:rel, 标题:UNTITLED_LOCAL, 类型:'md'}, {newTab:!isStartTab(active())});
   const t=active();
   if(t && t.path===rel) t.fresh=true;
   await startEdit({fresh:true});
@@ -6966,9 +7260,9 @@ let CFG_FORM=null;            // 六个可编辑键的工作副本，界面改�
 let CFG_BASE='';              // 载入时那一刻的快照，用来判断脏不脏
 let cfgBusy=false;            // 「重新整理」转着的时候
 const CFG_KEYS=['跳过目录关键词','噪声目录','噪声文件','通用标题','端口范围','随手记目录'];
-const CFG_TABS={reading:'阅读与外观', library:'笔记库', advanced:'高级', about:'关于'};
+const CFG_TABS={reading:TR('阅读与外观'), library:TR('笔记库'), advanced:TR('高级'), about:TR('关于')};
 const REPO='https://github.com/Qiululu667/amnote';
-const LINKS=[['GitHub 项目',REPO],['使用说明',REPO+'#readme'],['反馈问题',REPO+'/issues']];
+const LINKS=[[TR('GitHub 项目'),REPO],[TR('使用说明'),REPO+'#readme'],[TR('反馈问题'),REPO+'/issues']];
 
 function openCfg(){ $('#cfgWrap').classList.add('on'); loadCfg(); }
 function closeCfg(){ $('#cfgWrap').classList.remove('on'); }
@@ -6976,7 +7270,7 @@ const cfgOn = () => $('#cfgWrap').classList.contains('on');
 
 async function loadCfg(){
   try{
-    const r=await fetch('/__config',{cache:'no-store'}); if(!r.ok) throw 0;
+    const r=await fetch('/__config?lang='+LANG,{cache:'no-store'}); if(!r.ok) throw 0;
     CFG=await r.json();
   }catch(e){ CFG=null; }
   const c=(CFG&&CFG.配置)||{};
@@ -6997,13 +7291,15 @@ function cfgDirty(){ return cfgReady() && JSON.stringify(CFG_FORM)!==CFG_BASE; }
 function syncCfgDirty(){ $('#viewCfg').classList.toggle('dirty', cfgDirty()); }
 
 /* ── 小零件 ───────────────────────────── */
-function chipsHtml(key, ph){
+/* label＝这一行给人看的那句标题（芯片框上面那一行）。旁白念的是它，不是配置文件里的
+   键名——「添加：跳过目录关键词」在英文界面里翻不掉，「Add to Skip these folders」才是人话。 */
+function chipsHtml(key, ph, label){
   const arr=(CFG_FORM&&CFG_FORM[key])||[];
   return `<div class="chipbox" data-chips="${key}">`
     + arr.map((v,i)=>`<span class="chip">${esc(v)}<button type="button" class="x" data-ci="${i}"
-        aria-label="删除 ${esc(v)}">${icon('close',9)}</button></span>`).join('')
-    + `<input type="text" spellcheck="false" placeholder="${esc(ph||'输入名称后按回车')}"
-        aria-label="添加：${esc(key)}"></div>`;
+        aria-label="${esc(TR('删除 {name}',{name:v}))}">${icon('close',9)}</button></span>`).join('')
+    + `<input type="text" spellcheck="false" placeholder="${esc(ph||TR('输入名称后按回车'))}"
+        aria-label="${esc(TR('添加：{key}',{key: label||key}))}"></div>`;
 }
 /* 服务端那份「问题」是一句句人话，键名夹在「」里。按键名认领，认不到的
    归到 unmatched，由调用方摆在整段的最上面。 */
@@ -7035,48 +7331,69 @@ function panelReading(){
     + `<s style="width:66%"></s></span></span>`;
   const tcard = (v,label,inner) => `<button type="button" class="tcard" data-tc="${v}">`
     + `<span class="prev">${inner}</span><span class="nm">${label}</span></button>`;
-  const fcard = (v,label) => `<button type="button" class="fcard ${v}" data-fc="${v}">`
-    + `<span class="nm">${label}</span><span class="sm">永远相信美好的事情即将发生 Aa 123</span></button>`;
-  const seg = (k,arr) => `<span class="seg" data-k="${k}">` + arr.map(x=>
-      `<button type="button" data-v="${x[0]}">${x[1]}</button>`).join('') + `</span>`;
+  /* wide＝在六列网格里占三列（第二行那两张），也正是苹方-港和新细明体这两张——
+     它们是拿来看中日韩字形的，样句必须是汉字，英文界面下也不能换成英文，
+     不然这两张卡上一个汉字都没有，等于没预览。所以两条样句，##cjk 那条永远是汉字。 */
+  const SPECIMEN = K('永远相信美好的事情即将发生 Aa 123');
+  const SPECIMEN_CJK = K('永远相信美好的事情即将发生 Aa 123##cjk');
+  const fcard = (v,label,wide) => `<button type="button" class="fcard ${v}${wide?' wide':''}" data-fc="${v}">`
+    + `<span class="nm">${label}</span><span class="sm">${esc(TR(wide?SPECIMEN_CJK:SPECIMEN))}</span></button>`;
+  /* attr(x) 给单颗按钮补属性（字重那一行靠它把 style="font-weight:…" 挂上去）。 */
+  const seg = (k,arr,attr) => `<span class="seg" data-k="${k}">` + arr.map(x=>
+      `<button type="button" data-v="${x[0]}"${attr?attr(x):''}>${x[1]}</button>`).join('') + `</span>`;
+  /* 语言那一行：三个语言名永远写它自己那一种语言，只有「跟随系统」跟着界面走。 */
+  const langs=[['auto',esc(TR('跟随系统'))],['zh-Hans','简体中文'],
+               ['zh-HK','繁體中文（香港）'],['en','English']];
   return `<section class="cfg-panel on" data-cfgpanel="reading">
-    <div class="frow"><span class="flab">主题</span><div class="fctl"><div class="tcards">
-      ${tcard('auto','跟随系统', mini('dk')+mini('lt half'))}
-      ${tcard('light','浅色', mini('lt'))}
-      ${tcard('dark','深色', mini('dk'))}
+    <div class="frow"><span class="flab">${esc(TR('语言'))}</span><div class="fctl">
+      ${seg('lang', langs)}
+      <p class="hint">${esc(TR('切换后会重新载入页面'))}</p></div></div>
+
+    <div class="frow"><span class="flab">${esc(TR('主题'))}</span><div class="fctl"><div class="tcards">
+      ${tcard('auto',esc(TR('跟随系统')), mini('dk')+mini('lt half'))}
+      ${tcard('light',esc(TR('浅色')), mini('lt'))}
+      ${tcard('dark',esc(TR('深色')), mini('dk'))}
     </div></div></div>
 
-    <div class="frow"><span class="flab">阅读字体</span><div class="fctl"><div class="fcards">
-      ${fcard('f-sans','系统黑体')}${fcard('f-serif','宋体')}${fcard('f-mono','等宽')}
-    </div></div></div>
-
-    <div class="frow"><span class="flab">字号</span><div class="fctl">
-      <div class="srow">
-        <input type="range" id="cfgFs" min="15" max="21" step="1" value="${PREF.fs}" aria-label="正文字号">
-        <span class="val num" id="cfgFsV">${PREF.fs}</span></div>
-      <p class="cfg-sample" id="cfgFsSample">把想到的写下来，剩下的交给以后。</p>
+    <div class="frow"><span class="flab">${esc(TR('阅读字体'))}</span><div class="fctl"><div class="fcards">
+      ${fcard('f-sans',esc(TR('系统黑体')))}${fcard('f-serif',esc(TR('宋体')))}${fcard('f-mono',esc(TR('等宽')))}
+      ${fcard('f-hk',esc(TR('苹方-港')),true)}${fcard('f-ming',esc(TR('新细明体')),true)}
+    </div>
+    <p class="hint" id="cfgMingHint" hidden>${esc(TR('未安装新细明体，暂以宋體-繁代替'))}</p>
     </div></div>
 
-    <div class="frow"><span class="flab">行距</span><div class="fctl">
-      ${seg('lh',[[160,'紧凑 1.6'],[180,'舒适 1.8'],[200,'宽松 2.0']])}</div></div>
+    <div class="frow" id="cfgFwRow" hidden><span class="flab">${esc(TR('字重'))}</span><div class="fctl">
+      ${seg('fw', [[100,esc(TR('极细'))],[200,esc(TR('纤细'))],[300,esc(TR('细'))],
+                   [400,esc(TR('标准'))],[500,esc(TR('中黑'))],[600,esc(TR('中粗'))]],
+            x=>` style="font-weight:${x[0]}"`)}</div></div>
 
-    <div class="frow"><span class="flab">栏宽</span><div class="fctl">
-      ${seg('w',[[620,'窄 620'],[690,'标准 690'],[820,'宽 820']])}</div></div>
+    <div class="frow"><span class="flab">${esc(TR('字号'))}</span><div class="fctl">
+      <div class="srow">
+        <input type="range" id="cfgFs" min="15" max="21" step="1" value="${PREF.fs}" aria-label="${esc(TR('正文字号'))}">
+        <span class="val num" id="cfgFsV">${PREF.fs}</span></div>
+      <p class="cfg-sample" id="cfgFsSample">${esc(TR('把想到的写下来，剩下的交给以后。'))}</p>
+    </div></div>
 
-    <div class="frow"><span class="flab">大纲</span><div class="fctl"><div class="swrow">
-      <span class="txt">打开文档时默认显示大纲</span>
+    <div class="frow"><span class="flab">${esc(TR('行距'))}</span><div class="fctl">
+      ${seg('lh',[[160,esc(TR('紧凑'))+' 1.6'],[180,esc(TR('舒适'))+' 1.8'],[200,esc(TR('宽松'))+' 2.0']])}</div></div>
+
+    <div class="frow"><span class="flab">${esc(TR('栏宽'))}</span><div class="fctl">
+      ${seg('w',[[620,esc(TR('窄'))+' 620'],[690,esc(TR('标准##栏宽'))+' 690'],[820,esc(TR('宽'))+' 820']])}</div></div>
+
+    <div class="frow"><span class="flab">${esc(TR('大纲'))}</span><div class="fctl"><div class="swrow">
+      <span class="txt">${esc(TR('打开文档时默认显示大纲'))}</span>
       <button type="button" class="sw" id="cfgToc" role="switch" aria-checked="false"
-        aria-label="打开文档时默认显示大纲"></button>
+        aria-label="${esc(TR('打开文档时默认显示大纲'))}"></button>
     </div></div></div>
 
-    <div class="frow"><span class="flab">开始页</span><div class="fctl"><div class="swrow">
-      <span class="txt">开始页显示文件夹入口</span>
+    <div class="frow"><span class="flab">${esc(TR('开始页'))}</span><div class="fctl"><div class="swrow">
+      <span class="txt">${esc(TR('开始页显示文件夹入口'))}</span>
       <button type="button" class="sw" id="cfgChips" role="switch" aria-checked="false"
-        aria-label="开始页显示文件夹入口"></button>
+        aria-label="${esc(TR('开始页显示文件夹入口'))}"></button>
     </div></div></div>
 
     <div class="frow"><span class="flab"></span><div class="fctl">
-      <button type="button" class="link" id="rstPref">恢复默认</button></div></div>
+      <button type="button" class="link" id="rstPref">${esc(TR('恢复默认'))}</button></div></div>
   </section>`;
 }
 
@@ -7086,60 +7403,62 @@ function panelLibrary(){
   const idx=st.索引||{};
   const last=st.上次扫描 ? fmtWhen(tsOf(st.上次扫描)) : '';
   const stCls = cfgBusy||SRV_STATE==='scan' ? 'busy' : (SRV_STATE==='off' ? 'off' : '');
-  const stTxt = cfgBusy ? '正在整理…'
-    : (root ? `收录 ${idx.收录||0} 篇${last?' · 上次整理 '+esc(last):''}` : '服务没起');
+  const stTxt = cfgBusy ? TR('正在整理…')
+    : (root ? esc(TR('收录 {n} 篇',{n:idx.收录||0}))
+              +(last?' · '+esc(TR('上次整理 {when}',{when:last})):'')
+            : TR('服务没起'));
   const swap = SHELL
-    ? `<button type="button" class="btn" data-cfga="choose">更换文件夹…</button>`
+    ? `<button type="button" class="btn" data-cfga="choose">${esc(TR('更换文件夹…'))}</button>`
     : '';
   return `<section class="cfg-panel on" data-cfgpanel="library">
     ${looseNotices()}
     <div class="sec">
-      <h3 class="sect">当前笔记库</h3>
+      <h3 class="sect">${esc(TR('当前笔记库'))}</h3>
       <div class="vault">
         <span class="fico" aria-hidden="true">${folderMark(40)}</span>
         <span class="meta">
-          <span class="nm">${esc(baseName(root)||'（未连上）')}</span>
+          <span class="nm">${esc(baseName(root)||TR('（未连上）'))}</span>
           <span class="pth"><span title="${esc(root)}">${esc(root)}</span>
-            <button type="button" class="cpb" data-cfga="copyroot" title="拷贝路径"
-              aria-label="拷贝路径">${icon('copy',12)}</button></span>
+            <button type="button" class="cpb" data-cfga="copyroot" title="${esc(TR('拷贝路径'))}"
+              aria-label="${esc(TR('拷贝路径'))}">${icon('copy',12)}</button></span>
         </span>
         <span class="vacts">
-          <button type="button" class="btn" data-cfga="reveal">在访达中显示</button>
+          <button type="button" class="btn" data-cfga="reveal">${esc(TR('在访达中显示'))}</button>
           ${swap}
         </span>
       </div>
-      ${SHELL?'':'<p class="hint">浏览器模式下用 --root 指定文件夹。</p>'}
+      ${SHELL?'':`<p class="hint">${esc(TR('浏览器模式下用 --root 指定文件夹。'))}</p>`}
       <div class="statusrow">
         <span class="st ${stCls}" id="cfgStat">${stTxt}</span>
         <button type="button" class="btn" id="cfgRescan"${cfgBusy?' disabled':''}>
-          <span class="${cfgBusy?'spin':''}">${icon('refresh',13)}</span>${cfgBusy?'整理中…':'重新整理'}</button>
+          <span class="${cfgBusy?'spin':''}">${icon('refresh',13)}</span>${esc(cfgBusy?TR('整理中…'):TR('重新整理'))}</button>
       </div>
     </div>
 
     ${!cfgReady() ? offlineNotice() : `
     <div class="sec">
-      <h3 class="sect">随手记</h3>
+      <h3 class="sect">${esc(TR('随手记'))}</h3>
       ${noticeFor('随手记目录')}
       <div class="inline-field">
-        <label class="lbl" for="cfgNoteDir">随手记存放在</label>
+        <label class="lbl" for="cfgNoteDir">${esc(TR('随手记存放在'))}</label>
         <input class="tin" id="cfgNoteDir" spellcheck="false" value="${esc(CFG_FORM.随手记目录)}">
       </div>
-      <p class="hint">新建的随手记会放进笔记库里的这个文件夹。</p>
+      <p class="hint">${esc(TR('新建的随手记会放进笔记库里的这个文件夹。'))}</p>
     </div>
 
     <div class="sec">
-      <h3 class="sect">整理范围</h3>
+      <h3 class="sect">${esc(TR('整理范围'))}</h3>
       ${noticeFor('跳过目录关键词')}
-      <div class="lblrow"><span class="lbl">不收录这些文件夹</span>
-        <span class="ih">文件夹名里含有这些字样，整个文件夹就跳过</span></div>
-      ${chipsHtml('跳过目录关键词','例如 备份、node_modules')}
+      <div class="lblrow"><span class="lbl">${esc(TR('不收录这些文件夹'))}</span>
+        <span class="ih">${esc(TR('文件夹名里含有这些字样，整个文件夹就跳过'))}</span></div>
+      ${chipsHtml('跳过目录关键词',TR('例如 备份、node_modules'),TR('不收录这些文件夹'))}
     </div>`}
   </section>`;
 }
 /* 服务没起时 /__config 是读不到的，六个键全空。这时候不摆输入框——
    摆了也存不进去，一旦让人改，「保存」就成了拿空值覆盖人家的配置。 */
 function offlineNotice(){
-  return `<div class="sec">${noticeHtml('服务没起，读不到配置文件。重开一次 AM·Note 再来改。')}</div>`;
+  return `<div class="sec">${noticeHtml(TR('服务没起，读不到配置文件。重开一次 AM·Note 再来改。'))}</div>`;
 }
 
 function panelAdvanced(){
@@ -7157,65 +7476,65 @@ function panelAdvanced(){
     ${notes}
     <div class="sec" style="margin-top:0">
       ${noticeFor('噪声目录')}
-      <div class="lblrow"><span class="lbl">完全同名才跳过的文件夹</span>
-        <span class="ih">名字一模一样才跳过，写一半不算</span></div>
-      ${chipsHtml('噪声目录')}
+      <div class="lblrow"><span class="lbl">${esc(TR('完全同名才跳过的文件夹'))}</span>
+        <span class="ih">${esc(TR('名字一模一样才跳过，写一半不算'))}</span></div>
+      ${chipsHtml('噪声目录','',TR('完全同名才跳过的文件夹'))}
     </div>
     <div class="sec">
       ${noticeFor('噪声文件')}
-      <div class="lblrow"><span class="lbl">跳过的文件</span>
-        <span class="ih">这些文件不出现在开始页，也搜不到</span></div>
-      ${chipsHtml('噪声文件')}
+      <div class="lblrow"><span class="lbl">${esc(TR('跳过的文件'))}</span>
+        <span class="ih">${esc(TR('这些文件不出现在开始页，也搜不到'))}</span></div>
+      ${chipsHtml('噪声文件','',TR('跳过的文件'))}
     </div>
     <div class="sec">
       ${noticeFor('通用标题')}
-      <div class="lblrow"><span class="lbl">这些标题前自动补上文件夹名</span>
-        <span class="ih">太常见的标题，补上文件夹名好认</span></div>
-      ${chipsHtml('通用标题')}
+      <div class="lblrow"><span class="lbl">${esc(TR('这些标题前自动补上文件夹名'))}</span>
+        <span class="ih">${esc(TR('太常见的标题，补上文件夹名好认'))}</span></div>
+      ${chipsHtml('通用标题','',TR('这些标题前自动补上文件夹名'))}
     </div>
     <div class="sec">
-      <div class="lblrow"><span class="lbl">本机服务端口</span>
-        <span class="ih">一般不用改。改了以后要重新打开 AM·Note 才生效</span></div>
+      <div class="lblrow"><span class="lbl">${esc(TR('本机服务端口'))}</span>
+        <span class="ih">${esc(TR('一般不用改。改了以后要重新打开 AM·Note 才生效'))}</span></div>
       ${noticeFor('端口范围')}
       <div style="display:flex;align-items:center;gap:9px">
-        <input class="tin n num" id="cfgPortA" inputmode="numeric" aria-label="起始端口"
+        <input class="tin n num" id="cfgPortA" inputmode="numeric" aria-label="${esc(TR('起始端口'))}"
           value="${esc(CFG_FORM.端口范围[0])}">
-        <span style="font-size:12px;color:var(--t3)">到</span>
-        <input class="tin n num" id="cfgPortB" inputmode="numeric" aria-label="结束端口"
+        <span style="font-size:12px;color:var(--t3)">${esc(TR('到'))}</span>
+        <input class="tin n num" id="cfgPortB" inputmode="numeric" aria-label="${esc(TR('结束端口'))}"
           value="${esc(CFG_FORM.端口范围[1])}">
       </div>
     </div>
     <div class="sec">
-      <h3 class="sect">服务信息</h3>
+      <h3 class="sect">${esc(TR('服务信息'))}</h3>
       <div class="kvgrid">
-        <div class="kvrow"><b>端口</b><span class="num">${esc(st.端口||'—')}</span></div>
-        <div class="kvrow"><b>门禁</b><span>${TOKEN_OK?'已开启':'未开启'}</span></div>
-        <div class="kvrow wide"><b>配置文件</b>
-          <span title="${esc(cfgFile)}">${esc(cfgFile||'读不到，服务没起')}</span>
-          ${cfgFile?`<button type="button" class="cpb" data-cfga="copycfg" title="拷贝"
-            aria-label="拷贝配置文件路径">${icon('copy',12)}</button>`:''}</div>
+        <div class="kvrow"><b>${esc(TR('端口'))}</b><span class="num">${esc(st.端口||'—')}</span></div>
+        <div class="kvrow"><b>${esc(TR('门禁'))}</b><span>${esc(TOKEN_OK?TR('已开启'):TR('未开启'))}</span></div>
+        <div class="kvrow wide"><b>${esc(TR('配置文件'))}</b>
+          <span title="${esc(cfgFile)}">${esc(cfgFile||TR('读不到，服务没起'))}</span>
+          ${cfgFile?`<button type="button" class="cpb" data-cfga="copycfg" title="${esc(TR('拷贝'))}"
+            aria-label="${esc(TR('拷贝配置文件路径'))}">${icon('copy',12)}</button>`:''}</div>
       </div>
-      <p class="hint">${CFG.文件存在?'这些值来自配置文件。':'还没有配置文件，用的是内置默认值，保存后才会写出来。'}</p>
+      <p class="hint">${esc(CFG.文件存在?TR('这些值来自配置文件。'):TR('还没有配置文件，用的是内置默认值，保存后才会写出来。'))}</p>
     </div>`);
   return `<section class="cfg-panel on" data-cfgpanel="advanced">
     <div class="advrow">
-      <p class="advnote">这些是给爱折腾的人准备的。不动它们，AM·Note 也能好好用。</p>
-      ${forced ? '<span class="disc" style="color:var(--t3)">有一处配置要处理</span>'
-        : (cfgReady()?`<button type="button" class="disc" id="cfgAdvT">${icon(open?'chevron-up':'chevron-down',12)}${open?'收起':'显示高级选项'}</button>`:'')}
+      <p class="advnote">${esc(TR('这些是给爱折腾的人准备的。不动它们，AM·Note 也能好好用。'))}</p>
+      ${forced ? `<span class="disc" style="color:var(--t3)">${esc(TR('有一处配置要处理'))}</span>`
+        : (cfgReady()?`<button type="button" class="disc" id="cfgAdvT">${icon(open?'chevron-up':'chevron-down',12)}${esc(open?TR('收起'):TR('显示高级选项'))}</button>`:'')}
     </div>
     ${body}
   </section>`;
 }
 
 function panelAbout(){
-  const ver = SHELL ? ('版本 '+(window.__AMN_SHELL_VERSION__||'—')) : '浏览器模式';
+  const ver = SHELL ? TR('版本 {v}',{v:window.__AMN_SHELL_VERSION__||'—'}) : TR('浏览器模式');
   const auto = window.__AMN_AUTO_UPDATE__ !== false;
   const acts = SHELL ? `<div class="acts">
       <button type="button" class="btn key" style="height:30px;padding:0 14px"
-        data-cfga="update">检查更新</button>
-      <span class="swline">自动检查更新
+        data-cfga="update">${esc(TR('检查更新'))}</button>
+      <span class="swline">${esc(TR('自动检查更新'))}
         <button type="button" class="sw${auto?' on':''}" id="cfgAuto" role="switch"
-          aria-checked="${auto?'true':'false'}" aria-label="自动检查更新"></button></span>
+          aria-checked="${auto?'true':'false'}" aria-label="${esc(TR('自动检查更新'))}"></button></span>
     </div>` : '';
   const links = LINKS.map(x=>`<button type="button" class="link" data-url="${esc(x[1])}">${x[0]}</button>`)
     .join('<i>·</i>');
@@ -7224,10 +7543,10 @@ function panelAbout(){
       <div class="ico"><img src="/icon-192.png" width="64" height="64" alt="AM·Note"></div>
       <h3>AM·Note</h3>
       <p class="ver num">${esc(ver)}</p>
-      <p class="desc">把一个文件夹变成你的笔记本。</p>
+      <p class="desc">${esc(TR('把一个文件夹变成你的笔记本。'))}</p>
       ${acts}
       <div class="links">${links}</div>
-      <p class="fine">MIT 开源协议</p>
+      <p class="fine">${esc(TR('MIT 开源协议'))}</p>
     </div>
   </section>`;
 }
@@ -7261,14 +7580,19 @@ function wireCfg(tab){
     $$('#cfgBody [data-tc]').forEach(b=>b.onclick=()=>setPref('theme', b.dataset.tc));
     $$('#cfgBody [data-fc]').forEach(b=>b.onclick=()=>setPref('font', b.dataset.fc));
     const fs=$('#cfgFs'); if(fs) fs.oninput=e=>setPref('fs', +e.target.value);
-    $$('#cfgBody .seg[data-k] button').forEach(b=>b.onclick=()=>
-      setPref(b.parentElement.dataset.k, +b.dataset.v));
+    $$('#cfgBody .seg[data-k] button').forEach(b=>b.onclick=()=>{
+      const k=b.parentElement.dataset.k;
+      if(k==='lang'){ setLang(b.dataset.v); return; }   // 语言的值不是数字，也不即时生效
+      setPref(k, +b.dataset.v);
+    });
     const tc=$('#cfgToc');
     if(tc) tc.onclick=()=>{ ST.toc = !(ST.toc!==false); saveST(); syncToc(); syncPrefControls(); };
     const cq=$('#cfgChips');
     if(cq) cq.onclick=()=>setChipsOpen(!chipsOpen());
     const rb=$('#rstPref');
     if(rb) rb.onclick=()=>{ RESETTABLE.forEach(k=>PREF[k]=DEF_PREF[k]); savePref(); applyPref(); };
+    // 有没有新细明体不影响这一页画出来，问回来了再决定那句提示露不露。
+    probeFonts().then(()=>{ if($('#cfgMingHint')) syncPrefControls(); });
     return;
   }
   if(tab==='about'){
@@ -7307,7 +7631,7 @@ function wireChips(box){
     sp.className='chip fresh';
     sp.appendChild(document.createTextNode(v));
     const x=document.createElement('button');
-    x.type='button'; x.className='x'; x.setAttribute('aria-label','删除 '+v);
+    x.type='button'; x.className='x'; x.setAttribute('aria-label', TR('删除 {name}',{name:v}));
     x.innerHTML=icon('close',9);
     x.dataset.ci=String(CFG_FORM[key].length-1);
     sp.appendChild(x);
@@ -7378,13 +7702,13 @@ async function saveCfg(){
   try{
     const r=await (await fetch('/__config',{method:'POST', headers:hdrs(),
       body:JSON.stringify(payload)})).json();
-    if(!r.ok){ tell('没保存成功', r.错误||''); if(btn) btn.disabled=false; return; }
-    flash('已保存，正在重新整理');
+    if(!r.ok){ tell(TR('没保存成功'), r.错误||''); if(btn) btn.disabled=false; return; }
+    flash(TR('已保存，正在重新整理'));
     cfgBusy=true; renderCfg();
     try{ await doRescan(); } finally{ cfgBusy=false; }
     await loadCfg();
   }catch(e){
-    tell('没保存成功','服务没应答');
+    tell(TR('没保存成功'), TR('服务没应答'));
     if(btn) btn.disabled=false;
   }
 }
@@ -7435,10 +7759,12 @@ function setState(s, tip){
 /* ── 服务状态 ───────────────────────────
    底部状态栏 5.4 起取消，这一格搬进开始页眉行那枚小圆点：
    绿＝就绪 · N 篇，琥珀＝扫描中，灰＝服务没起。开始页画一次，之后状态变了就地改字。 */
+/* 「状态」的哨兵值（扫描中／就绪／…）跟服务端比较时一律用中文原串，
+   这里只管显示，翻不翻不影响判断。 */
 function scanChipText(){
-  if(SRV_STATE==='off') return '服务没起';
-  if(SRV_STATE==='scan') return '扫描中…';
-  return '就绪 · '+items.length+' 篇';
+  if(SRV_STATE==='off') return TR('服务没起');
+  if(SRV_STATE==='scan') return TR('扫描中…');
+  return TR('就绪 · {n} 篇',{n:items.length});
 }
 function syncScanChip(){
   $$('[data-scan]').forEach(el=>{
@@ -7449,18 +7775,24 @@ function syncScanChip(){
   });
 }
 
+/* 服务端 JSON 里的「状态」永远是中文哨兵（跟它比较时也一律用中文原串），
+   摆到界面上之前翻一次。K() 运行时什么都不做，只是让校验脚本认出这五个键；
+   认不出来的值原样放行，不进 __i18nMissing——那是服务端加了新哨兵，不是漏翻。 */
+const IDX_STATES = [K('就绪'), K('同步中'), K('未建库'), K('异常'), K('扫描中')];
+const idxState = v => IDX_STATES.indexOf(v)>=0 ? TR(v) : String(v==null?'':v);
+
 async function syncStatus(){
   try{
-    const r=await fetch('/__status',{cache:'no-store'}); if(!r.ok) throw 0;
+    const r=await fetch('/__status?lang='+LANG,{cache:'no-store'}); if(!r.ok) throw 0;
     const s=await r.json();
     if(s.库根) LIBROOT=s.库根;
     if(s.随手记目录) NOTE_DIR = s.随手记目录;
     const scanning = busy || s.状态==='扫描中';
     const idx=s.索引||{};
     setState(scanning?'scan':'ok',
-      `端口 ${s.端口}\n上次扫描 ${s.上次扫描||''}`
-      +(idx.收录?`\n全文索引 ${idx.收录} 份（${idx.状态}）`:''));
-  }catch(e){ setState('off','服务没起'); }
+      TR('端口 {port}',{port:s.端口})+'\n'+TR('上次扫描 {when}',{when:s.上次扫描||''})
+      +(idx.收录?'\n'+TR('全文索引 {n} 份（{state}）',{n:idx.收录, state:idxState(idx.状态)}):''));
+  }catch(e){ setState('off', TR('服务没起')); }
 }
 
 /* /__pulse 的消费逻辑原样保留：整串当指纹，变了就重扫。 */
@@ -7552,6 +7884,11 @@ window.AMN = {
   reveal(){ const t=active(); if(t && t.path) revealPath(t.path); },
   copyPath(){ const t=active(); if(t && t.path) clipPath(t.path); },
   settings(){ openCfg(); },
+  /* 换界面语言。'auto' | 'zh-Hans' | 'zh-HK' | 'en'，改完整页重来。 */
+  setLang(code){ setLang(code); },
+  lang(){ return LANG; },
+  /* 壳换语言前挨个 webview 调这一发，等它落地再 reload。返回 true＝都存住了。 */
+  saveAllForReload(){ return saveAllForReload(); },
   /* 列表栏 5.4.1 下线。两个名字都留着——壳菜单和老调用方还指得着，
      点了静默返回，不抛异常。 */
   toggleSidebar(){ toggleLists(); },
@@ -7650,7 +7987,7 @@ function tryLeaveReader(){
     endEdit(t);
   }
   if(SOLO){ leaveReader(); return true; }
-  navigate(makeEntry('start', {title:'开始'}));
+  navigate(makeEntry('start', {title:TR('开始')}));
   return true;
 }
 
@@ -7728,11 +8065,11 @@ addEventListener('drop', e=>{
   if(!f) return;
   e.preventDefault();
   const path=f.path || '';                       // WKWebView 给得到本地路径
-  if(!path){ tell('打不开','这个来源拿不到文件路径'); return; }
+  if(!path){ tell(TR('打不开'), TR('这个来源拿不到文件路径')); return; }
   const root=LIBROOT ? LIBROOT+'/' : '';
   if(root && path.startsWith(root)){ openByPath(path.slice(root.length)); return; }
   if(/\.md$/i.test(path)){ openExtPath(path); return; }
-  tell('打不开','库外的文件只能读 .md：'+path);
+  tell(TR('打不开'), TR('库外的文件只能读 .md：{path}',{path}));
 });
 
 /* ── 新用户引导 ─────────────────────────
@@ -7764,43 +8101,51 @@ function onbHead(icoHtml, h1, sub){
 }
 const onbAppIco = `<div class="onb-ico"><img src="/icon-192.png" width="72" height="72" alt="AM·Note"></div>`;
 
+/* 「已找到 3 篇」。数字要单独包一层（扫描过程里只换这个 <b> 里的字），可是单复数
+   得按真数字挑（英文 1 篇是 note、2 篇是 notes），所以先拿数字翻译，再把译文里
+   头一处这个数字换成 <b>。译文里万一没有数字，就把 <b> 补在最前面。 */
+function onbCntHtml(n){
+  const d=String(n), s=esc(TR('已找到 {n} 篇',{n:n})), b=`<b class="num" id="onbCnt">${d}</b>`;
+  const i=s.indexOf(d);
+  return i<0 ? b+' '+s : s.slice(0,i)+b+s.slice(i+d.length);
+}
 function onbHtml(step){
   if(step==='welcome') return onbCard(
-    onbHead(onbAppIco,'欢迎使用 AM·Note','把一个文件夹变成你的笔记本。文件留在原地，不上传，不改格式。')
+    onbHead(onbAppIco,esc(TR('欢迎使用 AM·Note')),esc(TR('把一个文件夹变成你的笔记本。文件留在原地，不上传，不改格式。')))
     + `<div class="choices">
         <button type="button" class="choice" data-onb="create">
           <span class="ci">${icon('new-note',18)}</span>
-          <h2>新建一个笔记库</h2>
-          <p>在「文稿」里创建 AM·Note 文件夹，附一篇示例笔记。</p>
+          <h2>${esc(TR('新建一个笔记库'))}</h2>
+          <p>${esc(TR('在「文稿」里创建 AM·Note 文件夹，附一篇示例笔记。'))}</p>
           <span class="path"><span class="p">~/Documents/AM·Note</span></span>
         </button>
         <button type="button" class="choice" data-onb="choose">
           <span class="ci">${icon('folder',18)}</span>
-          <h2>使用已有文件夹</h2>
-          <p>选择一个已经放着 Markdown / 网页的文件夹。</p>
-          <span class="path"><span class="p">支持子文件夹，原样保留</span></span>
+          <h2>${esc(TR('使用已有文件夹'))}</h2>
+          <p>${esc(TR('选择一个已经放着 Markdown / 网页的文件夹。'))}</p>
+          <span class="path"><span class="p">${esc(TR('支持子文件夹，原样保留'))}</span></span>
         </button>
       </div>
-      <p class="onb-foot">以后随时可以在 设置 › 笔记库 里更换。</p>`);
+      <p class="onb-foot">${esc(TR('以后随时可以在 设置 › 笔记库 里更换。'))}</p>`);
 
   if(step==='missing') return onbCard(
     onbHead(`<div class="qmark">${icon('folder',28)}<em>?</em></div>`,
-            '找不到上次的笔记库','这个文件夹被移动、改名或者删掉了。')
-    + `<div class="oldpath">${icon('folder',13)}<span title="${esc(ONB_PATH)}">${esc(ONB_PATH||'（没记下路径）')}</span></div>
+            esc(TR('找不到上次的笔记库')),esc(TR('这个文件夹被移动、改名或者删掉了。')))
+    + `<div class="oldpath">${icon('folder',13)}<span title="${esc(ONB_PATH)}">${esc(ONB_PATH||TR('（没记下路径）'))}</span></div>
        <div class="onb-btns">
-         <button type="button" class="btn key" data-onb="choose">重新选择位置…</button>
-         <button type="button" class="btn" data-onb="create">新建一个笔记库</button>
+         <button type="button" class="btn key" data-onb="choose">${esc(TR('重新选择位置…'))}</button>
+         <button type="button" class="btn" data-onb="create">${esc(TR('新建一个笔记库'))}</button>
        </div>
-       <p class="onb-fine">文件不会丢，只是 AM·Note 找不到那个文件夹了。</p>`);
+       <p class="onb-fine">${esc(TR('文件不会丢，只是 AM·Note 找不到那个文件夹了。'))}</p>`);
 
   if(step==='scanning') return onbCard(
-    onbHead(onbAppIco,'正在整理你的笔记…','读一遍文件夹里的 Markdown 和网页，不会改动任何文件。')
-    + `<div class="pbar" role="progressbar" aria-label="正在整理"></div>
+    onbHead(onbAppIco,esc(TR('正在整理你的笔记…')),esc(TR('读一遍文件夹里的 Markdown 和网页，不会改动任何文件。')))
+    + `<div class="pbar" role="progressbar" aria-label="${esc(TR('正在整理'))}"></div>
        <div class="scanrow">
-         <span class="cnt">已找到 <b class="num" id="onbCnt">${onbFound}</b> 篇</span>
+         <span class="cnt">${onbCntHtml(onbFound)}</span>
          <span class="pth" title="${esc(ONB_PATH||LIBROOT)}">${esc(ONB_PATH||LIBROOT)}</span>
        </div>
-       <p class="onb-foot">这一步只做一次，之后打开就是秒开。</p>`);
+       <p class="onb-foot">${esc(TR('这一步只做一次，之后打开就是秒开。'))}</p>`);
 
   // done
   const docs=(TREE&&TREE.文档)||[];
@@ -7812,14 +8157,14 @@ function onbHtml(step){
     + `<path d="M7.6,12.3 L10.7,15.4 L16.4,8.9" stroke-linecap="round" stroke-linejoin="round"/></svg></div>`;
   const skipped=onbSkipped();
   return onbCard(
-    onbHead(ok,'整理好了','你的笔记库已经可以用了。')
+    onbHead(ok,esc(TR('整理好了')),esc(TR('你的笔记库已经可以用了。')))
     + `<div class="stats">
-        <div class="stat"><b class="num">${md}</b><span>篇 Markdown</span></div>
-        <div class="stat"><b class="num">${html}</b><span>个网页</span></div>
-        <div class="stat"><b class="num">${dirs}</b><span>个文件夹</span></div>
+        <div class="stat"><b class="num">${md}</b><span>${esc(TR('篇 Markdown',{n:md}))}</span></div>
+        <div class="stat"><b class="num">${html}</b><span>${esc(TR('个网页',{n:html}))}</span></div>
+        <div class="stat"><b class="num">${dirs}</b><span>${esc(TR('个文件夹',{n:dirs}))}</span></div>
       </div>
-      ${skipped?`<p class="skipnote">跳过了 ${esc(skipped)}（可在设置里调整）</p>`:''}
-      <div class="onb-btns"><button type="button" class="btn key" data-onb="go">开始使用</button></div>`);
+      ${skipped?`<p class="skipnote">${esc(TR('跳过了 {names}（可在设置里调整）',{names:skipped}))}</p>`:''}
+      <div class="onb-btns"><button type="button" class="btn key" data-onb="go">${esc(TR('开始使用'))}</button></div>`);
 }
 /* 「跳过了 …」这一行报的是**真的被整个跳掉的顶层文件夹**，不是配置里的关键词：
    静态服务对库根出的是目录清单，从那儿拿到磁盘上真有的顶层文件夹名，再拿
@@ -7827,12 +8172,12 @@ function onbHtml(step){
    比一遍。点开头的（.git/.amnote/.claude）是机器的事，不跟用户报账。
    任何一步取不到就整行不出——规范允许省略，但不允许写一句可能是假的。 */
 let ONB_SKIP_NAMES=[];
-function onbSkipped(){ return ONB_SKIP_NAMES.slice(0,4).join('、'); }
+function onbSkipped(){ return ONB_SKIP_NAMES.slice(0,4).join(LANG==='en' ? ', ' : '、'); }
 async function onbLoadSkips(){
   ONB_SKIP_NAMES=[];
   if(!IS_HTTP) return;
   try{
-    const cr=await fetch('/__config',{cache:'no-store'}); if(!cr.ok) return;
+    const cr=await fetch('/__config?lang='+LANG,{cache:'no-store'}); if(!cr.ok) return;
     const kw=(((await cr.json()).配置)||{}).跳过目录关键词||[];
     if(!kw.length) return;
     const lr=await fetch('/',{cache:'no-store'}); if(!lr.ok) return;
@@ -7871,7 +8216,7 @@ function onbClick(b){
   b.classList.add('wait');
   const p=b.querySelector('.path .p') || b;
   const old=p.textContent;
-  p.textContent='正在打开…';
+  p.textContent=TR('正在打开…');
   setTimeout(()=>{ b.classList.remove('wait'); p.textContent=old; }, 2500);
 }
 /* 整理中：每 500ms 问一次 /__status，收录数往上跳；状态回到「就绪」就换卡片。 */
@@ -7879,7 +8224,7 @@ async function onbPoll(){
   if(onbStep!=='scanning') return;
   let done=false;
   try{
-    const r=await fetch('/__status',{cache:'no-store'});
+    const r=await fetch('/__status?lang='+LANG,{cache:'no-store'});
     if(r.ok){
       const s=await r.json();
       onbFound=(s.索引||{}).收录||0;
@@ -7904,6 +8249,7 @@ function onbBoot(){
 }
 
 /* ═══ 起步 ═══════════════════════════════ */
+bootI18n();                 // 写死在 <body> 里的字，先按当前语言换掉
 if(EMBED){
   const t=makeTab(makeEntry('md', {path:EMBED.路径, title:EMBED.标题}));
   t.noEdit=true;
@@ -7936,6 +8282,13 @@ applyST();
 applyPref();
 syncToc();
 onbBoot();
+/* 上一轮在壳里换了语言：菜单已经重建过，但 AppKit 自带的那几项要下次启动才跟上。
+   记号只消费一次，说完就抹掉。 */
+(function langSwitchedNote(){
+  let f=null;
+  try{ f=localStorage.getItem('tp-lang-switched'); localStorage.removeItem('tp-lang-switched'); }catch(e){}
+  if(f && SHELL) setTimeout(()=>notify(TR('系统菜单里的少数项目会在下次启动后换成新语言')), 900);
+})();
 post({type:'ready'});
 </script>
 </body>

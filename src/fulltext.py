@@ -190,6 +190,17 @@ DEFAULTS = {
 # 树用文件夹名当显示名。其余的（跳过、噪声、通用标题、随手记目录）允许清空。
 _MUST_FILL = ("端口范围",)
 
+try:
+    # config.json 的校验意见会随 /__config 回给页面，得跟着界面语言走。
+    # 命令行跑 fulltext 时没人调 set_lang，语言就是默认的 zh-Hans，还是中文。
+    from portal_i18n import T as _T, gloss as _gloss
+except Exception:                                # 搬走了、或者它自己写坏了，索引都不能跟着倒
+    def _T(key, **kw):
+        return key.format(**kw) if kw else key
+
+    def _gloss(key):
+        return ""
+
 
 def load_config(path=None):
     """读 config.json，逐项校验。返回 (配置, 问题列表)。"""
@@ -203,10 +214,10 @@ def load_config(path=None):
         with open(path, encoding="utf-8") as f:
             raw = json.load(f)
     except (OSError, ValueError) as e:
-        problems.append(f"config.json 读不了，整份用默认值：{e}")
+        problems.append(str(_T("config.json 读不了，整份用默认值：{e}", e=e)))
         return cfg, problems
     if not isinstance(raw, dict):
-        problems.append("config.json 不是一个对象，整份用默认值")
+        problems.append(str(_T("config.json 不是一个对象，整份用默认值")))
         return cfg, problems
 
     for key, default in DEFAULTS.items():
@@ -214,17 +225,19 @@ def load_config(path=None):
             continue
         val = raw[key]
         if not isinstance(val, type(default)):
-            problems.append(f"config.json 的「{key}」类型不对，这一项用默认值")
+            problems.append(str(_T("config.json 的「{k}」类型不对，这一项用默认值",
+                                   k=key, g=_gloss(key))))
             continue
         if not val and key in _MUST_FILL:
-            problems.append(f"config.json 的「{key}」是空的，这一项用默认值")
+            problems.append(str(_T("config.json 的「{k}」是空的，这一项用默认值",
+                                   k=key, g=_gloss(key))))
             continue
         cfg[key] = val
 
     pr = cfg["端口范围"]
     if not (len(pr) == 2 and all(isinstance(x, int) for x in pr)
             and 1 <= pr[0] <= pr[1] <= 65535):
-        problems.append(f"config.json 的「端口范围」不合法（{pr}），用默认值")
+        problems.append(str(_T("config.json 的「端口范围」不合法（{pr}），用默认值", pr=pr)))
         cfg["端口范围"] = list(DEFAULTS["端口范围"])
     return cfg, problems
 

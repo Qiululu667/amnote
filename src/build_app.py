@@ -188,6 +188,10 @@ def export_icons(dest_dir):
 
 # ───────────────────────── 后台服务脚本（LaunchAgent 调用）─────────────────────────
 NATIVE_SRC = "app_shell.m"
+# 5.5.0 = 界面多语言（简体中文 / 繁體中文（香港）/ English，可跟随系统）：壳的菜单、
+# 弹框、欢迎笔记走 app_shell_i18n.h 的词典，网页走 locales/*.js，服务端消息走
+# portal_i18n.py；新注入 __AMN_LANG__ / __AMN_LANG_PREF__，新桥接 setLanguage。
+# 阅读字体新增苹方-港（六档字重）和新细明体。
 # 5.4.1 = 开始页文件夹芯片行可收起，状态记在 tp-state.chipsOpen，设置里有开关。
 # 5.4.0 = 珍珠紫玻璃图标；首启不再弹「选择文件夹 / 退出」，没库时服务起在占位空根、
 # 欢迎与「找不到库」由网页画；新注入 __AMN_SHELL_VERSION__ / __AMN_VAULT_STATE__ /
@@ -200,7 +204,7 @@ NATIVE_SRC = "app_shell.m"
 # （20260903）。有 digest 核 sha256，解开后核对 bundle id。
 # 5.0.0 = 开源首发。
 # 版本号是唯一能在「关于 AM·Note」里看出来跑的是新壳还是旧壳的地方，改了壳就要动它。
-NATIVE_VERSION = ("5.4.1", "28")
+NATIVE_VERSION = ("5.5.0", "29")
 MIN_MACOS = "12.0"
 
 
@@ -214,9 +218,12 @@ def compile_native(dest_exe):
     src = os.path.join(HERE, NATIVE_SRC)
     if not os.path.exists(src):
         raise SystemExit(f"找不到 {src}：原生壳的源码没了，恢复 {NATIVE_SRC} 再打包。")
+    # -I HERE：app_shell.m 里 `#import "app_shell_i18n.h"` 找的是同目录那份。
+    # 引号形式本来就先看源文件所在目录，这条是明写一遍，免得以后换调用方式踩空。
     subprocess.run(
         ["clang", "-fobjc-arc", "-fmodules", "-Wall", "-O2",
          f"-mmacosx-version-min={MIN_MACOS}",
+         "-I", HERE,
          "-framework", "AppKit", "-framework", "WebKit",
          src, "-o", dest_exe],
         check=True)
@@ -224,11 +231,33 @@ def compile_native(dest_exe):
 
 RESOURCE_FILES = (
     "portal_server.py",
+    "portal_i18n.py",
     "fulltext.py",
     "template.html",
     "icon-192.png",
     "icon-512.png",
 )
+
+# 网页词典。整个 src/locales/ 拷成 Contents/Resources/locales/，门户按
+# /__i18n/<lang>.js 出它们；少一份都当构建失败——装出来的 app 会缺一种语言。
+LOCALES_DIR = "locales"
+LOCALE_FILES = (
+    "en.js",
+    "zh-HK.js",
+)
+
+# app 自己的本地化资源目录。里面只有 InfoPlist.strings（文档类型名），但**目录必须在**：
+# CFBundleLocalizations 之外，AppKit 还要靠 .lproj 判断这个 app 支持哪几种语言，
+# 没有它系统自带的菜单项（服务、隐藏、编辑里的听写…）和保存面板不会跟着切。
+BUNDLE_LOCALIZATIONS = ("en", "zh-Hans", "zh-Hant", "zh-HK")
+
+# 文档类型名。Info.plist 里写的是简体源串，各语言在 InfoPlist.strings 里覆盖。
+INFOPLIST_STRINGS = {
+    "en":      {"Markdown 文稿": "Markdown Document", "网页": "Web Page"},
+    "zh-Hans": {"Markdown 文稿": "Markdown 文稿",     "网页": "网页"},
+    "zh-Hant": {"Markdown 文稿": "Markdown 文件",     "网页": "網頁"},
+    "zh-HK":   {"Markdown 文稿": "Markdown 文件",     "网页": "網頁"},
+}
 
 # 菜单栏小云由 make_icon.py 从母版抠出。抠失败时壳退到 SF cloud.fill，不挡打包。
 OPTIONAL_RESOURCE_FILES = (
@@ -238,7 +267,7 @@ OPTIONAL_RESOURCE_FILES = (
 
 
 def copy_resources(res_dir):
-    """把 Python 服务、模板和说明打进 Contents/Resources/，app 才能放到任意位置。"""
+    """把 Python 服务、模板、词典和说明打进 Contents/Resources/，app 才能放到任意位置。"""
     missing = []
     for name in RESOURCE_FILES:
         src = os.path.join(HERE, name)
@@ -250,11 +279,48 @@ def copy_resources(res_dir):
         src = os.path.join(HERE, name)
         if os.path.exists(src):
             shutil.copy2(src, os.path.join(res_dir, name))
+
+    # 网页词典整目录拷过去。先点名核对必需的那几份，再把目录里其余的 .js 一并带上
+    # （以后加语言只要往 src/locales/ 里丢文件，这里不用改）。
+    src_loc = os.path.join(HERE, LOCALES_DIR)
+    dst_loc = os.path.join(res_dir, LOCALES_DIR)
+    if not os.path.isdir(src_loc):
+        missing.append(src_loc)
+    else:
+        os.makedirs(dst_loc, exist_ok=True)
+        for name in LOCALE_FILES:
+            if not os.path.exists(os.path.join(src_loc, name)):
+                missing.append(os.path.join(src_loc, name))
+        for name in sorted(os.listdir(src_loc)):
+            one = os.path.join(src_loc, name)
+            if os.path.isfile(one) and not name.startswith("."):
+                shutil.copy2(one, os.path.join(dst_loc, name))
+
     readme = os.path.join(HERE, "..", "README.md")
     if os.path.exists(readme):
         shutil.copy2(readme, os.path.join(res_dir, "README.md"))
     if missing:
         raise SystemExit("找不到这些文件，无法打进 app：\n" + "\n".join(missing))
+
+
+def write_lprojs(res_dir):
+    """建空的 .lproj 并写 InfoPlist.strings。
+
+    .lproj 目录本身就是信号：没有它，AppKit 认为这个 app 只有开发语言那一种，
+    自带的菜单项和系统面板不会跟着 AppleLanguages 走。
+    InfoPlist.strings 只翻文档类型名（访达「显示简介」里那一行）。
+    """
+    for lang in BUNDLE_LOCALIZATIONS:
+        d = os.path.join(res_dir, f"{lang}.lproj")
+        os.makedirs(d, exist_ok=True)
+        table = INFOPLIST_STRINGS.get(lang)
+        if not table:
+            continue
+        lines = ['/* AM·Note · 文档类型名。键 = Info.plist 里的简体源串。 */']
+        for k, v in table.items():
+            lines.append('"%s" = "%s";' % (k, v))
+        with open(os.path.join(d, "InfoPlist.strings"), "w", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
 
 
 def codesign_app(app, identity="-"):
@@ -281,6 +347,7 @@ def build_native(dest_dir, identity="-"):
     icon_from = make_icns(os.path.join(res, "icon.icns"))
     compile_native(os.path.join(macos, APP_NAME))
     copy_resources(res)
+    write_lprojs(res)
 
     with open(os.path.join(app, "Contents", "Info.plist"), "wb") as f:
         plistlib.dump({
@@ -289,6 +356,11 @@ def build_native(dest_dir, identity="-"):
             "CFBundleExecutable": APP_NAME,
             "CFBundleIdentifier": BUNDLE_ID,
             "CFBundleIconFile": "icon",
+            # 多语言（5.5）。开发语言写 en：源码里的字面量是简体，但简体、繁体（香港）
+            # 和英文三份界面文案都在 app 自己的词典里，系统只需要知道「支持这几种」。
+            # 少了 CFBundleLocalizations，系统自带的面板一律回落到开发语言。
+            "CFBundleDevelopmentRegion": "en",
+            "CFBundleLocalizations": list(BUNDLE_LOCALIZATIONS),
             "CFBundlePackageType": "APPL",
             "CFBundleShortVersionString": NATIVE_VERSION[0],
             "CFBundleVersion": NATIVE_VERSION[1],

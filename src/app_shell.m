@@ -87,7 +87,12 @@
 #import <WebKit/WebKit.h>
 #import <CommonCrypto/CommonDigest.h>
 #import <signal.h>
+#import <stdlib.h>
 #import <unistd.h>
+
+// 界面词典（en / zh-HK）与语言解析。所有面向用户的字串都过 L()，
+// 键就是简体源串本身；简体查不到词典、原样回落。见 app_shell_i18n.h 顶上的规矩。
+#import "app_shell_i18n.h"
 
 // ─────────────────────────── 配置 ───────────────────────────
 
@@ -743,16 +748,16 @@ static void applySeamlessChrome(NSWindow *window) {
     NSString *py = pickRunnablePython();
     if (!py) {
         if (errOut) *errOut = [NSString stringWithFormat:
-            @"这台电脑缺 Python 运行环境\n\n"
-             "Python 随 Xcode 命令行工具提供。在终端运行\n\n"
-             "    xcode-select --install\n\n"
-             "装好后重新打开 AM·Note。\n\n试过这几个位置：\n%@",
+            L(@"这台电脑缺 Python 运行环境\n\n"
+               "Python 随 Xcode 命令行工具提供。在终端运行\n\n"
+               "    xcode-select --install\n\n"
+               "装好后重新打开 AM·Note。\n\n试过这几个位置：\n%@"),
             [pythonCandidates() componentsJoinedByString:@"\n"]];
         return NO;
     }
 
     if (!self.vaultPath.length) {
-        if (errOut) *errOut = @"还没有选择文件夹";
+        if (errOut) *errOut = L(@"还没有选择文件夹");
         return NO;
     }
 
@@ -816,7 +821,7 @@ static void applySeamlessChrome(NSWindow *window) {
 
     NSError *le = nil;
     if (![t launchAndReturnError:&le]) {
-        if (errOut) *errOut = [NSString stringWithFormat:@"python3 启动失败\n\n%@\n%@",
+        if (errOut) *errOut = [NSString stringWithFormat:L(@"python3 启动失败\n\n%@\n%@"),
                                py, le.localizedDescription];
         return NO;
     }
@@ -827,14 +832,14 @@ static void applySeamlessChrome(NSWindow *window) {
     if (rc != 0) {
         [self stop];
         if (errOut) *errOut = [NSString stringWithFormat:
-            @"服务 %.0f 秒内没有报出端口号\n\n%@", kStartTimeout, [self tailStderr]];
+            L(@"服务 %.0f 秒内没有报出端口号\n\n%@"), kStartTimeout, [self tailStderr]];
         return NO;
     }
     if (found <= 0) {
         int code = t.isRunning ? -1 : t.terminationStatus;
         [self stop];
         if (errOut) *errOut = [NSString stringWithFormat:
-            @"服务启动即退出（退出码 %d）\n\n%@", code, [self tailStderr]];
+            L(@"服务启动即退出（退出码 %d）\n\n%@"), code, [self tailStderr]];
         return NO;
     }
 
@@ -849,7 +854,7 @@ static void applySeamlessChrome(NSWindow *window) {
     NSString *t = [self.stderrText stringByTrimmingCharactersInSet:
                    NSCharacterSet.whitespaceAndNewlineCharacterSet];
     [_lock unlock];
-    if (!t.length) return @"（服务没有输出任何错误信息）";
+    if (!t.length) return L(@"（服务没有输出任何错误信息）");
     NSArray *lines = [t componentsSeparatedByString:@"\n"];
     if (lines.count > 12) lines = [lines subarrayWithRange:NSMakeRange(lines.count - 12, 12)];
     return [lines componentsJoinedByString:@"\n"];
@@ -922,6 +927,62 @@ static void applySeamlessChrome(NSWindow *window) {
     return [super performKeyEquivalent:event];
 }
 @end
+
+// ──────────────── 调试钩子：把菜单树打出来（`-AMNDumpMenu 1`）────────────────
+//
+// 无 GUI 验收三种界面语言用的。翻译对不对没法靠截图批量核，就把主菜单和状态栏菜单
+// 按缩进打到 stdout：`标题  [快捷键]`，子菜单往里缩一级，分隔线一律 `---`。
+// 顶层那几项的 title 是空的（菜单栏显示的是子菜单自己的 title），所以空标题回落读子菜单。
+
+/// 快捷键写成 ⌃⌥⇧⌘X。控制字符（⌫ 那种）换成看得见的符号。
+static NSString *amnKeyEquivDescription(NSMenuItem *it) {
+    NSString *k = it.keyEquivalent;
+    if (!k.length) return @"";
+    NSEventModifierFlags f = it.keyEquivalentModifierMask;
+    NSMutableString *o = [NSMutableString string];
+    if (f & NSEventModifierFlagControl) [o appendString:@"⌃"];
+    if (f & NSEventModifierFlagOption)  [o appendString:@"⌥"];
+    if (f & NSEventModifierFlagShift)   [o appendString:@"⇧"];
+    if (f & NSEventModifierFlagCommand) [o appendString:@"⌘"];
+    unichar c = [k characterAtIndex:0];
+    if (k.length == 1 && c == (unichar)NSBackspaceCharacter)      [o appendString:@"⌫"];
+    else if (k.length == 1 && c == (unichar)NSDeleteCharacter)    [o appendString:@"⌦"];
+    else if (k.length == 1 && c == 0x1B)                          [o appendString:@"Esc"];
+    else if (k.length == 1 && c == 0x0D)                          [o appendString:@"↩"];
+    else [o appendString:k.uppercaseString];
+    return o;
+}
+
+static void amnDumpMenu(NSMenu *m, int depth) {
+    for (NSMenuItem *it in m.itemArray) {
+        NSString *pad = [@"" stringByPaddingToLength:(NSUInteger)(depth * 2)
+                                          withString:@" " startingAtIndex:0];
+        if (it.isSeparatorItem) {
+            printf("%s---\n", pad.UTF8String);
+            continue;
+        }
+        // 菜单栏那一行显示的是**子菜单自己的 title**，不是菜单项的 title
+        //（buildMenu 里那几个顶层 NSMenuItem 就没设过标题，`[NSMenuItem new]` 会留下
+        // 一个 "NSMenuItem" 的默认值）。所以有子菜单时优先读子菜单。
+        NSString *title = it.title;
+        if (it.submenu && (!title.length || [title isEqualToString:@"NSMenuItem"]))
+            title = it.submenu.title.length ? it.submenu.title : @"(app)";
+        NSString *ke = amnKeyEquivDescription(it);
+        if (ke.length) printf("%s%s  [%s]\n", pad.UTF8String, title.UTF8String, ke.UTF8String);
+        else           printf("%s%s\n", pad.UTF8String, title.UTF8String);
+        if (it.submenu) amnDumpMenu(it.submenu, depth + 1);
+    }
+}
+
+static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
+    printf("# AMNDumpMenu lang=%s pref=%s\n",
+           AMNLanguage().UTF8String, AMNLanguagePref().UTF8String);
+    printf("## main menu\n");
+    if (main) amnDumpMenu(main, 0);
+    printf("## status item menu\n");
+    if (status) amnDumpMenu(status, 0);
+    fflush(stdout);
+}
 
 // ─────────────────────────── 主程序 ───────────────────────────
 
@@ -997,6 +1058,12 @@ static void applySeamlessChrome(NSWindow *window) {
 
 - (void)applicationDidFinishLaunching:(NSNotification *)n {
     [self buildMenu];
+    // `-AMNDumpMenu 1`：把菜单树打到 stdout 然后退出。无 GUI 验收三种语言用的，
+    // 排在建窗口和起服务之前——不碰端口文件、不碰用户那个常驻实例。
+    if ([NSUserDefaults.standardUserDefaults boolForKey:@"AMNDumpMenu"]) {
+        amnDumpMenuTree(NSApp.mainMenu, [self buildStatusMenu]);
+        exit(0);
+    }
     [self buildWindow];
     [self buildStatusItem];
     [self ensureVault];
@@ -1027,9 +1094,9 @@ static void applySeamlessChrome(NSWindow *window) {
     p.canChooseDirectories = YES;
     p.allowsMultipleSelection = NO;
     p.canCreateDirectories = YES;
-    p.prompt = @"选择文件夹";
-    p.message = noVault ? @"AM·Note 会索引你选的文件夹。文件留在原地，不会上传到网上。"
-                        : @"换一个文件夹。AM·Note 只索引你选的这一个，文件都留在原地。";
+    p.prompt = L(@"选择文件夹");
+    p.message = noVault ? L(@"AM·Note 会索引你选的文件夹。文件留在原地，不会上传到网上。")
+                        : L(@"换一个文件夹。AM·Note 只索引你选的这一个，文件都留在原地。");
     NSString *cur = locateRoot();
     if (cur.length) p.directoryURL = [NSURL fileURLWithPath:cur];
 
@@ -1065,24 +1132,8 @@ static void applySeamlessChrome(NSWindow *window) {
 
 /// 新建库时放进去的那一篇。只在库里一篇 .md 都没有时才写，
 /// 内容就是 design-spec §8 Step 3 那三条提示，外加「文件留在原地」。
-static NSString *const kWelcomeNote =
-    @"# 欢迎使用 AM·Note\n"
-     "\n"
-     "这是 AM·Note 给你放的第一篇笔记。改它、删它都行。\n"
-     "\n"
-     "## 三件事就够了\n"
-     "\n"
-     "- **⌘K 找任何一篇笔记**：不记得放在哪儿也没关系，标题和正文一起搜。\n"
-     "- **双击正文即可编辑**：不用按保存，改动会存回原来那个文件。\n"
-     "- **⤢ 专注模式**：其余都收起来，屏幕上只剩正文。\n"
-     "\n"
-     "## 文件都留在原地\n"
-     "\n"
-     "这个文件夹里的 Markdown 和网页还在原处。AM·Note 只是读它们、建索引："
-     "不上传、不改格式、不搬家。用访达、Git、iCloud 怎么管都行，"
-     "换别的编辑器打开还是同一份文件。\n"
-     "\n"
-     "想写下一篇：⌘T 开个新标签页，或者直接在这个文件夹里新建一个 .md。\n";
+/// 三种语言的正文和文件名（欢迎.md / 歡迎.md / Welcome.md）都在 app_shell_i18n.h 里：
+/// AMNWelcomeNote() / AMNWelcomeFileName()，**按建库当时的界面语言写，已经存在的不回溯**。
 
 /// 网页那张欢迎卡上的「新建一个笔记库」。path 省略就用 ~/Documents/AM·Note。
 /// 目录不在就建；库里一篇 md 都没有才放欢迎信（用户选的老文件夹不该凭空多东西）。
@@ -1091,22 +1142,22 @@ static NSString *const kWelcomeNote =
     NSString *path = raw.length ? normPath(raw.stringByExpandingTildeInPath)
                                 : normPath(defaultNewVaultPath());
     if (![path hasPrefix:@"/"]) {
-        [self vaultAlert:@"这个位置不对" detail:raw ?: @""];
+        [self vaultAlert:L(@"这个位置不对") detail:raw ?: @""];
         return;
     }
     NSFileManager *fm = NSFileManager.defaultManager;
     NSError *err = nil;
     if (![fm createDirectoryAtPath:path withIntermediateDirectories:YES
                         attributes:nil error:&err]) {
-        [self vaultAlert:@"建不出这个文件夹"
+        [self vaultAlert:L(@"建不出这个文件夹")
                   detail:err.localizedDescription.length ? err.localizedDescription : path];
         return;
     }
     if (!dirHasMarkdown(path)) {
-        NSString *note = [path stringByAppendingPathComponent:@"欢迎.md"];
+        NSString *note = [path stringByAppendingPathComponent:AMNWelcomeFileName()];
         if (![fm fileExistsAtPath:note]) {
-            [kWelcomeNote writeToFile:note atomically:YES
-                             encoding:NSUTF8StringEncoding error:NULL];
+            [AMNWelcomeNote() writeToFile:note atomically:YES
+                                 encoding:NSUTF8StringEncoding error:NULL];
         }
     }
     NSString *old = locateRoot();
@@ -1123,7 +1174,7 @@ static NSString *const kWelcomeNote =
     NSAlert *a = [NSAlert new];
     a.messageText = title;
     a.informativeText = detail.length ? detail : @"";
-    [a addButtonWithTitle:@"好"];
+    [a addButtonWithTitle:L(@"好")];
     if (_win.isVisible) [a beginSheetModalForWindow:_win completionHandler:nil];
     else [a runModal];
 }
@@ -1135,7 +1186,7 @@ static NSString *const kWelcomeNote =
         NSString *tools = locateTools();
         if (!tools) {
             dispatch_async(dispatch_get_main_queue(), ^{
-                [self failReason:@"找不到程序文件，请重新编译或从发布包安装" detail:@""];
+                [self failReason:L(@"找不到程序文件，请重新编译或从发布包安装") detail:@""];
             });
             return;
         }
@@ -1144,8 +1195,8 @@ static NSString *const kWelcomeNote =
         NSString *vault = serviceRoot();
         if (!vault.length) {
             dispatch_async(dispatch_get_main_queue(), ^{
-                [self failReason:@"建不出笔记库目录"
-                          detail:@"请用菜单「库 → 选择文件夹…」选一个可写的文件夹。"];
+                [self failReason:L(@"建不出笔记库目录")
+                          detail:L(@"请用菜单「库 → 选择文件夹…」选一个可写的文件夹。")];
             });
             return;
         }
@@ -1164,8 +1215,8 @@ static NSString *const kWelcomeNote =
     _baseURL = [NSURL URLWithString:
         [NSString stringWithFormat:@"http://127.0.0.1:%ld/portal", (long)svc.port]];
     if (!_baseURL) {
-        [self failReason:@"端口号不对"
-                  detail:[NSString stringWithFormat:@"服务报回来的端口是 %ld。", (long)svc.port]];
+        [self failReason:L(@"端口号不对")
+                  detail:[NSString stringWithFormat:L(@"服务报回来的端口是 %ld。"), (long)svc.port]];
         return;
     }
     [self detachWebView];      // 重试时把上一块清掉
@@ -1185,12 +1236,18 @@ static NSString *const kWelcomeNote =
          "window.__AMN_VAULT_STATE__ = %@;\n"
          "window.__AMN_VAULT_PATH__ = %@;\n"
          "window.__AMN_ONBOARDING__ = %@;\n"
-         "window.__AMN_AUTO_UPDATE__ = %@;",
+         "window.__AMN_AUTO_UPDATE__ = %@;\n"
+         // 5.5：界面语言。__AMN_LANG__ 是已解析的生效语言（页面以壳为准），
+         // __AMN_LANG_PREF__ 是用户偏好原值，设置面板要拿它回显「跟随系统」。
+         "window.__AMN_LANG__ = %@;\n"
+         "window.__AMN_LANG_PREF__ = %@;",
         jsString(amnFullVersion()),
         jsString(vaultState()),
         jsString(vaultDisplayPath()),
         _onboarding ? @"true" : @"false",
-        amnAutoCheckOn() ? @"true" : @"false"];
+        amnAutoCheckOn() ? @"true" : @"false",
+        jsString(AMNLanguage()),
+        jsString(AMNLanguagePref())];
     return [[WKUserScript alloc] initWithSource:src
                                   injectionTime:WKUserScriptInjectionTimeAtDocumentStart
                                forMainFrameOnly:YES];
@@ -1296,7 +1353,7 @@ static NSString *const kWelcomeNote =
 
 /// 第一行当标题，其余当正文。服务那边报错时就是按 "原因\n\n细节" 拼的。
 - (void)failWithMessage:(NSString *)msg {
-    NSString *m = msg.length ? msg : @"未知错误";
+    NSString *m = msg.length ? msg : L(@"未知错误");
     NSRange sep = [m rangeOfString:@"\n\n"];
     if (sep.location != NSNotFound) {
         [self failReason:[m substringToIndex:sep.location]
@@ -1316,11 +1373,11 @@ static NSString *const kWelcomeNote =
     while (YES) {
         NSAlert *a = [NSAlert new];
         a.alertStyle = NSAlertStyleCritical;
-        a.messageText = reason.length ? reason : @"AM·Note 起不来";
+        a.messageText = reason.length ? reason : L(@"AM·Note 起不来");
         a.informativeText = detail.length ? detail : @"";
-        [a addButtonWithTitle:@"重试"];
-        [a addButtonWithTitle:@"拷贝错误信息"];
-        [a addButtonWithTitle:@"退出"];
+        [a addButtonWithTitle:L(@"重试")];
+        [a addButtonWithTitle:L(@"拷贝错误信息")];
+        [a addButtonWithTitle:L(@"退出")];
         NSModalResponse r = [a runModal];
         if (r == NSAlertFirstButtonReturn) {
             [_svc stop];
@@ -1407,10 +1464,10 @@ static NSString *const kWelcomeNote =
         if (!sender.documentEdited) return YES;
         NSAlert *a = [NSAlert new];
         a.alertStyle = NSAlertStyleWarning;
-        a.messageText = @"有改动还没保存";
-        a.informativeText = @"关掉这个窗口，正在编辑的改动会丢掉。";
-        [a addButtonWithTitle:@"回去保存"];
-        NSButton *close = [a addButtonWithTitle:@"直接关闭"];
+        a.messageText = L(@"有改动还没保存");
+        a.informativeText = L(@"关掉这个窗口，正在编辑的改动会丢掉。");
+        [a addButtonWithTitle:L(@"回去保存")];
+        NSButton *close = [a addButtonWithTitle:L(@"直接关闭")];
         if (@available(macOS 11.0, *)) { close.hasDestructiveAction = YES; }
         return [a runModal] == NSAlertSecondButtonReturn;
     }
@@ -1419,10 +1476,10 @@ static NSString *const kWelcomeNote =
 
     NSAlert *a = [NSAlert new];
     a.alertStyle = NSAlertStyleWarning;
-    a.messageText = @"有改动还没保存";
-    a.informativeText = @"关掉窗口会把门户卸下来，正在编辑的稿子会丢掉改动。服务和状态栏图标照常留着。";
-    [a addButtonWithTitle:@"回去保存"];
-    NSButton *close = [a addButtonWithTitle:@"直接关闭"];
+    a.messageText = L(@"有改动还没保存");
+    a.informativeText = L(@"关掉窗口会把门户卸下来，正在编辑的稿子会丢掉改动。服务和状态栏图标照常留着。");
+    [a addButtonWithTitle:L(@"回去保存")];
+    NSButton *close = [a addButtonWithTitle:L(@"直接关闭")];
     if (@available(macOS 11.0, *)) { close.hasDestructiveAction = YES; }
     return [a runModal] == NSAlertSecondButtonReturn;
 }
@@ -1498,18 +1555,24 @@ static NSString *const kWelcomeNote =
     // behavior 保持默认：不给 TerminationOnRemoval。手滑把图标拖出菜单栏
     // 不该把常驻的服务一起收掉。
 
+    _statusItem.menu = [self buildStatusMenu];
+}
+
+/// 状态栏那张菜单单独一个方法：换语言时 relocalize 要重建它，
+/// `-AMNDumpMenu 1` 也要在不碰 NSStatusBar 的前提下把它打出来。
+- (NSMenu *)buildStatusMenu {
     NSMenu *m = [[NSMenu alloc] initWithTitle:@"AM·Note"];
     // 这条菜单要在 app 不活跃的时候也点得动，不走 validateMenuItem:，全部常亮。
     m.autoenablesItems = NO;
-    [[m addItemWithTitle:@"打开窗口" action:@selector(mOpenWindow:) keyEquivalent:@""] setTarget:self];
+    [[m addItemWithTitle:L(@"打开窗口") action:@selector(mOpenWindow:) keyEquivalent:@""] setTarget:self];
     [m addItem:NSMenuItem.separatorItem];
-    [[m addItemWithTitle:@"检查更新…" action:@selector(mCheckUpdate:) keyEquivalent:@""] setTarget:self];
+    [[m addItemWithTitle:L(@"检查更新…") action:@selector(mCheckUpdate:) keyEquivalent:@""] setTarget:self];
     [m addItem:NSMenuItem.separatorItem];
-    [[m addItemWithTitle:@"重扫全库" action:@selector(rescan:) keyEquivalent:@""] setTarget:self];
-    [[m addItemWithTitle:@"服务信息" action:@selector(serviceInfo:) keyEquivalent:@""] setTarget:self];
+    [[m addItemWithTitle:L(@"重扫全库") action:@selector(rescan:) keyEquivalent:@""] setTarget:self];
+    [[m addItemWithTitle:L(@"服务信息") action:@selector(serviceInfo:) keyEquivalent:@""] setTarget:self];
     [m addItem:NSMenuItem.separatorItem];
-    [[m addItemWithTitle:@"退出 AM·Note" action:@selector(mQuit:) keyEquivalent:@""] setTarget:self];
-    _statusItem.menu = m;
+    [[m addItemWithTitle:L(@"退出 AM·Note") action:@selector(mQuit:) keyEquivalent:@""] setTarget:self];
+    return m;
 }
 
 - (void)mOpenWindow:(id)s { [self openMainWindow]; }
@@ -1588,16 +1651,16 @@ static NSString *const kWelcomeNote =
      itemForItemIdentifier:(NSToolbarItemIdentifier)ident
  willBeInsertedIntoToolbar:(BOOL)flag {
     if ([ident isEqualToString:kTBNew])
-        return [self iconItem:ident kind:@"plus" symbol:@"plus" label:@"新建随手记"
+        return [self iconItem:ident kind:@"plus" symbol:@"plus" label:L(@"新建随手记")
                        action:@selector(tbNew:)];
 
     if ([ident isEqualToString:kTBSearch]) {
         if (@available(macOS 11.0, *)) {
             NSSearchToolbarItem *it = [[NSSearchToolbarItem alloc] initWithItemIdentifier:ident];
-            it.label = @"搜索";
-            it.paletteLabel = @"搜索";
+            it.label = L(@"搜索");
+            it.paletteLabel = L(@"搜索");
             it.resignsFirstResponderWithCancel = YES;
-            it.searchField.placeholderString = @"搜索全库";
+            it.searchField.placeholderString = L(@"搜索全库");
             it.searchField.delegate = self;
             it.searchField.sendsWholeSearchString = NO;   // 边打边搜，跟门户自己那条一致
             _searchField = it.searchField;
@@ -1605,10 +1668,10 @@ static NSString *const kWelcomeNote =
         }
         NSToolbarItem *it = [[NSToolbarItem alloc] initWithItemIdentifier:ident];
         NSSearchField *f = [[NSSearchField alloc] initWithFrame:NSMakeRect(0, 0, 240, 24)];
-        f.placeholderString = @"搜索全库";
+        f.placeholderString = L(@"搜索全库");
         f.delegate = self;
         it.view = f;
-        it.label = @"搜索";
+        it.label = L(@"搜索");
         _searchField = f;
         return it;
     }
@@ -1668,20 +1731,20 @@ static NSString *const kWelcomeNote =
     [bar addSubview:line];
 
     _findField = [[NSSearchField alloc] initWithFrame:NSMakeRect(12, 7, 260, 24)];
-    _findField.placeholderString = @"在本页查找";
+    _findField.placeholderString = L(@"在本页查找");
     _findField.target = self;
     _findField.action = @selector(findNext:);
     _findField.delegate = self;          // 只为接住 Esc，见 doCommandBySelector:
     [bar addSubview:_findField];
 
-    NSImage *up = sym(@"chevron.up", @"上一个"), *down = sym(@"chevron.down", @"下一个");
+    NSImage *up = sym(@"chevron.up", L(@"上一个")), *down = sym(@"chevron.down", L(@"下一个"));
     NSSegmentedControl *nav;
     if (up && down) {
         nav = [NSSegmentedControl segmentedControlWithImages:@[up, down]
                                                 trackingMode:NSSegmentSwitchTrackingMomentary
                                                       target:self action:@selector(findNav:)];
     } else {
-        nav = [NSSegmentedControl segmentedControlWithLabels:@[@"上一个", @"下一个"]
+        nav = [NSSegmentedControl segmentedControlWithLabels:@[L(@"上一个"), L(@"下一个")]
                                                 trackingMode:NSSegmentSwitchTrackingMomentary
                                                       target:self action:@selector(findNav:)];
     }
@@ -1695,7 +1758,7 @@ static NSString *const kWelcomeNote =
     _findMsg.textColor = NSColor.secondaryLabelColor;
     [bar addSubview:_findMsg];
 
-    NSButton *close = [NSButton buttonWithTitle:@"完成" target:self action:@selector(hideFind:)];
+    NSButton *close = [NSButton buttonWithTitle:L(@"完成") target:self action:@selector(hideFind:)];
     close.frame = NSMakeRect(w - 80, 6, 68, 26);
     close.bezelStyle = NSBezelStyleRounded;
     close.autoresizingMask = NSViewMinXMargin;
@@ -1738,7 +1801,7 @@ static NSString *const kWelcomeNote =
     c.wraps = YES;
     [_web findString:q withConfiguration:c completionHandler:^(WKFindResult *r) {
         // 找不到的两种常见原因：内容在没激活的 pane 里（display:none），或者在 iframe 里
-        self->_findMsg.stringValue = r.matchFound ? @"" : @"没找到";
+        self->_findMsg.stringValue = r.matchFound ? @"" : L(@"没找到");
     }];
 }
 
@@ -1917,6 +1980,85 @@ static NSString *const kWelcomeNote =
             activateFileViewerSelectingURLs:@[[NSURL fileURLWithPath:root]]];
         return;
     }
+    // 5.5：网页设置里改界面语言。页面发之前会先把正在编辑的内容落盘（saveBeforeLeave）。
+    if ([type isEqualToString:@"setLanguage"]) { [self applyLanguage:m[@"lang"]]; return; }
+}
+
+// MARK: 5.5 界面语言
+
+/// 网页发来的 {type:'setLanguage', lang:'auto'|'zh-Hans'|'zh-HK'|'en'}（契约 §2）。
+/// 写偏好 → 同步 AppleLanguages（让 AppKit 自带的面板跟着走）→ 清缓存 → relocalize。
+/// 认不出来的值就地丢掉，不动现状。
+- (void)applyLanguage:(id)raw {
+    NSString *pref = AMNNormalizeLanguagePref(raw);
+    if (!pref.length) return;
+    NSUserDefaults *d = NSUserDefaults.standardUserDefaults;
+    if ([pref isEqualToString:@"auto"]) {
+        [d removeObjectForKey:kAMNLangKey];
+        [d removeObjectForKey:@"AppleLanguages"];
+    } else {
+        [d setObject:pref forKey:kAMNLangKey];
+        [d setObject:@[ AMNAppleLanguageTag(pref) ] forKey:@"AppleLanguages"];
+    }
+    [d synchronize];
+    AMNResetLanguage();
+    [self relocalize];
+}
+
+/// 换语言之后把壳这边所有画出来的字重新画一遍：
+/// 主菜单整棵重建（buildMenu 末尾会重新赋 NSApp.mainMenu，servicesMenu / windowsMenu /
+/// helpMenu 也在里面重新挂）、状态栏菜单换一张、查找栏整条重建（占位文字、上一个／下一个、
+/// 「完成」都在里面），然后每块 webview 换一份注入脚本再重载。
+/// 窗口标题是 AM·Note 或文稿标题，都不用动。
+- (void)relocalize {
+    [self buildMenu];
+    if (_statusItem) _statusItem.menu = [self buildStatusMenu];
+    [self rebuildFindBar];
+
+    // 用户脚本是建 WKWebView 时定死的，只能整份换掉（跟 clearOnboardingFlag 同一招）。
+    // 主窗和独立窗多半共用同一个 controller，去重之后重复调用无害。
+    WKUserScript *us = [self shellUserScript];
+    NSMutableArray<WKUserContentController *> *seen = [NSMutableArray array];
+    void (^refresh)(WKUserContentController *) = ^(WKUserContentController *cc) {
+        if (!cc || [seen containsObject:cc]) return;
+        [seen addObject:cc];
+        [cc removeAllUserScripts];
+        [cc addUserScript:us];
+    };
+    refresh(_ucc);
+    for (WKWebView *w in _soloWebs) refresh(w.configuration.userContentController);
+
+    /* 重载之前先让每块 webview 把正在编辑的字落盘。主窗在网页的 setLang 里已经存过
+       一遍，可独立窗（⌥⌘O）不知道有人在换语言，它只有 pagehide 那条 keepalive，而
+       keepalive 的请求体有 64KiB 上限，长笔记根本发不出去——直接 reload 就是把字扔了。
+       页面回什么都照重载（存不下网页自己提示过了）：换语言这一步不能吊在这儿。 */
+    NSMutableArray<WKWebView *> *webs = [NSMutableArray array];
+    if (_web) [webs addObject:_web];
+    for (WKWebView *w in _soloWebs) if (![webs containsObject:w]) [webs addObject:w];
+    for (WKWebView *w in webs) {
+        [w callAsyncJavaScript:
+            @"if (window.AMN && AMN.saveAllForReload) { return await AMN.saveAllForReload(); } return true;"
+                     arguments:nil
+                       inFrame:nil
+                inContentWorld:WKContentWorld.pageWorld
+             completionHandler:^(id result, NSError *err) { [w reload]; }];
+    }
+}
+
+/// 查找栏没有单独的「换文字」入口（分段控件的图标描述、「完成」按钮都是建的时候定死的），
+/// 整条拆掉重建最省事。可见状态和已经打进去的搜索词留着。
+- (void)rebuildFindBar {
+    if (!_findBar || !_win.contentView) return;
+    BOOL visible = !_findBar.hidden;
+    NSString *q = _findField.stringValue ?: @"";
+    [_findBar removeFromSuperview];
+    _findBar = nil;
+    _findField = nil;
+    _findMsg = nil;
+    [self buildFindBar];              // 重新 addSubview，落在 webview 上面，层级还是对的
+    _findField.stringValue = q;
+    _findBar.hidden = !visible;
+    [self relayout];
 }
 
 /// 外链只放 https。网页拿它开 GitHub / 说明 / 反馈这几条；
@@ -1946,10 +2088,10 @@ static NSString *const kWelcomeNote =
 
 - (void)showConfirm:(NSDictionary *)m {
     NSAlert *a = [NSAlert new];
-    a.messageText = [m[@"title"] isKindOfClass:NSString.class] ? m[@"title"] : @"确认";
+    a.messageText = [m[@"title"] isKindOfClass:NSString.class] ? m[@"title"] : L(@"确认");
     a.informativeText = [m[@"body"] isKindOfClass:NSString.class] ? m[@"body"] : @"";
     NSArray *btns = [m[@"buttons"] isKindOfClass:NSArray.class] ? m[@"buttons"] : nil;
-    if (!btns.count) btns = @[ @"好", @"取消" ];
+    if (!btns.count) btns = @[ L(@"好"), L(@"取消") ];
     for (id b in btns) [a addButtonWithTitle:[b description]];
 
     // 破坏性那一项标红（macOS 11+），取消那一项挂上 Esc
@@ -2128,58 +2270,58 @@ static NSString *const kWelcomeNote =
     // ── 应用 ──
     NSMenuItem *appItem = [NSMenuItem new];
     NSMenu *app = [NSMenu new];
-    [app addItemWithTitle:@"关于 AM·Note"
+    [app addItemWithTitle:L(@"关于 AM·Note")
                    action:@selector(orderFrontStandardAboutPanel:) keyEquivalent:@""];  // X-17
-    [[app addItemWithTitle:@"检查更新…" action:@selector(mCheckUpdate:) keyEquivalent:@""] setTarget:self];
-    NSMenuItem *autoUp = [app addItemWithTitle:@"自动检查更新"
+    [[app addItemWithTitle:L(@"检查更新…") action:@selector(mCheckUpdate:) keyEquivalent:@""] setTarget:self];
+    NSMenuItem *autoUp = [app addItemWithTitle:L(@"自动检查更新")
                                         action:@selector(mToggleAutoUpdate:)
                                  keyEquivalent:@""];
     autoUp.target = self;
     [app addItem:NSMenuItem.separatorItem];
-    [[app addItemWithTitle:@"设置…" action:@selector(mSettings:) keyEquivalent:@","] setTarget:self];
+    [[app addItemWithTitle:L(@"设置…") action:@selector(mSettings:) keyEquivalent:@","] setTarget:self];
     [app addItem:NSMenuItem.separatorItem];
-    NSMenuItem *svcMenuItem = [app addItemWithTitle:@"服务" action:NULL keyEquivalent:@""];
-    NSMenu *sysServices = [[NSMenu alloc] initWithTitle:@"服务"];
+    NSMenuItem *svcMenuItem = [app addItemWithTitle:L(@"服务") action:NULL keyEquivalent:@""];
+    NSMenu *sysServices = [[NSMenu alloc] initWithTitle:L(@"服务")];
     svcMenuItem.submenu = sysServices;
     NSApp.servicesMenu = sysServices;
     [app addItem:NSMenuItem.separatorItem];
-    [app addItemWithTitle:@"隐藏 AM·Note" action:@selector(hide:) keyEquivalent:@"h"];
-    NSMenuItem *ho = [app addItemWithTitle:@"隐藏其他"
+    [app addItemWithTitle:L(@"隐藏 AM·Note") action:@selector(hide:) keyEquivalent:@"h"];
+    NSMenuItem *ho = [app addItemWithTitle:L(@"隐藏其他")
                                     action:@selector(hideOtherApplications:) keyEquivalent:@"h"];
     ho.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagOption;
-    [app addItemWithTitle:@"全部显示" action:@selector(unhideAllApplications:) keyEquivalent:@""];
+    [app addItemWithTitle:L(@"全部显示") action:@selector(unhideAllApplications:) keyEquivalent:@""];
     [app addItem:NSMenuItem.separatorItem];
-    [app addItemWithTitle:@"退出 AM·Note" action:@selector(terminate:) keyEquivalent:@"q"];
+    [app addItemWithTitle:L(@"退出 AM·Note") action:@selector(terminate:) keyEquivalent:@"q"];
     appItem.submenu = app;
     [main addItem:appItem];
 
     // ── 文件（X-13）──
     NSMenuItem *fileItem = [NSMenuItem new];
-    NSMenu *file = [[NSMenu alloc] initWithTitle:@"文件"];
-    [[file addItemWithTitle:@"新建窗口" action:@selector(mNew:) keyEquivalent:@"n"] setTarget:self];
-    [[file addItemWithTitle:@"新建标签页" action:@selector(mNewTab:) keyEquivalent:@"t"] setTarget:self];
-    [[file addItemWithTitle:@"新建随手记" action:@selector(mNewNote:) keyEquivalent:@""] setTarget:self];
+    NSMenu *file = [[NSMenu alloc] initWithTitle:L(@"文件")];
+    [[file addItemWithTitle:L(@"新建窗口") action:@selector(mNew:) keyEquivalent:@"n"] setTarget:self];
+    [[file addItemWithTitle:L(@"新建标签页") action:@selector(mNewTab:) keyEquivalent:@"t"] setTarget:self];
+    [[file addItemWithTitle:L(@"新建随手记") action:@selector(mNewNote:) keyEquivalent:@""] setTarget:self];
     [file addItem:NSMenuItem.separatorItem];
-    NSMenuItem *popw = [file addItemWithTitle:@"在新窗口打开"
+    NSMenuItem *popw = [file addItemWithTitle:L(@"在新窗口打开")
                                        action:@selector(mPopoutWindow:) keyEquivalent:@"o"];
     popw.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagOption;
     popw.target = self;
-    NSMenuItem *reveal = [file addItemWithTitle:@"在访达中显示"
+    NSMenuItem *reveal = [file addItemWithTitle:L(@"在访达中显示")
                                          action:@selector(mReveal:) keyEquivalent:@"r"];
     reveal.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
     reveal.target = self;
-    NSMenuItem *cpath = [file addItemWithTitle:@"拷贝路径"
+    NSMenuItem *cpath = [file addItemWithTitle:L(@"拷贝路径")
                                         action:@selector(mCopyPath:) keyEquivalent:@"c"];
     cpath.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagOption;
     cpath.target = self;
     // 工具栏那颗分享撤了（设计约束 5），能力落在这里。不给快捷键：分享是低频动作，
     // 占一个键不划算，也少一次跟门户抢键的机会。
-    [[file addItemWithTitle:@"分享…" action:@selector(mShare:) keyEquivalent:@""] setTarget:self];
+    [[file addItemWithTitle:L(@"分享…") action:@selector(mShare:) keyEquivalent:@""] setTarget:self];
     [file addItem:NSMenuItem.separatorItem];
     // 移到废纸篓。⌘⌫ 是 Finder 里同一件事的键，肌肉记忆是现成的。
     // **编辑态一定要灰掉**（validateMenuItem: 读 canTrash，门户在编辑态返回假）：
     // 菜单项灰着，这一下 ⌘⌫ 才会放行给 WebView，在编辑器里仍然是「删到行首」。
-    NSMenuItem *trash = [file addItemWithTitle:@"移到废纸篓"
+    NSMenuItem *trash = [file addItemWithTitle:L(@"移到废纸篓")
                                         action:@selector(mTrash:)
                                  keyEquivalent:[NSString stringWithFormat:@"%C",
                                                 (unichar)NSBackspaceCharacter]];
@@ -2188,66 +2330,66 @@ static NSString *const kWelcomeNote =
     [file addItem:NSMenuItem.separatorItem];
     // ⌘E 进编辑。菜单占了这个键，门户自己那条 ⌘E 监听就作废了（设计约束 1），
     // 一切以 AMN.enterEdit 为准——「光标落到鼠标所在那一段」的判断在门户里做。
-    [[file addItemWithTitle:@"进入编辑" action:@selector(mEnterEdit:) keyEquivalent:@"e"] setTarget:self];
-    [[file addItemWithTitle:@"存储" action:@selector(mSave:) keyEquivalent:@"s"] setTarget:self];
+    [[file addItemWithTitle:L(@"进入编辑") action:@selector(mEnterEdit:) keyEquivalent:@"e"] setTarget:self];
+    [[file addItemWithTitle:L(@"存储") action:@selector(mSave:) keyEquivalent:@"s"] setTarget:self];
     [file addItem:NSMenuItem.separatorItem];
-    [[file addItemWithTitle:@"关闭" action:@selector(mCloseTab:) keyEquivalent:@"w"] setTarget:self];
-    NSMenuItem *closeWin = [file addItemWithTitle:@"关闭窗口"
+    [[file addItemWithTitle:L(@"关闭") action:@selector(mCloseTab:) keyEquivalent:@"w"] setTarget:self];
+    NSMenuItem *closeWin = [file addItemWithTitle:L(@"关闭窗口")
                                            action:@selector(performClose:) keyEquivalent:@"w"];
     closeWin.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
     [file addItem:NSMenuItem.separatorItem];
-    [[file addItemWithTitle:@"打印…" action:@selector(mPrint:) keyEquivalent:@"p"] setTarget:self];
+    [[file addItemWithTitle:L(@"打印…") action:@selector(mPrint:) keyEquivalent:@"p"] setTarget:self];
     fileItem.submenu = file;
     [main addItem:fileItem];
 
     // ── 编辑：不加这些项，门户里的 MD 编辑器没法复制粘贴撤销 ──
     NSMenuItem *editItem = [NSMenuItem new];
-    NSMenu *edit = [[NSMenu alloc] initWithTitle:@"编辑"];
-    [edit addItemWithTitle:@"撤销" action:@selector(undo:) keyEquivalent:@"z"];
-    NSMenuItem *redo = [edit addItemWithTitle:@"重做" action:@selector(redo:) keyEquivalent:@"z"];
+    NSMenu *edit = [[NSMenu alloc] initWithTitle:L(@"编辑")];
+    [edit addItemWithTitle:L(@"撤销") action:@selector(undo:) keyEquivalent:@"z"];
+    NSMenuItem *redo = [edit addItemWithTitle:L(@"重做") action:@selector(redo:) keyEquivalent:@"z"];
     redo.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagShift;
     [edit addItem:NSMenuItem.separatorItem];
-    [edit addItemWithTitle:@"剪切" action:@selector(cut:) keyEquivalent:@"x"];
-    [edit addItemWithTitle:@"拷贝" action:@selector(copy:) keyEquivalent:@"c"];
-    [edit addItemWithTitle:@"粘贴" action:@selector(paste:) keyEquivalent:@"v"];
-    [edit addItemWithTitle:@"全选" action:@selector(selectAll:) keyEquivalent:@"a"];
+    [edit addItemWithTitle:L(@"剪切") action:@selector(cut:) keyEquivalent:@"x"];
+    [edit addItemWithTitle:L(@"拷贝") action:@selector(copy:) keyEquivalent:@"c"];
+    [edit addItemWithTitle:L(@"粘贴") action:@selector(paste:) keyEquivalent:@"v"];
+    [edit addItemWithTitle:L(@"全选") action:@selector(selectAll:) keyEquivalent:@"a"];
     [edit addItem:NSMenuItem.separatorItem];
     // ⌘K 从「跳到搜索框」改成「快速直达」浮层（设计约束 1）。原来那个动作让位到 ⌥⌘K。
-    [[edit addItemWithTitle:@"快速直达" action:@selector(mQuickOpen:) keyEquivalent:@"k"] setTarget:self];
-    NSMenuItem *focusQ = [edit addItemWithTitle:@"搜索正文"
+    [[edit addItemWithTitle:L(@"快速直达") action:@selector(mQuickOpen:) keyEquivalent:@"k"] setTarget:self];
+    NSMenuItem *focusQ = [edit addItemWithTitle:L(@"搜索正文")
                                          action:@selector(mFocusSearch:) keyEquivalent:@"k"];
     focusQ.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagOption;
     focusQ.target = self;
     // 地址栏 5.4 撤了，⌘L 保留但改名「搜索」——它跟 ⌥⌘K 一样打开 ⌘K 面板。
-    [[edit addItemWithTitle:@"搜索" action:@selector(mFocusOmnibox:) keyEquivalent:@"l"] setTarget:self];
+    [[edit addItemWithTitle:L(@"搜索") action:@selector(mFocusOmnibox:) keyEquivalent:@"l"] setTarget:self];
     [edit addItem:NSMenuItem.separatorItem];
-    [[edit addItemWithTitle:@"在本页查找" action:@selector(showFind:) keyEquivalent:@"f"] setTarget:self];
+    [[edit addItemWithTitle:L(@"在本页查找") action:@selector(showFind:) keyEquivalent:@"f"] setTarget:self];
     editItem.submenu = edit;
     [main addItem:editItem];
 
     // ── 显示 ──
     NSMenuItem *viewItem = [NSMenuItem new];
-    NSMenu *view = [[NSMenu alloc] initWithTitle:@"显示"];
-    [[view addItemWithTitle:@"后退" action:@selector(mBack:) keyEquivalent:@"["] setTarget:self];
-    [[view addItemWithTitle:@"前进" action:@selector(mForward:) keyEquivalent:@"]"] setTarget:self];
+    NSMenu *view = [[NSMenu alloc] initWithTitle:L(@"显示")];
+    [[view addItemWithTitle:L(@"后退") action:@selector(mBack:) keyEquivalent:@"["] setTarget:self];
+    [[view addItemWithTitle:L(@"前进") action:@selector(mForward:) keyEquivalent:@"]"] setTarget:self];
     [view addItem:NSMenuItem.separatorItem];
     // 「显示书签栏 ⇧⌘B」5.4 撤了：那条书签栏没了，文件夹入口并进开始页的芯片行。
     // 「显示列表 ⌃⌘S」5.4.1 撤了：列表栏整条下线，只剩正文一栏。
-    NSMenuItem *toc = [view addItemWithTitle:@"显示大纲"
+    NSMenuItem *toc = [view addItemWithTitle:L(@"显示大纲")
                                       action:@selector(mToc:) keyEquivalent:@"i"];
     toc.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagOption;
     toc.target = self;
     [view addItem:NSMenuItem.separatorItem];
-    [[view addItemWithTitle:@"随手记" action:@selector(mNotes:) keyEquivalent:@""] setTarget:self];
-    [[view addItemWithTitle:@"最近" action:@selector(mRecent:) keyEquivalent:@""] setTarget:self];
+    [[view addItemWithTitle:L(@"随手记") action:@selector(mNotes:) keyEquivalent:@""] setTarget:self];
+    [[view addItemWithTitle:L(@"最近") action:@selector(mRecent:) keyEquivalent:@""] setTarget:self];
     [view addItem:NSMenuItem.separatorItem];
-    [[view addItemWithTitle:@"重新载入" action:@selector(reloadPortal:) keyEquivalent:@"r"] setTarget:self];
+    [[view addItemWithTitle:L(@"重新载入") action:@selector(reloadPortal:) keyEquivalent:@"r"] setTarget:self];
     [view addItem:NSMenuItem.separatorItem];
-    [[view addItemWithTitle:@"放大" action:@selector(zoomIn:) keyEquivalent:@"+"] setTarget:self];
-    [[view addItemWithTitle:@"缩小" action:@selector(zoomOut:) keyEquivalent:@"-"] setTarget:self];
-    [[view addItemWithTitle:@"实际大小" action:@selector(zoomReset:) keyEquivalent:@"0"] setTarget:self];
+    [[view addItemWithTitle:L(@"放大") action:@selector(zoomIn:) keyEquivalent:@"+"] setTarget:self];
+    [[view addItemWithTitle:L(@"缩小") action:@selector(zoomOut:) keyEquivalent:@"-"] setTarget:self];
+    [[view addItemWithTitle:L(@"实际大小") action:@selector(zoomReset:) keyEquivalent:@"0"] setTarget:self];
     [view addItem:NSMenuItem.separatorItem];
-    NSMenuItem *fs = [view addItemWithTitle:@"进入全屏"
+    NSMenuItem *fs = [view addItemWithTitle:L(@"进入全屏")
                                      action:@selector(toggleFullScreen:) keyEquivalent:@"f"];
     fs.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagControl;
     viewItem.submenu = view;
@@ -2255,37 +2397,37 @@ static NSString *const kWelcomeNote =
 
     // ── 库（X-15：原来叫「服务」，跟系统那个 Services 撞名）──
     NSMenuItem *libItem = [NSMenuItem new];
-    NSMenu *lib = [[NSMenu alloc] initWithTitle:@"库"];
-    [[lib addItemWithTitle:@"选择文件夹…" action:@selector(mChooseVault:) keyEquivalent:@""] setTarget:self];
+    NSMenu *lib = [[NSMenu alloc] initWithTitle:L(@"库")];
+    [[lib addItemWithTitle:L(@"选择文件夹…") action:@selector(mChooseVault:) keyEquivalent:@""] setTarget:self];
     [lib addItem:NSMenuItem.separatorItem];
-    [[lib addItemWithTitle:@"重扫全库" action:@selector(rescan:) keyEquivalent:@""] setTarget:self];
-    [[lib addItemWithTitle:@"在浏览器里打开门户" action:@selector(openInBrowser:) keyEquivalent:@""] setTarget:self];
+    [[lib addItemWithTitle:L(@"重扫全库") action:@selector(rescan:) keyEquivalent:@""] setTarget:self];
+    [[lib addItemWithTitle:L(@"在浏览器里打开门户") action:@selector(openInBrowser:) keyEquivalent:@""] setTarget:self];
     [lib addItem:NSMenuItem.separatorItem];
-    [[lib addItemWithTitle:@"打开工具目录" action:@selector(openTools:) keyEquivalent:@""] setTarget:self];
-    [[lib addItemWithTitle:@"服务信息" action:@selector(serviceInfo:) keyEquivalent:@""] setTarget:self];
+    [[lib addItemWithTitle:L(@"打开工具目录") action:@selector(openTools:) keyEquivalent:@""] setTarget:self];
+    [[lib addItemWithTitle:L(@"服务信息") action:@selector(serviceInfo:) keyEquivalent:@""] setTarget:self];
     libItem.submenu = lib;
     [main addItem:libItem];
 
     // ── 窗口 ──
     NSMenuItem *winItem = [NSMenuItem new];
-    NSMenu *win = [[NSMenu alloc] initWithTitle:@"窗口"];
+    NSMenu *win = [[NSMenu alloc] initWithTitle:L(@"窗口")];
     // ⇧⌘W 关掉窗口之后 app 还活着（服务常驻），主菜单里得有一条能把窗口叫回来。
     // 不给快捷键：设计约束 1，别跟门户抢键。
-    [[win addItemWithTitle:@"打开窗口" action:@selector(mOpenWindow:) keyEquivalent:@""] setTarget:self];
+    [[win addItemWithTitle:L(@"打开窗口") action:@selector(mOpenWindow:) keyEquivalent:@""] setTarget:self];
     [win addItem:NSMenuItem.separatorItem];
-    [win addItemWithTitle:@"最小化" action:@selector(performMiniaturize:) keyEquivalent:@"m"];
-    [win addItemWithTitle:@"缩放" action:@selector(performZoom:) keyEquivalent:@""];
+    [win addItemWithTitle:L(@"最小化") action:@selector(performMiniaturize:) keyEquivalent:@"m"];
+    [win addItemWithTitle:L(@"缩放") action:@selector(performZoom:) keyEquivalent:@""];
     [win addItem:NSMenuItem.separatorItem];
-    [win addItemWithTitle:@"前置全部窗口" action:@selector(arrangeInFront:) keyEquivalent:@""];
+    [win addItemWithTitle:L(@"前置全部窗口") action:@selector(arrangeInFront:) keyEquivalent:@""];
     winItem.submenu = win;
     [main addItem:winItem];
     NSApp.windowsMenu = win;
 
     // ── 帮助（X-16）──
     NSMenuItem *helpItem = [NSMenuItem new];
-    NSMenu *help = [[NSMenu alloc] initWithTitle:@"帮助"];
-    [[help addItemWithTitle:@"AM·Note 帮助" action:@selector(mHelp:) keyEquivalent:@"?"] setTarget:self];
-    [[help addItemWithTitle:@"快捷键一览" action:@selector(mKeys:) keyEquivalent:@""] setTarget:self];
+    NSMenu *help = [[NSMenu alloc] initWithTitle:L(@"帮助")];
+    [[help addItemWithTitle:L(@"AM·Note 帮助") action:@selector(mHelp:) keyEquivalent:@"?"] setTarget:self];
+    [[help addItemWithTitle:L(@"快捷键一览") action:@selector(mKeys:) keyEquivalent:@""] setTarget:self];
     helpItem.submenu = help;
     [main addItem:helpItem];
     NSApp.helpMenu = help;
@@ -2305,7 +2447,7 @@ static NSString *const kWelcomeNote =
             (key && key != _win && ![_soloWins containsObject:key])) closeWin = YES;
         else if (!_stateOK) closeWin = ![self stateFlag:@"inReader"];
         else closeWin = [self stateFlag:@"isStart"];
-        item.title = closeWin ? @"关闭窗口" : @"关闭标签";
+        item.title = closeWin ? L(@"关闭窗口") : L(@"关闭标签");
         return (key != nil);
     }
     // 独立窗口在前台时灰掉：它自己就是一个独立窗口，再开一个还是同一份
@@ -2447,19 +2589,19 @@ static NSString *const kWelcomeNote =
     // 从状态栏菜单点进来时 app 可能不在前台，不先激活的话这个 modal 会藏在别人后面
     [NSApp activateIgnoringOtherApps:YES];
     NSString *body = [NSString stringWithFormat:
-        @"端口：%@\n进程：%@\n窗口：%@\n工具目录：%@\n解释器：%@",
-        _svc.port > 0 ? [NSString stringWithFormat:@"%ld", (long)_svc.port] : @"还没起来",
-        !_svc ? @"未启动"
-              : (_svc.adopted ? @"复用外部实例"
+        L(@"端口：%@\n进程：%@\n窗口：%@\n工具目录：%@\n解释器：%@"),
+        _svc.port > 0 ? [NSString stringWithFormat:@"%ld", (long)_svc.port] : L(@"还没起来"),
+        !_svc ? L(@"未启动")
+              : (_svc.adopted ? L(@"复用外部实例")
                               : [NSString stringWithFormat:@"PID %d", _svc.task.processIdentifier]),
-        _win.isVisible ? @"开着" : @"关着（服务常驻，双击一份 md 会自己弹回来）",
-        locateTools() ?: @"未找到",
-        pickPython() ?: @"无"];
+        _win.isVisible ? L(@"开着") : L(@"关着（服务常驻，双击一份 md 会自己弹回来）"),
+        locateTools() ?: L(@"未找到"),
+        pickPython() ?: L(@"无")];
     NSAlert *a = [NSAlert new];
-    a.messageText = @"服务信息";
+    a.messageText = L(@"服务信息");
     a.informativeText = body;
-    [a addButtonWithTitle:@"好"];
-    [a addButtonWithTitle:@"拷贝"];
+    [a addButtonWithTitle:L(@"好")];
+    [a addButtonWithTitle:L(@"拷贝")];
     if ([a runModal] == NSAlertSecondButtonReturn) {
         [NSPasteboard.generalPasteboard clearContents];
         [NSPasteboard.generalPasteboard setString:body forType:NSPasteboardTypeString];
@@ -2478,17 +2620,17 @@ static NSString *const kWelcomeNote =
 
 - (void)mKeys:(id)s {
     NSAlert *a = [NSAlert new];
-    a.messageText = @"快捷键";
+    a.messageText = L(@"快捷键");
     a.informativeText =
-        @"⌘T 新建标签页（开始页）\n⌘N 新建窗口\n⌘L 搜索\n"
-         "⌘[ / ⌘] 后退 / 前进\n⌥⌘C 拷贝路径\n⇧⌘R 在访达中显示\n⌥⌘O 把这份放到独立阅读窗\n"
-         "⌘E 进入编辑\n⌘S 存储\n⌘⌫ 移到废纸篓\n⌘W 关闭标签／仅剩起始页时关窗口\n"
-         "⇧⌘W 关闭窗口\n⌘P 打印\n"
-         "⌃Tab 切换标签\n"
-         "⌘K 快速直达\n⌥⌘K 搜索正文\n⌥⌘I 显示大纲\n"
-         "⌘F 在本页查找\n⌘R 重新载入\n"
-         "⌃⌘F 进入全屏\nEsc 关浮层 / 退出编辑";
-    [a addButtonWithTitle:@"好"];
+        L(@"⌘T 新建标签页（开始页）\n⌘N 新建窗口\n⌘L 搜索\n"
+           "⌘[ / ⌘] 后退 / 前进\n⌥⌘C 拷贝路径\n⇧⌘R 在访达中显示\n⌥⌘O 把这份放到独立阅读窗\n"
+           "⌘E 进入编辑\n⌘S 存储\n⌘⌫ 移到废纸篓\n⌘W 关闭标签／仅剩起始页时关窗口\n"
+           "⇧⌘W 关闭窗口\n⌘P 打印\n"
+           "⌃Tab 切换标签\n"
+           "⌘K 快速直达\n⌥⌘K 搜索正文\n⌥⌘I 显示大纲\n"
+           "⌘F 在本页查找\n⌘R 重新载入\n"
+           "⌃⌘F 进入全屏\nEsc 关浮层 / 退出编辑");
+    [a addButtonWithTitle:L(@"好")];
     [a runModal];
 }
 
@@ -2609,7 +2751,7 @@ static NSString *const kWelcomeNote =
                 if (i != NSNotFound && i + 1 < parts.count) tag = parts[i + 1];
             }
             if (!tag.length) {
-                [weak updateFail:@"连不上 GitHub。可以一会儿再试，或到仓库 Releases 手动下载。"];
+                [weak updateFail:L(@"连不上 GitHub。可以一会儿再试，或到仓库 Releases 手动下载。")];
                 return;
             }
             NSURL *zip = [NSURL URLWithString:
@@ -2629,7 +2771,7 @@ static NSString *const kWelcomeNote =
         return;
     }
     if (!zip || !amnURLTrusted(zip)) {
-        [self updateFail:@"GitHub 上这个版本没有 mac 安装包（AMNote-mac.zip）。"];
+        [self updateFail:L(@"GitHub 上这个版本没有 mac 安装包（AMNote-mac.zip）。")];
         return;
     }
     NSString *ver = amnStripVer(tag);
@@ -2660,9 +2802,9 @@ static NSString *const kWelcomeNote =
     if (!_updInteractive) return;
     [NSApp activateIgnoringOtherApps:YES];
     NSAlert *a = [NSAlert new];
-    a.messageText = @"已是最新版本";
-    a.informativeText = [NSString stringWithFormat:@"当前是 %@。", amnShortVersion()];
-    [a addButtonWithTitle:@"好"];
+    a.messageText = L(@"已是最新版本");
+    a.informativeText = [NSString stringWithFormat:L(@"当前是 %@。"), amnShortVersion()];
+    [a addButtonWithTitle:L(@"好")];
     [a runModal];
 }
 
@@ -2672,10 +2814,10 @@ static NSString *const kWelcomeNote =
     if (!_updInteractive) return;
     [NSApp activateIgnoringOtherApps:YES];
     NSAlert *a = [NSAlert new];
-    a.messageText = @"现在检查不了更新";
-    a.informativeText = msg.length ? msg : @"连不上 GitHub。";
-    [a addButtonWithTitle:@"好"];
-    if (_updInfo[@"page"]) [a addButtonWithTitle:@"打开下载页"];
+    a.messageText = L(@"现在检查不了更新");
+    a.informativeText = msg.length ? msg : L(@"连不上 GitHub。");
+    [a addButtonWithTitle:L(@"好")];
+    if (_updInfo[@"page"]) [a addButtonWithTitle:L(@"打开下载页")];
     NSModalResponse r = [a runModal];
     if (r == NSAlertSecondButtonReturn) [self openUpdatePage];
 }
@@ -2692,17 +2834,17 @@ static NSString *const kWelcomeNote =
     [NSApp activateIgnoringOtherApps:YES];
     NSString *ver = info[@"version"] ?: @"";
     NSMutableString *body = [NSMutableString stringWithFormat:
-                             @"现在是 %@。安装会替换当前的 AM·Note，装完自动打开。\n笔记还在原来的文件夹里，不会被动。",
+                             L(@"现在是 %@。安装会替换当前的 AM·Note，装完自动打开。\n笔记还在原来的文件夹里，不会被动。"),
                              amnShortVersion()];
     NSString *notes = info[@"notes"];
     if (notes.length) [body appendFormat:@"\n\n%@", notes];
 
     NSAlert *a = [NSAlert new];
-    a.messageText = [NSString stringWithFormat:@"有新版本 %@", ver];
+    a.messageText = [NSString stringWithFormat:L(@"有新版本 %@"), ver];
     a.informativeText = body;
-    [a addButtonWithTitle:@"安装更新"];
-    [a addButtonWithTitle:@"稍后"];
-    [a addButtonWithTitle:@"跳过此版本"];
+    [a addButtonWithTitle:L(@"安装更新")];
+    [a addButtonWithTitle:L(@"稍后")];
+    [a addButtonWithTitle:L(@"跳过此版本")];
 
     void (^done)(NSModalResponse) = ^(NSModalResponse r) {
         if (r == NSAlertFirstButtonReturn) {
@@ -2739,7 +2881,7 @@ static NSString *const kWelcomeNote =
                                               styleMask:(NSWindowStyleMaskTitled | NSWindowStyleMaskClosable)
                                                 backing:NSBackingStoreBuffered
                                                   defer:NO];
-        _updWin.title = @"更新 AM·Note";
+        _updWin.title = L(@"更新 AM·Note");
         _updWin.releasedWhenClosed = NO;
         _updWin.delegate = self;
         _updWin.level = NSFloatingWindowLevel;
@@ -2761,7 +2903,7 @@ static NSString *const kWelcomeNote =
         [_updBar startAnimation:nil];
 
         NSButton *cancel = [[NSButton alloc] initWithFrame:NSMakeRect(300, 12, 80, 24)];
-        cancel.title = @"取消";
+        cancel.title = L(@"取消");
         cancel.bezelStyle = NSBezelStyleRounded;
         cancel.target = self;
         cancel.action = @selector(mCancelUpdate:);
@@ -2769,7 +2911,7 @@ static NSString *const kWelcomeNote =
         [c addSubview:cancel];
         [_updWin center];
     }
-    _updLabel.stringValue = text ?: @"正在下载…";
+    _updLabel.stringValue = text ?: L(@"正在下载…");
     [_updWin makeKeyAndOrderFront:nil];
 }
 
@@ -2794,11 +2936,11 @@ static NSString *const kWelcomeNote =
     NSString *zip = _updInfo[@"zip"];
     NSURL *url = [NSURL URLWithString:zip];
     if (!amnURLTrusted(url)) {
-        [self updateFail:@"下载地址不是 GitHub，已中止。"];
+        [self updateFail:L(@"下载地址不是 GitHub，已中止。")];
         return;
     }
     NSString *ver = _updInfo[@"version"] ?: @"";
-    [self showUpdateProgress:[NSString stringWithFormat:@"正在下载 %@…", ver]];
+    [self showUpdateProgress:[NSString stringWithFormat:L(@"正在下载 %@…"), ver]];
     NSMutableURLRequest *req = [NSMutableURLRequest requestWithURL:url];
     [req setValue:amnUserAgent() forHTTPHeaderField:@"User-Agent"];
     req.timeoutInterval = 60;
@@ -2830,7 +2972,7 @@ totalBytesExpectedToWrite:(int64_t)totalBytesExpectedToWrite {
         double mb = totalBytesWritten / (1024.0 * 1024.0);
         double tot = totalBytesExpectedToWrite / (1024.0 * 1024.0);
         NSString *ver = _updInfo[@"version"] ?: @"";
-        _updLabel.stringValue = [NSString stringWithFormat:@"正在下载 %@…  %.1f / %.1f MB",
+        _updLabel.stringValue = [NSString stringWithFormat:L(@"正在下载 %@…  %.1f / %.1f MB"),
                                  ver, mb, tot];
     }
 }
@@ -2843,7 +2985,7 @@ didCompleteWithError:(NSError *)error {
         _updBusy = NO;
         return;
     }
-    [self updateFail:error.localizedDescription ?: @"下载失败。"];
+    [self updateFail:error.localizedDescription ?: L(@"下载失败。")];
 }
 
 - (void)URLSession:(NSURLSession *)session
@@ -2853,7 +2995,7 @@ didFinishDownloadingToURL:(NSURL *)location {
                                ? (NSHTTPURLResponse *)downloadTask.response : nil);
     if (_updCancel) { _updBusy = NO; return; }
     if (http && http.statusCode != 200) {
-        [self updateFail:[NSString stringWithFormat:@"下载失败（HTTP %ld）。", (long)http.statusCode]];
+        [self updateFail:[NSString stringWithFormat:L(@"下载失败（HTTP %ld）。"), (long)http.statusCode]];
         return;
     }
     NSString *tmp = [NSTemporaryDirectory() stringByAppendingPathComponent:
@@ -2861,7 +3003,7 @@ didFinishDownloadingToURL:(NSURL *)location {
     NSError *err = nil;
     NSFileManager *fm = NSFileManager.defaultManager;
     if (![fm createDirectoryAtPath:tmp withIntermediateDirectories:YES attributes:nil error:&err]) {
-        [self updateFail:err.localizedDescription ?: @"建临时目录失败。"];
+        [self updateFail:err.localizedDescription ?: L(@"建临时目录失败。")];
         return;
     }
     NSString *zipPath = [tmp stringByAppendingPathComponent:kUpdateAsset];
@@ -2869,7 +3011,7 @@ didFinishDownloadingToURL:(NSURL *)location {
     if (![fm moveItemAtURL:location toURL:destURL error:&err]) {
         err = nil;
         if (![fm copyItemAtURL:location toURL:destURL error:&err]) {
-            [self updateFail:err.localizedDescription ?: @"保存安装包失败。"];
+            [self updateFail:err.localizedDescription ?: L(@"保存安装包失败。")];
             return;
         }
     }
@@ -2877,7 +3019,7 @@ didFinishDownloadingToURL:(NSURL *)location {
     NSString *digest = _updInfo[@"digest"];
     NSNumber *size = _updInfo[@"size"];
     NSString *ver = _updInfo[@"version"];
-    _updLabel.stringValue = @"正在校验…";
+    _updLabel.stringValue = L(@"正在校验…");
     _updBar.indeterminate = YES;
     [_updBar startAnimation:nil];
 
@@ -2900,7 +3042,7 @@ didFinishDownloadingToURL:(NSURL *)location {
         NSDictionary *attr = [fm attributesOfItemAtPath:zip error:nil];
         unsigned long long got = [attr[NSFileSize] unsignedLongLongValue];
         if (got != size.unsignedLongLongValue)
-            return [NSString stringWithFormat:@"安装包大小不对（%llu，期望 %@）。", got, size];
+            return [NSString stringWithFormat:L(@"安装包大小不对（%llu，期望 %@）。"), got, size];
     }
     if (digest.length) {
         NSString *want = digest;
@@ -2909,12 +3051,12 @@ didFinishDownloadingToURL:(NSURL *)location {
             NSString *alg = [want substringToIndex:col.location].lowercaseString;
             want = [want substringFromIndex:col.location + 1];
             if (![alg isEqualToString:@"sha256"])
-                return [NSString stringWithFormat:@"不认识的校验算法：%@。", alg];
+                return [NSString stringWithFormat:L(@"不认识的校验算法：%@。"), alg];
         }
         NSString *got = amnSHA256File(zip);
-        if (!got.length) return @"算不了安装包的校验值。";
+        if (!got.length) return L(@"算不了安装包的校验值。");
         if ([got caseInsensitiveCompare:want] != NSOrderedSame)
-            return @"安装包校验失败，没有安装。请到 GitHub Releases 重新下载。";
+            return L(@"安装包校验失败，没有安装。请到 GitHub Releases 重新下载。");
     }
 
     NSString *outDir = [dir stringByAppendingPathComponent:@"out"];
@@ -2925,31 +3067,31 @@ didFinishDownloadingToURL:(NSURL *)location {
     t.standardOutput = NSFileHandle.fileHandleWithNullDevice;
     t.standardError = NSFileHandle.fileHandleWithNullDevice;
     NSError *e = nil;
-    if (![t launchAndReturnError:&e]) return e.localizedDescription ?: @"解压失败。";
+    if (![t launchAndReturnError:&e]) return e.localizedDescription ?: L(@"解压失败。");
     [t waitUntilExit];
-    if (t.terminationStatus != 0) return @"解压安装包失败。";
+    if (t.terminationStatus != 0) return L(@"解压安装包失败。");
 
     NSString *app = amnFindApp(outDir);
-    if (!app.length) return @"压缩包里没有 AM·Note.app。";
+    if (!app.length) return L(@"压缩包里没有 AM·Note.app。");
 
     NSString *plistPath = [app stringByAppendingPathComponent:@"Contents/Info.plist"];
     NSDictionary *info = [NSDictionary dictionaryWithContentsOfFile:plistPath];
     if (![info[@"CFBundleIdentifier"] isEqualToString:@"app.amnote"])
-        return @"安装包的 Bundle ID 不是 app.amnote，已中止。";
+        return L(@"安装包的 Bundle ID 不是 app.amnote，已中止。");
     NSString *gotVer = info[@"CFBundleShortVersionString"] ?: @"";
     if (amnCmpVersion(gotVer, amnShortVersion()) <= 0)
-        return [NSString stringWithFormat:@"包里的版本是 %@，不比现在的新。", gotVer];
+        return [NSString stringWithFormat:L(@"包里的版本是 %@，不比现在的新。"), gotVer];
     if (ver.length && amnCmpVersion(gotVer, ver) < 0)
-        return [NSString stringWithFormat:@"包里的版本是 %@，比 GitHub 上的 %@ 还旧。", gotVer, ver];
+        return [NSString stringWithFormat:L(@"包里的版本是 %@，比 GitHub 上的 %@ 还旧。"), gotVer, ver];
     NSString *exeName = info[@"CFBundleExecutable"] ?: @"AM·Note";
     NSString *exe = [[app stringByAppendingPathComponent:@"Contents/MacOS"]
                      stringByAppendingPathComponent:exeName];
-    if (![fm isExecutableFileAtPath:exe]) return @"安装包里缺少可执行文件。";
+    if (![fm isExecutableFileAtPath:exe]) return L(@"安装包里缺少可执行文件。");
 
     NSString *staged = [dir stringByAppendingPathComponent:@"AM·Note.app"];
     if ([fm fileExistsAtPath:staged]) [fm removeItemAtPath:staged error:nil];
     if (![fm moveItemAtPath:app toPath:staged error:&e])
-        return e.localizedDescription ?: @"挪新版本失败。";
+        return e.localizedDescription ?: L(@"挪新版本失败。");
     NSTask *xa = [NSTask new];
     xa.executableURL = [NSURL fileURLWithPath:@"/usr/bin/xattr"];
     xa.arguments = @[ @"-dr", @"com.apple.quarantine", staged ];
@@ -2965,11 +3107,11 @@ didFinishDownloadingToURL:(NSURL *)location {
     if (_updCancel) { _updBusy = NO; return; }
     NSString *dest = NSBundle.mainBundle.bundlePath;
     if (![dest.pathExtension.lowercaseString isEqualToString:@"app"]) {
-        [self updateFail:@"当前不是从 .app 运行的，没法自动替换。请到 GitHub 手动下载。"];
+        [self updateFail:L(@"当前不是从 .app 运行的，没法自动替换。请到 GitHub 手动下载。")];
         return;
     }
     if (![[NSFileManager defaultManager] fileExistsAtPath:staged]) {
-        [self updateFail:@"找不到解好的新版本。"];
+        [self updateFail:L(@"找不到解好的新版本。")];
         return;
     }
 
@@ -2980,10 +3122,10 @@ didFinishDownloadingToURL:(NSURL *)location {
     if (dirty) {
         NSAlert *a = [NSAlert new];
         a.alertStyle = NSAlertStyleWarning;
-        a.messageText = @"有改动还没保存";
-        a.informativeText = @"安装更新要退出 AM·Note。未保存的改动会丢掉。";
-        [a addButtonWithTitle:@"回去保存"];
-        NSButton *go = [a addButtonWithTitle:@"放弃改动并更新"];
+        a.messageText = L(@"有改动还没保存");
+        a.informativeText = L(@"安装更新要退出 AM·Note。未保存的改动会丢掉。");
+        [a addButtonWithTitle:L(@"回去保存")];
+        NSButton *go = [a addButtonWithTitle:L(@"放弃改动并更新")];
         if (@available(macOS 11.0, *)) go.hasDestructiveAction = YES;
         if (_win.isVisible) {
             [a beginSheetModalForWindow:_win completionHandler:^(NSModalResponse r) {
@@ -3051,7 +3193,7 @@ didFinishDownloadingToURL:(NSURL *)location {
         @"exit 0\n";
     NSError *err = nil;
     if (![body writeToFile:script atomically:YES encoding:NSUTF8StringEncoding error:&err]) {
-        [self updateFail:err.localizedDescription ?: @"写更新脚本失败。"];
+        [self updateFail:err.localizedDescription ?: L(@"写更新脚本失败。")];
         return;
     }
     [[NSFileManager defaultManager] setAttributes:@{ NSFilePosixPermissions: @0755 }
@@ -3065,7 +3207,7 @@ didFinishDownloadingToURL:(NSURL *)location {
     t.standardOutput = NSFileHandle.fileHandleWithNullDevice;
     t.standardError = NSFileHandle.fileHandleWithNullDevice;
     if (![t launchAndReturnError:&err]) {
-        [self updateFail:err.localizedDescription ?: @"拉不起更新脚本。"];
+        [self updateFail:err.localizedDescription ?: L(@"拉不起更新脚本。")];
         return;
     }
 
@@ -3131,13 +3273,13 @@ static BOOL isBenignNavError(NSError *e) {
 
 - (void)webView:(WKWebView *)w didFailNavigation:(WKNavigation *)nav withError:(NSError *)e {
     if (w != _web || isBenignNavError(e) || _loadedOnce) return;
-    [self failReason:@"门户加载失败" detail:e.localizedDescription];
+    [self failReason:L(@"门户加载失败") detail:e.localizedDescription];
 }
 
 - (void)webView:(WKWebView *)w didFailProvisionalNavigation:(WKNavigation *)nav withError:(NSError *)e {
     if (w != _web || isBenignNavError(e) || _loadedOnce) return;
-    [self failReason:@"连不上门户服务"
-              detail:[NSString stringWithFormat:@"%@\n\n端口 %ld\n\n%@",
+    [self failReason:L(@"连不上门户服务")
+              detail:[NSString stringWithFormat:L(@"%@\n\n端口 %ld\n\n%@"),
                       e.localizedDescription, (long)_svc.port, [_svc tailStderr]]];
 }
 
@@ -3340,6 +3482,8 @@ static BOOL isBenignNavError(NSError *e) {
         [self sharePath:p];
         return;
     }
+    // 设置面板在独立窗 / 浏览器辅窗里也开得出来，换语言这条要一样认。
+    if ([type isEqualToString:@"setLanguage"]) { [self applyLanguage:m[@"lang"]]; return; }
 }
 
 /// 弹框贴在发消息的那个窗口上。独立文稿窗口里的确认框跑去主窗口，
@@ -3353,7 +3497,7 @@ static BOOL isBenignNavError(NSError *e) {
     NSAlert *a = [NSAlert new];
     a.messageText = @"AM·Note";
     a.informativeText = msg;
-    [a addButtonWithTitle:@"好"];
+    [a addButtonWithTitle:L(@"好")];
     [a beginSheetModalForWindow:[self hostWindowFor:w] completionHandler:^(NSModalResponse r) { done(); }];
 }
 
@@ -3385,7 +3529,7 @@ static BOOL isBenignNavError(NSError *e) {
         NSAlert *sa = [NSAlert new];
         sa.messageText = title.length ? title : @"AM·Note";
         sa.informativeText = body;
-        NSString *okTitle = (btns.count > 0 && [btns[0] length]) ? btns[0] : @"好";
+        NSString *okTitle = (btns.count > 0 && [btns[0] length]) ? btns[0] : L(@"好");
         NSButton *ok = [sa addButtonWithTitle:okTitle];
         NSButton *cancel = (btns.count > 1 && [btns[1] length])
                          ? [sa addButtonWithTitle:btns[1]] : nil;
@@ -3407,8 +3551,8 @@ static BOOL isBenignNavError(NSError *e) {
     NSAlert *a = [NSAlert new];
     a.messageText = @"AM·Note";
     a.informativeText = msg;
-    [a addButtonWithTitle:@"好"];
-    [a addButtonWithTitle:@"取消"];
+    [a addButtonWithTitle:L(@"好")];
+    [a addButtonWithTitle:L(@"取消")];
     [a beginSheetModalForWindow:[self hostWindowFor:w] completionHandler:^(NSModalResponse r) {
         done(r == NSAlertFirstButtonReturn);
     }];
@@ -3425,8 +3569,8 @@ static BOOL isBenignNavError(NSError *e) {
     NSTextField *f = [[NSTextField alloc] initWithFrame:NSMakeRect(0, 0, 300, 24)];
     f.stringValue = def ?: @"";
     a.accessoryView = f;
-    [a addButtonWithTitle:@"好"];
-    [a addButtonWithTitle:@"取消"];
+    [a addButtonWithTitle:L(@"好")];
+    [a addButtonWithTitle:L(@"取消")];
     [a beginSheetModalForWindow:[self hostWindowFor:w] completionHandler:^(NSModalResponse r) {
         done(r == NSAlertFirstButtonReturn ? f.stringValue : nil);
     }];
@@ -3447,10 +3591,10 @@ static BOOL isBenignNavError(NSError *e) {
     if (soloDirty) {
         NSAlert *a = [NSAlert new];
         a.alertStyle = NSAlertStyleWarning;
-        a.messageText = @"有改动还没保存";
-        a.informativeText = @"独立窗口里正在编辑的稿子有未保存的改动，现在退出会丢掉。";
-        [a addButtonWithTitle:@"回去保存"];
-        NSButton *quit = [a addButtonWithTitle:@"直接退出"];
+        a.messageText = L(@"有改动还没保存");
+        a.informativeText = L(@"独立窗口里正在编辑的稿子有未保存的改动，现在退出会丢掉。");
+        [a addButtonWithTitle:L(@"回去保存")];
+        NSButton *quit = [a addButtonWithTitle:L(@"直接退出")];
         if (@available(macOS 11.0, *)) { quit.hasDestructiveAction = YES; }
         if ([a runModal] != NSAlertSecondButtonReturn) return NSTerminateCancel;
     }
@@ -3466,10 +3610,10 @@ static BOOL isBenignNavError(NSError *e) {
         if (!dirty) { [NSApp replyToApplicationShouldTerminate:YES]; return; }
         NSAlert *a = [NSAlert new];
         a.alertStyle = NSAlertStyleWarning;
-        a.messageText = @"有改动还没保存";
-        a.informativeText = @"门户里正在编辑的稿子有未保存的改动，现在退出会丢掉。";
-        [a addButtonWithTitle:@"回去保存"];
-        NSButton *quit = [a addButtonWithTitle:@"直接退出"];
+        a.messageText = L(@"有改动还没保存");
+        a.informativeText = L(@"门户里正在编辑的稿子有未保存的改动，现在退出会丢掉。");
+        [a addButtonWithTitle:L(@"回去保存")];
+        NSButton *quit = [a addButtonWithTitle:L(@"直接退出")];
         if (@available(macOS 11.0, *)) { quit.hasDestructiveAction = YES; }
         [NSApp replyToApplicationShouldTerminate:([a runModal] == NSAlertSecondButtonReturn)];
     }];

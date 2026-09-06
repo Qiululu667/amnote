@@ -94,6 +94,7 @@ v20 撤掉的路由（代码已删）：
     /__inbox、POST /__inbox_read、/manifest.json、POST /__open。
 """
 
+import array
 import base64
 import errno
 import hmac
@@ -102,6 +103,7 @@ import os
 import re
 import secrets
 import shutil
+import struct
 import subprocess
 import sys
 import threading
@@ -118,6 +120,9 @@ sys.path.insert(0, HERE)
 # v20 起它是唯一的数据层——scan_tags / prep_batches / apply_tags / sheet_read
 # 四个模块整层退役，收录口径不再有第二份。
 import fulltext
+# 服务端自己生成的那几十句话（错误、保存结果、config.json 的校验意见）的
+# 三语词典。界面文字在网页那边翻，不走这里。每个请求开头 set_lang 一次。
+from portal_i18n import LANGS, T, gloss, set_lang
 
 ROOT = None
 REAL_ROOT = None
@@ -129,6 +134,9 @@ TEMPLATE_HTML = os.path.join(HERE, "template.html")
 ALIAS = {
     "/icon-192.png": (os.path.join(HERE, "icon-192.png"), "image/png"),
     "/icon-512.png": (os.path.join(HERE, "icon-512.png"), "image/png"),
+    # 界面词典：键是简体中文源串，页面按当前语言查表；文件在 src/locales/
+    "/__i18n/en.js": (os.path.join(HERE, "locales", "en.js"), "application/javascript; charset=utf-8"),
+    "/__i18n/zh-HK.js": (os.path.join(HERE, "locales", "zh-HK.js"), "application/javascript; charset=utf-8"),
 }
 
 
@@ -153,6 +161,21 @@ def note_dir():
     if isinstance(d, str) and d.strip():
         return d.strip()
     return "随手记"
+
+
+def _bad(msg):
+    """一条出错的响应。
+
+    `msg` 是 `T()` 的结果：既是那句给人看的话，又挂着一个稳定的 ASCII 短码。
+    有短码就顺手写进 `"代码"`——页面按短码判断分支（同名占用 / 不在了 / 太大 /
+    要确认…），不再靠正则匹配中文文案，换个界面语言不会认不出来。
+    字段只增不改：`"错误"` 还是原来那一句。
+    """
+    out = {"ok": False, "错误": str(msg)}
+    code = getattr(msg, "code", "")
+    if code:
+        out["代码"] = code
+    return out
 
 
 # ── 口令门禁 ──────────────────────────────────────
@@ -346,14 +369,14 @@ def _view_full(rel: str):
     给「看」「在访达里选中」「交给系统打开」「拷路径」用——
     写文件那条路走 _edit_ok，只认 md，附件一律不给写。"""
     if not rel or rel.startswith("/") or "\x00" in rel:
-        return None, "路径不合法"
+        return None, T("路径不合法")
     full = os.path.realpath(os.path.join(ROOT, rel))
     if not (full == REAL_ROOT or full.startswith(REAL_ROOT + os.sep)):
-        return None, "路径越出库根"
+        return None, T("路径越出库根")
     if not os.path.isfile(full):
-        return None, "文件不在了"
+        return None, T("文件不在了")
     if not full.lower().endswith((".md", ".html", ".htm") + tuple(fulltext.ATT_EXT)):
-        return None, "这个格式门户不认"
+        return None, T("这个格式门户不认")
     return full, ""
 
 
@@ -369,21 +392,21 @@ def reveal(req: dict):
     rel = (req.get("路径") or "").strip()
     if not rel:
         if not os.path.isdir(REAL_ROOT):
-            return {"ok": False, "错误": "库根不在了"}
+            return _bad(T("库根不在了"))
         try:
             subprocess.run(["open", REAL_ROOT], timeout=10,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except Exception as e:
-            return {"ok": False, "错误": f"打不开访达：{e}"}
+            return _bad(T("打不开访达：{e}", e=e))
         return {"ok": True, "路径": REAL_ROOT}
     full, err = _view_full(rel)
     if err:
-        return {"ok": False, "错误": err}
+        return _bad(err)
     try:
         subprocess.run(["open", "-R", full], timeout=10,
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception as e:
-        return {"ok": False, "错误": f"打不开访达：{e}"}
+        return _bad(T("打不开访达：{e}", e=e))
     return {"ok": True, "路径": full}
 
 
@@ -397,12 +420,12 @@ def open_external(req: dict):
     """
     full, err = _view_full((req.get("路径") or "").strip())
     if err:
-        return {"ok": False, "错误": err}
+        return _bad(err)
     try:
         subprocess.run(["open", full], timeout=10,
                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
     except Exception as e:
-        return {"ok": False, "错误": f"打不开：{e}"}
+        return _bad(T("打不开：{e}", e=e))
     return {"ok": True, "路径": full}
 
 
@@ -410,14 +433,14 @@ def read_raw(rel: str):
     """编辑器要的是源码，原样给。渲染那条路走静态服务，不走这里。"""
     full, err = _view_full(rel)
     if err:
-        return {"ok": False, "错误": err}
+        return _bad(err)
     if not full.endswith(".md"):
-        return {"ok": False, "错误": "只有 md 能在门户里读源码"}
+        return _bad(T("只有 md 能在门户里读源码"))
     try:
         with open(full, encoding="utf-8") as f:
             text = f.read()
     except (OSError, UnicodeDecodeError) as e:
-        return {"ok": False, "错误": f"读不了：{e}"}
+        return _bad(T("读不了：{e}", e=e))
     return {"ok": True, "路径": rel, "正文": text,
             "字节": os.path.getsize(full),
             "改于": datetime.fromtimestamp(
@@ -457,18 +480,18 @@ def _edit_ok(rel: str):
     只判前者的话，一条指向 .amnote/backups/ 的软链接就绕过去了。
     """
     if not rel or rel.startswith("/") or "\x00" in rel or ".." in rel.split("/"):
-        return None, "路径不合法"
+        return None, T("路径不合法")
     if not rel.endswith(".md"):
-        return None, "只有 md 能在门户里改"
+        return None, T("只有 md 能在门户里改")
     for seg in rel.split("/"):
         if not seg or _seg_blocked(seg):
-            return None, "这个位置不给写"
+            return None, T("这个位置不给写")
     full = os.path.realpath(os.path.join(ROOT, rel))
     if not full.startswith(REAL_ROOT + os.sep):
-        return None, "路径越出库根"
+        return None, T("路径越出库根")
     for seg in os.path.relpath(full, REAL_ROOT).split(os.sep):
         if _seg_blocked(seg):
-            return None, "这个位置不给写"
+            return None, T("这个位置不给写")
     return full, ""
 
 
@@ -477,9 +500,9 @@ def _edit_full(rel: str, must_exist: bool):
     if err:
         return None, err
     if must_exist and not os.path.isfile(full):
-        return None, "文件不在了"
+        return None, T("文件不在了")
     if not must_exist and os.path.exists(full):
-        return None, "同名文件已经有了"
+        return None, T("同名文件已经有了")
     return full, ""
 
 
@@ -554,20 +577,20 @@ def new_md(req: dict):
     rel = (req.get("路径") or "").strip()
     body = req.get("正文")
     if not rel.endswith(".md"):
-        return {"ok": False, "错误": "只能新建 md"}
+        return _bad(T("只能新建 md"))
     if not isinstance(body, str) or not body.strip():
-        return {"ok": False, "错误": "正文不能是空的"}
+        return _bad(T("正文不能是空的"))
     if len(body.encode("utf-8")) > 1_000_000:
-        return {"ok": False, "错误": "新建时正文别超过 1 MB"}
+        return _bad(T("新建时正文别超过 1 MB"))
     full, err = _edit_full(rel, must_exist=False)
     if err:
-        return {"ok": False, "错误": err}
+        return _bad(err)
     # **门户不替用户在库里造目录。** 新建放开到全库之后，随手写个名字就能
     # 长出一层新文件夹。只有随手记目录例外——第一次用时得让它自己长出来
     parent = os.path.dirname(full)
     if not os.path.isdir(parent):
         if not rel.startswith(note_dir() + "/"):
-            return {"ok": False, "错误": "这个文件夹还不存在，先在访达里建好"}
+            return _bad(T("这个文件夹还不存在，先在访达里建好"))
     try:
         os.makedirs(parent, exist_ok=True)
         note_portal_write(rel)                   # 同 save_md：记账赶在文件出现之前
@@ -575,9 +598,9 @@ def new_md(req: dict):
         with open(full, "x", encoding="utf-8") as f:
             f.write(body)
     except FileExistsError:
-        return {"ok": False, "错误": "同名文件刚被建走了，换个标题"}
+        return _bad(T("同名文件刚被建走了，换个标题"))
     except OSError as e:
-        return {"ok": False, "错误": f"写不进去：{e}"}
+        return _bad(T("写不进去：{e}", e=e))
     return {"ok": True, "路径": rel, "字节": len(body.encode("utf-8"))}
 
 
@@ -591,21 +614,21 @@ def save_img(req: dict):
     raw64 = (req.get("图片") or {}).get("数据") or ""
     md_full, err = _edit_full(rel, must_exist=True)
     if err:
-        return {"ok": False, "错误": err}
+        return _bad(err)
     if len(raw64) > IMG_MAX * 4 // 3 + 1024:       # base64 撑大 4/3，先卡一道免得白解
-        return {"ok": False, "错误": f"这张超过 {IMG_MAX // 1024 // 1024} MB 了"}
+        return _bad(T("这张超过 {m} MB 了", m=IMG_MAX // 1024 // 1024))
     try:
         blob = base64.b64decode(raw64, validate=True)
     except Exception:
-        return {"ok": False, "错误": "图片数据不对"}
+        return _bad(T("图片数据不对"))
     if not blob:
-        return {"ok": False, "错误": "图片是空的"}
+        return _bad(T("图片是空的"))
     if len(blob) > IMG_MAX:
-        return {"ok": False,
-                "错误": f"这张 {len(blob) // 1024 // 1024} MB，上限 {IMG_MAX // 1024 // 1024} MB"}
+        return _bad(T("这张 {n} MB，上限 {m} MB",
+                      n=len(blob) // 1024 // 1024, m=IMG_MAX // 1024 // 1024))
     ext = _sniff_img(blob)
     if not ext:
-        return {"ok": False, "错误": "只收 png / jpg / gif / webp"}
+        return _bad(T("只收 png / jpg / gif / webp"))
 
     d = os.path.join(os.path.dirname(md_full), IMG_SUB)
     name = datetime.now().strftime("%Y%m%d-%H%M%S-%f")[:-3] + "." + ext
@@ -614,7 +637,7 @@ def save_img(req: dict):
         with open(os.path.join(d, name), "xb") as f:
             f.write(blob)
     except OSError as e:
-        return {"ok": False, "错误": f"图片写不进去：{e}"}
+        return _bad(T("图片写不进去：{e}", e=e))
     # 返回相对这份 md 的路径，前端照原样写进 markdown，渲染时按 md 所在目录解
     return {"ok": True, "相对路径": f"{IMG_SUB}/{name}", "字节": len(blob)}
 
@@ -639,7 +662,7 @@ def _rename_md(rel: str, new_rel: str):
     if not new_rel or new_rel == rel:
         return rel, ""
     if os.path.dirname(new_rel) != os.path.dirname(rel):
-        return rel, "只能改文件名"
+        return rel, T("只能改文件名")
     dest, err = _edit_full(new_rel, must_exist=False)
     if err:
         return rel, err
@@ -655,7 +678,7 @@ def _rename_md(rel: str, new_rel: str):
         os.rename(src, dest)
     except OSError as e:
         fulltext.take_portal_move(rel)            # 没改成，把刚记的那笔收回来
-        return rel, f"改名失败：{e}"
+        return rel, T("改名失败：{e}", e=e)
     return new_rel, ""
 
 
@@ -671,20 +694,20 @@ def save_md(req: dict):
 
     full, err = _edit_full(rel, must_exist=True)
     if err:
-        return {"ok": False, "错误": err}
+        return _bad(err)
     if not isinstance(body, str):
-        return {"ok": False, "错误": "正文得是文本"}
+        return _bad(T("正文得是文本"))
     if len(body.encode("utf-8")) > 8_000_000:
-        return {"ok": False, "错误": "这份太大了（超过 8 MB），别在门户里改"}
+        return _bad(T("这份太大了（超过 8 MB），别在门户里改"))
 
     try:
         with open(full, encoding="utf-8") as f:
             old = f.read()
     except (OSError, UnicodeDecodeError) as e:
-        return {"ok": False, "错误": f"读不了原文：{e}"}
+        return _bad(T("读不了原文：{e}", e=e))
 
     if old == body:
-        return {"ok": True, "结果": "没有改动", "路径": rel,
+        return {"ok": True, "结果": str(T("没有改动")), "路径": rel,
                 "字节": {"写前": len(old.encode()), "写后": len(old.encode())},
                 "改于": _mtime_str(full)}
 
@@ -693,8 +716,10 @@ def save_md(req: dict):
     now = _mtime_str(full)
     clash = bool(based and based != now)
     if clash and not force:
-        return {"ok": False, "需确认": True,
-                "错误": f"你打开编辑之后，这份在别处被改过（{now}）。继续保存会盖掉那次改动。"}
+        out = _bad(T("你打开编辑之后，这份在别处被改过（{now}）。继续保存会盖掉那次改动。",
+                     now=now))
+        out["需确认"] = True
+        return out
 
     # 走到这里还 clash＝按了「保留我的」强存，这一版要盖掉别人的改动，
     # 不管节流窗口一律留档
@@ -716,7 +741,7 @@ def save_md(req: dict):
             os.remove(tmp)
         except OSError:
             pass
-        return {"ok": False, "错误": f"写失败：{e}"}
+        return _bad(T("写失败：{e}", e=e))
 
     new_rel = (req.get("新路径") or "").strip()
     if new_rel:
@@ -725,7 +750,7 @@ def save_md(req: dict):
         if err2 or not full:
             full = os.path.realpath(os.path.join(ROOT, rel))
 
-    return {"ok": True, "结果": "已保存", "路径": rel,
+    return {"ok": True, "结果": str(T("已保存")), "路径": rel,
             "字节": {"写前": len(old.encode()), "写后": len(body.encode())},
             "备份": os.path.relpath(BACKUP_DIR, ROOT).replace(os.sep, "/"),
             "留档": bak,                          # 空串＝这一次按节流跳过了
@@ -742,7 +767,7 @@ def save_route(req: dict):
     rel = (req.get("路径") or "").strip()
     _, err = _edit_ok(rel)
     if err:
-        return {"ok": False, "错误": err}
+        return _bad(err)
     if req.get("图片"):
         return save_img(req)
     if req.get("新建"):
@@ -818,22 +843,22 @@ def _trash_ok(rel: str, on_disk: bool = True):
     撤销那条路上文件已经在废纸篓里了，盘上本来就没有，那边传 False。
     """
     if not rel or rel.startswith("/") or "\x00" in rel or ".." in rel.split("/"):
-        return None, "路径不合法"
+        return None, T("路径不合法")
     if not rel.lower().endswith(TRASH_EXT):
-        return None, "只有笔记和网页能删"
+        return None, T("只有笔记和网页能删")
     for seg in rel.split("/"):
         if not seg or _seg_blocked(seg):
-            return None, "这个位置不给删"
+            return None, T("这个位置不给删")
     full = os.path.realpath(os.path.join(ROOT, rel))
     if not full.startswith(REAL_ROOT + os.sep):
-        return None, "路径越出库根"
+        return None, T("路径越出库根")
     for seg in os.path.relpath(full, REAL_ROOT).split(os.sep):
         if _seg_blocked(seg):
-            return None, "这个位置不给删"
+            return None, T("这个位置不给删")
     if on_disk:
         name = _disk_name(full)
         if name is None:
-            return None, "文件不在了"
+            return None, T("文件不在了")
         full = os.path.join(os.path.dirname(full), name)
     return full, ""
 
@@ -906,13 +931,13 @@ def trash(req: dict):
     rel = (req.get("路径") or "").strip()
     full, err = _trash_ok(rel)
     if err:
-        return {"ok": False, "错误": err}
+        return _bad(err)
     if not os.path.isfile(full):
-        return {"ok": False, "错误": "文件不在了"}
+        return _bad(T("文件不在了"))
     try:
         os.makedirs(TRASH_DIR, exist_ok=True)
     except OSError as e:
-        return {"ok": False, "错误": f"打不开废纸篓：{e}"}
+        return _bad(T("打不开废纸篓：{e}", e=e))
     # 废纸篓里的名字、活表里的路径，都用盘上逐字的那一份，不用请求里的大小写
     real_rel = _fix_rel(rel, full)
     dest = _trash_dest(os.path.basename(full))
@@ -922,7 +947,7 @@ def trash(req: dict):
         _move_file(full, dest)
     except OSError as e:
         fulltext.take_portal_move(real_rel)       # 没挪成，把刚记的那笔收回来
-        return {"ok": False, "错误": f"挪不进废纸篓：{e}"}
+        return _bad(T("挪不进废纸篓：{e}", e=e))
     now = time.time()
     with _lock:
         _trashed[real_rel] = {"废纸篓": dest, "原位": full,
@@ -946,29 +971,29 @@ def untrash(req: dict):
     # 盘上已经没有这份了（就在废纸篓里躺着），大小写校正这一步做不了也不用做
     _, err = _trash_ok(rel, on_disk=False)
     if err:
-        return {"ok": False, "错误": err}
+        return _bad(err)
     with _lock:
         _prune_trashed(time.time())
         key, rec = _find_trashed(rel)
     if not rec:
-        return {"ok": False, "错误": "这份撤不回来了，去废纸篓里找"}
+        return _bad(T("这份撤不回来了，去废纸篓里找"))
     src, full = rec["废纸篓"], rec["原位"]
     real_rel = rec.get("路径") or key
     if not os.path.isfile(src):
         with _lock:
             _trashed.pop(key, None)
-        return {"ok": False, "错误": "废纸篓里已经没有这份了"}
+        return _bad(T("废纸篓里已经没有这份了"))
     if os.path.lexists(full):
-        return {"ok": False, "错误": "原来那个位置又有文件了，先挪开"}
+        return _bad(T("原来那个位置又有文件了，先挪开"))
     if not os.path.isdir(os.path.dirname(full)):
-        return {"ok": False, "错误": "原来那个目录不在了"}
+        return _bad(T("原来那个目录不在了"))
     try:
         # 记账赶在文件出现之前，同 save_md：晚一步就会被同步判成「外部新增」
         fulltext.note_portal_move(real_rel)
         _move_file(src, full)
     except OSError as e:
         fulltext.take_portal_move(real_rel)       # 没挪成，把刚记的那笔收回来
-        return {"ok": False, "错误": f"挪不回去：{e}"}
+        return _bad(T("挪不回去：{e}", e=e))
     with _lock:
         _trashed.pop(key, None)
     return {"ok": True, "路径": real_rel}
@@ -1001,7 +1026,7 @@ def read_config():
 def write_config(req: dict):
     """只认 EDITABLE 那几个键，其余一律忽略（不报错——本机可能还留着旧配置）。"""
     if not isinstance(req, dict):
-        return {"ok": False, "错误": "配置得是一个对象"}
+        return _bad(T("配置得是一个对象"))
     out = {}
     if os.path.exists(CONFIG_PATH):
         try:
@@ -1017,21 +1042,21 @@ def write_config(req: dict):
             continue
         v = req[k]
         if not isinstance(v, type(fulltext.DEFAULTS[k])):
-            return {"ok": False, "错误": f"「{k}」类型不对"}
+            return _bad(T("「{k}」类型不对", k=k, g=gloss(k)))
         out[k] = v
 
     pr = out.get("端口范围") or fulltext.DEFAULTS["端口范围"]
     if not (isinstance(pr, list) and len(pr) == 2
             and all(isinstance(x, int) for x in pr)
             and 1 <= pr[0] <= pr[1] <= 65535):
-        return {"ok": False, "错误": "端口范围要填两个 1-65535 的整数，前小后大"}
+        return _bad(T("端口范围要填两个 1-65535 的整数，前小后大"))
 
     try:
         os.makedirs(os.path.dirname(CONFIG_PATH) or ".", exist_ok=True)
         with open(CONFIG_PATH, "w", encoding="utf-8") as fp:
             json.dump(out, fp, ensure_ascii=False, indent=2)
     except OSError as e:
-        return {"ok": False, "错误": f"写失败：{e}"}
+        return _bad(T("写失败：{e}", e=e))
     _, problems = fulltext.load_config(CONFIG_PATH)
     return {"ok": True, "问题": problems}
 
@@ -1128,7 +1153,7 @@ def tree_view():
         synced = fulltext.meta_get(con, "上次同步")
         con.close()
     except Exception as e:
-        return {"ok": False, "错误": f"fulltext.db 读不了：{e}（跑一次重扫）"}
+        return _bad(T("fulltext.db 读不了：{e}（跑一次重扫）", e=e))
 
     generic = tuple(cfg().get("通用标题") or ())
     docs = [{"路径": rel, "标题": title_of(rel, head or "", kind, generic),
@@ -1242,7 +1267,7 @@ def meta_view(query):
     rel = (query.get("path") or [""])[0]
     full, err = _view_full(rel)
     if err:
-        return {"ok": False, "错误": err}
+        return _bad(err)
     low = full.lower()
     kind = ("md" if low.endswith(".md") else "html" if low.endswith((".html", ".htm"))
             else fulltext.ATT_EXT.get(os.path.splitext(low)[1], ""))
@@ -1279,7 +1304,7 @@ def archive_view(query):
     name = (query.get("name") or [""])[0]
     text = fulltext.archive_read(name)
     if text is None:
-        return {"ok": False, "错误": "没有这份留档"}
+        return _bad(T("没有这份留档"))
     return {"ok": True, "名称": name, "正文": text}
 
 
@@ -1332,20 +1357,21 @@ def ext_open(req: dict):
     """登记一份库外 md。库内的不收——那些走正常流程，进索引、能编辑。"""
     p = (req.get("路径") or "").strip()
     if not p or "\x00" in p or not os.path.isabs(p):
-        return {"ok": False, "错误": "要一个绝对路径"}
+        return _bad(T("要一个绝对路径"))
     full = os.path.realpath(os.path.expanduser(p))
     if not full.lower().endswith(".md"):
-        return {"ok": False, "错误": "只能打开 md"}
+        return _bad(T("只能打开 md"))
     if not os.path.isfile(full):
-        return {"ok": False, "错误": "这份文件不在了"}
+        return _bad(T("这份文件不在了"))
     if full == REAL_ROOT or full.startswith(REAL_ROOT + os.sep):
-        return {"ok": False, "错误": "这份在库里，按库内文档打开"}
+        return _bad(T("这份在库里，按库内文档打开"))
     try:
         size = os.path.getsize(full)
     except OSError as e:
-        return {"ok": False, "错误": f"读不了：{e}"}
+        return _bad(T("读不了：{e}", e=e))
     if size > EXT_MAX:
-        return {"ok": False, "错误": f"这份 {size // 1048576} MB，上限 {EXT_MAX // 1048576} MB"}
+        return _bad(T("这份 {n} MB，上限 {m} MB",
+                      n=size // 1048576, m=EXT_MAX // 1048576))
     with _lock:
         for k, v in _ext_docs.items():           # 同一份拖两次给同一个 id
             if v["路径"] == full:
@@ -1364,13 +1390,13 @@ def ext_doc(query):
     eid = (query.get("id") or [""])[0]
     ent = _ext_docs.get(eid)
     if not ent:
-        return {"ok": False, "错误": "这份没登记过，重新拖一次"}
+        return _bad(T("这份没登记过，重新拖一次"))
     try:
         with open(ent["路径"], encoding="utf-8", errors="replace") as f:
             text = f.read(EXT_MAX)
         st = os.stat(ent["路径"])
     except OSError as e:
-        return {"ok": False, "错误": f"读不了：{e}"}
+        return _bad(T("读不了：{e}", e=e))
     return {"ok": True, "id": eid, "名称": ent["名称"], "路径": ent["路径"],
             "正文": text, "字节": st.st_size,
             "改于": datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M:%S")}
@@ -1386,25 +1412,338 @@ def ext_asset(query):
     rel = (query.get("rel") or [""])[0]
     ent = _ext_docs.get(eid)
     if not ent:
-        return None, "这份没登记过，重新拖一次"
+        return None, T("这份没登记过，重新拖一次")
     if not rel or "\x00" in rel or os.path.isabs(rel):
-        return None, "路径不合法"
+        return None, T("路径不合法")
     base = os.path.realpath(os.path.dirname(ent["路径"]))
     full = os.path.realpath(os.path.join(base, rel))
     if not full.startswith(base + os.sep):
-        return None, "这张图不在文档旁边"
+        return None, T("这张图不在文档旁边")
     ctype = EXT_IMG_EXT.get(os.path.splitext(full)[1].lower())
     if not ctype:
-        return None, "只认图片"
+        return None, T("只认图片")
     if not os.path.isfile(full):
-        return None, "这张图不在了"
+        return None, T("这张图不在了")
     try:
         if os.path.getsize(full) > EXT_ASSET_MAX:
-            return None, "这张图太大了"
+            return None, T("这张图太大了")
         with open(full, "rb") as f:
             return f.read(), ctype
     except OSError as e:
-        return None, f"读不了：{e}"
+        return None, T("读不了：{e}", e=e)
+
+
+# ── 阅读字体：新细明体（PMingLiU）───────────────────────────────
+#
+# 繁體中文（香港）那一档阅读字体要的是新细明体。macOS 不自带，但装了 Office 的
+# 机器上每个 app 包里都躺着一份 mingliu.ttc（22.7 MB，三面共用同一张 22 MB 的
+# glyf：MingLiU ／ PMingLiU ／ MingLiU_HKSCS）。页面的 @font-face 先用 local()
+# 碰本机装好的，碰不到才落到这条路由，由服务端把 .ttc 里那一面抽成独立 TTF
+# 当 web font 发出去。
+#
+#     GET /__fonts          探一探有没有、来自哪儿（user ／ system ／ office）。
+#                           轻——只读表目录和 name 表，不碰那 22 MB 的 glyf。
+#     GET /__font/pmingliu  真把字体发出去（HEAD 也认）。**第一次打它才抽**，
+#                           抽完落 ~/Library/Application Support/AMNote/fonts/，
+#                           之后直接从缓存出。启动路径上一个字节都不读——
+#                           为一个未必用得上的字体多花两秒开机时间不值当。
+#
+# 两条都免 token：CSS 里的 url() 带不了自定义头，跟库内图片一个道理；Host ／
+# Origin 那两道门照旧（_gate 每个请求都过）。**只读盘上的字体、只写自己那个
+# 缓存目录**，库里一个字节都不碰。抽字体这一路整个包在 try 里：字体是锦上添花，
+# 出什么岔子都只该退化成「没有这个字体」，不能把服务带下去。
+
+FONT_CACHE_DIR = os.path.expanduser("~/Library/Application Support/AMNote/fonts")
+PMING_TTF = os.path.join(FONT_CACHE_DIR, "PMingLiU.ttf")
+PMING_JSON = os.path.join(FONT_CACHE_DIR, "PMingLiU.json")   # 来源路径＋大小＋mtime
+
+# 查找顺序（5.5 契约 §5）：用户字体 → 系统字体 → 从 Office 包里借。每一档里
+# 先看独立的 PMingLiU.ttf，再看 mingliu.ttc；文件名不分大小写。
+FONT_DIRS = (
+    ("user", os.path.expanduser("~/Library/Fonts")),
+    ("system", "/Library/Fonts"),
+    ("system", "/System/Library/Fonts"),
+    ("system", "/System/Library/Fonts/Supplemental"),
+)
+FONT_NAMES = ("pmingliu.ttf", "mingliu.ttc")
+OFFICE_APPS = ("Word", "Excel", "PowerPoint", "Outlook", "OneNote")
+OFFICE_TTC = "/Applications/Microsoft %s.app/Contents/Resources/DFonts/mingliu.ttc"
+PMING_PS_NAME = "PMingLiU"                # name 表 nameID 6（PostScript 名）
+FONT_PROBE_TTL = 60.0                     # 探测结果缓存这么多秒
+
+_probe_lock = threading.Lock()
+_extract_lock = threading.Lock()
+_font_probe = {"at": 0.0, "值": None}
+
+
+def _sfnt_dir(f, off):
+    """读一个 sfnt 的表目录。返回 (sfntVersion, [(tag, 偏移, 长度), …])。"""
+    f.seek(off)
+    head = f.read(12)
+    if len(head) < 12:
+        raise ValueError("sfnt 头读不全")
+    sv, n = struct.unpack(">IH", head[:6])
+    if not 1 <= n <= 512:
+        raise ValueError("表数目不像话：%d" % n)
+    raw = f.read(16 * n)
+    if len(raw) < 16 * n:
+        raise ValueError("表目录读不全")
+    out = []
+    for i in range(n):
+        tag, _cs, o, l = struct.unpack(">4sIII", raw[16 * i:16 * i + 16])
+        out.append((tag, o, l))
+    return sv, out
+
+
+def _name_table(f, off, length):
+    """name 表里的 {nameID: 文本}。
+
+    同一个 nameID 有好几条（Mac／Windows × 中英文），要的是**英文那条**：
+    新细明体的 nameID 1 在简繁语言里是「新細明體」，拿它跟 PostScript 名比
+    永远对不上。所以英文（Mac lid=0 ／ Windows lid=1033）优先覆盖。
+    """
+    f.seek(off)
+    raw = f.read(min(length, 1 << 20))
+    if len(raw) < 6:
+        return {}
+    _fmt, cnt, str_off = struct.unpack(">HHH", raw[:6])
+    out = {}
+    for i in range(cnt):
+        p = 6 + 12 * i
+        if p + 12 > len(raw):
+            break
+        pid, _eid, lid, nid, ln, o = struct.unpack(">6H", raw[p:p + 12])
+        s = raw[str_off + o: str_off + o + ln]
+        if len(s) < ln:
+            continue
+        try:
+            txt = s.decode("utf-16-be") if pid in (0, 3) else s.decode("mac-roman")
+        except (UnicodeDecodeError, LookupError):
+            continue
+        if nid not in out or lid in (0, 1033):
+            out[nid] = txt
+    return out
+
+
+def _face_names(f, off):
+    """一面字体的 (sfntVersion, 表目录, {nameID: 文本})。"""
+    sv, tabs = _sfnt_dir(f, off)
+    for tag, o, l in tabs:
+        if tag == b"name":
+            return sv, tabs, _name_table(f, o, l)
+    return sv, tabs, {}
+
+
+def _is_pmingliu(names):
+    """这一面是不是新细明体：认 PostScript 名（nameID 6），退回英文族名（1）。"""
+    return ((names.get(6) or "").strip() == PMING_PS_NAME
+            or (names.get(1) or "").strip() == PMING_PS_NAME)
+
+
+def _pming_face(path):
+    """这份字体文件里新细明体是第几面。
+
+    独立的 ttf 返回 -1（整份直接就能用），.ttc 返回面序号，不是新细明体
+    返回 None。只读文件头、表目录和 name 表，那 22 MB 的 glyf 一个字节不碰。
+    """
+    with open(path, "rb") as f:
+        if f.read(4) == b"ttcf":
+            f.seek(8)
+            (n,) = struct.unpack(">I", f.read(4))
+            if not 1 <= n <= 64:
+                return None
+            offs = struct.unpack(">%dI" % n, f.read(4 * n))
+            for i, off in enumerate(offs):
+                try:
+                    _sv, _tabs, names = _face_names(f, off)
+                except (ValueError, struct.error, OSError):
+                    continue
+                if _is_pmingliu(names):
+                    return i
+            return None
+        _sv, _tabs, names = _face_names(f, 0)
+        return -1 if _is_pmingliu(names) else None
+
+
+def _find_pmingliu():
+    """按契约的顺序找一份新细明体。返回 (来源, 路径, 面序号)。
+
+    来源是 "user" ／ "system" ／ "office"，跟 /__fonts 里那个字段一一对应；
+    一份都没找到返回 (None, "", None)。
+    """
+    for where, d in FONT_DIRS:
+        try:
+            with os.scandir(d) as it:
+                have = {e.name.lower(): e.name for e in it if not e.is_dir()}
+        except OSError:
+            continue
+        for want in FONT_NAMES:
+            if want not in have:
+                continue
+            p = os.path.join(d, have[want])
+            try:
+                idx = _pming_face(p)
+            except (OSError, ValueError, struct.error):
+                continue
+            if idx is not None:
+                return where, p, idx
+    for app in OFFICE_APPS:
+        p = OFFICE_TTC % app
+        if not os.path.isfile(p):
+            continue
+        try:
+            idx = _pming_face(p)
+        except (OSError, ValueError, struct.error):
+            continue
+        if idx is not None:
+            return "office", p, idx
+    return None, "", None
+
+
+def probe_pmingliu(max_age=FONT_PROBE_TTL):
+    """探测结果，带一分钟的缓存。任何异常都当「没有」，只往 stderr 记一笔。"""
+    with _probe_lock:
+        hit = _font_probe["值"]
+        if hit is not None and time.time() - _font_probe["at"] < max_age:
+            return hit
+    try:
+        hit = _find_pmingliu()
+    except Exception as e:
+        print(f"找新细明体时出错：{type(e).__name__}: {e}", file=sys.stderr, flush=True)
+        hit = (None, "", None)
+    with _probe_lock:
+        _font_probe["值"] = hit
+        _font_probe["at"] = time.time()
+    return hit
+
+
+def fonts_view():
+    """/__fonts：这台机器上新细明体拿不拿得到、来自哪儿。免 token。"""
+    where, _p, _i = probe_pmingliu()
+    return {"pmingliu": {"available": bool(where), "source": where}}
+
+
+def _sum32(b: bytes) -> int:
+    """sfnt 的校验和：按大端 uint32 逐个相加取低 32 位，不足 4 字节的补零。"""
+    if len(b) % 4:
+        b = b + b"\0" * (-len(b) % 4)
+    a = array.array("I")
+    a.frombytes(b)
+    if sys.byteorder == "little":
+        a.byteswap()
+    return sum(a) & 0xFFFFFFFF
+
+
+def _build_sfnt(data: bytes, sv: int, tabs) -> bytes:
+    """把一面的那些表拼成一份独立的 sfnt。
+
+    表目录按 tag 排序（规范要求），numTables ／ searchRange ／ entrySelector ／
+    rangeShift 全部重算；每张表 4 字节对齐、尾巴补零，校验和逐表重算；
+    最后按整份文件的校验和填 head.checkSumAdjustment——算的时候那个字段本身
+    必须是 0，所以先清零、拼完再回填。
+    """
+    tabs = sorted(tabs, key=lambda t: t[0])
+    n = len(tabs)
+    es = max(n.bit_length() - 1, 0)
+    sr = 16 * (1 << es)
+    out = bytearray(struct.pack(">IHHHH", sv, n, sr, es, 16 * n - sr))
+    dir_at = len(out)                            # 12＋16n 天然是 4 的倍数
+    out += b"\0" * (16 * n)
+    recs = []
+    head_at = None
+    for tag, off, ln in tabs:
+        blob = data[off:off + ln]
+        if len(blob) != ln:
+            raise ValueError("表 %s 读不全" % tag.decode("latin-1", "replace"))
+        if tag == b"head":
+            if ln < 54:
+                raise ValueError("head 表太短")
+            blob = blob[:8] + b"\0\0\0\0" + blob[12:]
+            head_at = len(out)
+        recs.append((tag, _sum32(blob), len(out), ln))
+        out += blob + b"\0" * (-ln % 4)
+    if head_at is None:
+        raise ValueError("没有 head 表")
+    for i, (tag, cs, at, ln) in enumerate(recs):
+        struct.pack_into(">4sIII", out, dir_at + 16 * i, tag, cs, at, ln)
+    struct.pack_into(">I", out, head_at + 8,
+                     (0xB1B0AFBA - _sum32(bytes(out))) & 0xFFFFFFFF)
+    return bytes(out)
+
+
+def _extract_pmingliu(path: str, idx: int) -> bytes:
+    """从 .ttc 里抽第 idx 面，写成独立 TTF 的字节。整份读进内存（22 MB）。"""
+    with open(path, "rb") as f:
+        data = f.read()
+    if data[:4] != b"ttcf":
+        raise ValueError("不是 ttc")
+    (n,) = struct.unpack(">I", data[8:12])
+    if not 0 <= idx < n:
+        raise ValueError("没有第 %d 面" % idx)
+    (off,) = struct.unpack(">I", data[12 + 4 * idx: 16 + 4 * idx])
+    sv, cnt = struct.unpack(">IH", data[off:off + 6])
+    tabs = [struct.unpack(">4sIII", data[off + 12 + 16 * i: off + 28 + 16 * i])
+            for i in range(cnt)]
+    return _build_sfnt(data, sv, [(t, o, l) for t, _c, o, l in tabs])
+
+
+def _cache_ok(src_path: str) -> bool:
+    """缓存里那份还算数吗。
+
+    sidecar 记着来源路径、大小、mtime，三样跟盘上现在这份对得上、抽出来那份
+    ttf 也还在且大小没变，才算数。Office 升过级、换了一份 .ttc，这里就对不上，
+    自动重抽一遍。
+    """
+    try:
+        with open(PMING_JSON, encoding="utf-8") as f:
+            side = json.load(f)
+        st = os.stat(src_path)
+        out = os.stat(PMING_TTF)
+    except (OSError, ValueError):
+        return False
+    return (side.get("来源") == src_path
+            and side.get("大小") == st.st_size
+            and side.get("改于") == round(st.st_mtime, 3)
+            and side.get("字节") == out.st_size)
+
+
+def pmingliu_file():
+    """/__font/pmingliu 要发的那份独立 TTF 的路径；拿不到返回空串。
+
+    盘上本来就是独立一份 ttf 的直接给路径；.ttc 第一次要抽一遍（22 MB，两三秒），
+    抽完落缓存，之后直接从缓存出。**抽的时候上一把锁**：两个请求同时进来只抽
+    一次，先写 .tmp 再 os.replace，中途出岔子不会留半截字体文件。
+    """
+    where, path, idx = probe_pmingliu()
+    if not where:
+        return ""
+    if idx == -1:                                # 盘上本来就是独立的一份
+        return path
+    with _extract_lock:
+        try:
+            if _cache_ok(path):
+                return PMING_TTF
+            blob = _extract_pmingliu(path, idx)
+            st = os.stat(path)
+            os.makedirs(FONT_CACHE_DIR, exist_ok=True)
+            tmp = PMING_TTF + ".tmp"
+            with open(tmp, "wb") as f:
+                f.write(blob)
+            os.replace(tmp, PMING_TTF)
+            with open(PMING_JSON, "w", encoding="utf-8") as f:
+                json.dump({"来源": path, "大小": st.st_size,
+                           "改于": round(st.st_mtime, 3),
+                           "字节": len(blob), "面": idx},
+                          f, ensure_ascii=False, indent=2)
+            return PMING_TTF
+        except Exception as e:
+            print(f"抽新细明体失败（{path}）：{type(e).__name__}: {e}",
+                  file=sys.stderr, flush=True)
+            try:
+                os.remove(PMING_TTF + ".tmp")
+            except OSError:
+                pass
+            return ""
 
 
 class Handler(SimpleHTTPRequestHandler):
@@ -1413,6 +1752,18 @@ class Handler(SimpleHTTPRequestHandler):
 
     def log_message(self, *a):
         pass
+
+    def _lang(self):
+        """这一趟请求说哪种语言：X-AMN-Lang 头 → lang 查询参数 → zh-Hans。
+
+        页面每个 fetch 都带头（hdrs()）；带不了自定义头的取法（<img src>、
+        CSS 里的 url()）退到查询参数。认不出的代号一律当简体。
+        **只影响文案**：JSON 字段名、配置键、`状态` 的哨兵值一概不动。
+        """
+        code = (self.headers.get("X-AMN-Lang") or "").strip()
+        if code not in LANGS:
+            code = ((self._q().get("lang") or [""])[0] or "").strip()
+        return set_lang(code)
 
     def _body(self, b: bytes, ctype: str):
         self.send_response(200)
@@ -1436,6 +1787,46 @@ class Handler(SimpleHTTPRequestHandler):
             return
         self._body(b, ctype)
 
+    def _send_cached(self, path: str, ctype: str, cache: str) -> bool:
+        """按块发一份文件，带自己的缓存头。发不出去（文件不在）返回 False。
+
+        **不走 _body**：那条路把整份读进内存、而且强制 Cache-Control: no-store，
+        22 MB 的字体每刷新一次就重下一遍。这里分块发，并且自己写缓存头
+        （_cache_sent 一置上，end_headers 就不再补 no-store）。HEAD 只发头。
+        """
+        try:
+            st = os.stat(path)
+            f = open(path, "rb")
+        except OSError:
+            return False
+        try:
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(st.st_size))
+            self.send_header("Cache-Control", cache)
+            self._cache_sent = True
+            self.end_headers()
+            if self._head_only:
+                return True
+            while True:
+                chunk = f.read(262144)
+                if not chunk:
+                    break
+                self.wfile.write(chunk)
+        except (BrokenPipeError, ConnectionResetError):
+            # 页面中途换了字体／关了标签，浏览器直接把连接掐了。不是错。
+            self.close_connection = True
+        finally:
+            f.close()
+        return True
+
+    def _pmingliu(self):
+        """把新细明体发出去。本机压根没有（也没装 Office）就 404。"""
+        path = pmingliu_file()
+        if not path or not self._send_cached(path, "font/ttf",
+                                             "private, max-age=86400"):
+            self._deny(404, T("本机没有新细明体"))
+
     def _portal_page(self):
         """出门户页，顺手把 token 注进去。
 
@@ -1451,16 +1842,16 @@ class Handler(SimpleHTTPRequestHandler):
         self._body(html.replace(TOKEN_PLACEHOLDER, TOKEN).encode("utf-8"),
                    "text/html; charset=utf-8")
 
-    def _deny(self, code: int, msg: str):
+    def _deny(self, status: int, msg):
         """拒掉一个请求。给 JSON 不给 html 错误页——前端一律 res.json() 读结果，
         html 错误页会让它在解析那一步炸掉，看不出是被门禁挡的。
 
         连接一律断开：POST 被拒时请求体还没读完，keep-alive 复用会把下一个请求
         的报文头读成上一个的正文。
         """
-        b = json.dumps({"ok": False, "错误": msg}, ensure_ascii=False).encode("utf-8")
+        b = json.dumps(_bad(msg), ensure_ascii=False).encode("utf-8")
         self.close_connection = True
-        self.send_response(code)
+        self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(b)))
         self.send_header("Cache-Control", "no-store")
@@ -1474,18 +1865,18 @@ class Handler(SimpleHTTPRequestHandler):
         port = _state["port"]
         hosts = (f"127.0.0.1:{port}", f"localhost:{port}")
         if (self.headers.get("Host") or "").strip() not in hosts:
-            self._deny(403, "Host 不对")
+            self._deny(403, T("Host 不对"))
             return False
         origin = (self.headers.get("Origin") or "").strip()
         if origin and origin not in tuple("http://" + h for h in hosts):
-            self._deny(403, "跨站请求不收")
+            self._deny(403, T("跨站请求不收"))
             return False
         return True
 
     def _token(self) -> bool:
         if token_ok(self.headers.get("X-AMN-Token") or ""):
             return True
-        self._deny(403, "口令不对。退出 AM·Note 再打开一次。")
+        self._deny(403, T("口令不对。退出 AM·Note 再打开一次。"))
         return False
 
     def _q(self):
@@ -1499,7 +1890,7 @@ class Handler(SimpleHTTPRequestHandler):
         elif route.startswith("/__rescan"):
             # v21 起重扫是 POST。它是个会动索引库、会跑几秒的动作，挂在 GET 上
             # 等于随便哪个页面塞个 <img src> 就能让库转一圈
-            self._deny(405, "重扫要用 POST")
+            self._deny(405, T("重扫要用 POST"))
         elif route.startswith("/__extdoc"):
             if self._token():
                 self._json(json.dumps(ext_doc(self._q()), ensure_ascii=False))
@@ -1510,6 +1901,10 @@ class Handler(SimpleHTTPRequestHandler):
                     self._deny(404, ctype)
                 else:
                     self._body(blob, ctype)
+        elif route == "/__font/pmingliu":
+            self._pmingliu()
+        elif route.startswith("/__fonts"):
+            self._json(json.dumps(fonts_view(), ensure_ascii=False))
         elif route.startswith("/__status"):
             self._json(json.dumps(status(), ensure_ascii=False))
         elif route.startswith("/__tree"):
@@ -1541,6 +1936,7 @@ class Handler(SimpleHTTPRequestHandler):
         self._cache_sent = False
         self._head_only = False
         self._ctype = ""
+        self._lang()
         if not self._gate():
             return
         if not self._route():
@@ -1550,6 +1946,7 @@ class Handler(SimpleHTTPRequestHandler):
         self._cache_sent = False
         self._head_only = True
         self._ctype = ""
+        self._lang()
         if not self._gate():
             return
         if not self._route():
@@ -1559,6 +1956,7 @@ class Handler(SimpleHTTPRequestHandler):
         self._cache_sent = False
         self._head_only = False
         self._ctype = ""
+        self._lang()
         if not self._gate():
             return
         route = self.path.split("?")[0]
@@ -1582,13 +1980,12 @@ class Handler(SimpleHTTPRequestHandler):
         # /__save 传的是整篇正文，上限单独给大一点
         cap = 9_000_000 if route == "/__save" else 1_000_000
         if n <= 0 or n > cap:
-            self._json(json.dumps({"ok": False, "错误": "请求体为空或过大"},
-                                  ensure_ascii=False))
+            self._json(json.dumps(_bad(T("请求体为空或过大")), ensure_ascii=False))
             return
         try:
             req = json.loads(self.rfile.read(n).decode("utf-8"))
         except (ValueError, UnicodeDecodeError) as e:
-            self._json(json.dumps({"ok": False, "错误": f"请求不是合法 JSON：{e}"},
+            self._json(json.dumps(_bad(T("请求不是合法 JSON：{e}", e=e)),
                                   ensure_ascii=False))
             return
         try:
