@@ -81,7 +81,8 @@ AM·Note 不搬。選一個資料夾，它給你一個像瀏覽器一樣輕的�
 
 **設定**
 
-- ⌘, 打開，或者按右上角那顆 ⚙。四頁：閱讀與外觀、筆記庫、進階、關於。
+- ⌘, 打開，或者按右上角那顆 ⚙。六頁：個人、閱讀與外觀、筆記庫、Agent、進階、關於。
+- 個人：起個名字、放張頭像，開始頁就按時段跟你打招呼（「早晨，露露」）。資料只留在這部 Mac 上。
 - 介面語言：跟隨系統 / 简体中文 / 繁體中文（香港）/ English。原生選單和網頁一起換，切換後會重新載入頁面。
 - 閱讀與外觀：跟隨系統 / 淺色 / 深色，內文字體（系統黑體、宋體、等寬、蘋方-港、新細明體，卡片上先看到樣子），字體大小 15–21，行距緊湊 1.6 / 舒適 1.8 / 寬鬆 2.0，欄寬窄 620 / 標準 690 / 寬 820，還有「打開文件時預設顯示大綱」。換深色時標題列跟着一起變，和視窗是一塊的。
 - 兩款新的閱讀字體：**蘋方-港**有極細到中粗六檔字重可選；**新細明體**本機沒裝的話，會借用已安裝的 Microsoft Office 裡那一份，連 Office 都沒有就用宋體-繁代替。
@@ -171,34 +172,103 @@ AM·Note 不搬。選一個資料夾，它給你一個像瀏覽器一樣輕的�
 
 - 隨手記預設落在庫裡的 `随手记/`，資料夾名稱在 設定 → 筆記庫 裡改。
 - 貼進內文的圖片，落在那份 md 旁邊的 `_图/`。
-- 服務的連接埠和口令在 `~/Library/Application Support/AMNote/` 下的 `portal.port` 和 `portal.token`（口令檔 0600）。
+- 庫根還可能多兩份，都是 設定 → Agent 裡按出來的，不按就沒有：`AGENTS.md`（給在這個資料夾裡跑的 agent 的說明）和 `库地图.md`（匯出的筆記庫地圖，重新匯出會整份蓋掉，別在裡面手寫東西）。
+- 服務的連接埠和口令在 `~/Library/Application Support/AMNote/` 下的 `portal.port` 和 `portal.token`（口令檔 0600）。同一個資料夾裡還有 `profile.json` 和 `avatar.img`——你的暱稱和頭像，只在這部 Mac 上。
 
 ## 給 Agent／腳本的本機介面
 
-軟件開着的時候，本機可以直接搜這個庫。服務只監聽 `127.0.0.1`，連接埠預設在 8870–8900 之間選一個，**永不輸出 CORS 標頭**——瀏覽器裡的網頁碰不到它。
+AM·Note 開着的時候，這部 Mac 上的 AI 助手可以搜尋和讀寫這個筆記庫。只在本機，不連網。
 
-讀的路由不用口令，寫的路由（所有 POST）要在標頭裡帶 `X-AMN-Token`。
+**三步接上**
+
+1. 設定（⌘,）→ Agent。
+2. 用 Claude Code 就按「安裝 Skill」；用 Codex 或別的工具，按「拷貝 MCP 指令」或「拷貝 MCP 設定」，貼進它自己的設定裡。
+3. 回 Claude Code 直接說「幫我在筆記裡找一下上次那份發佈檢查表」。
+
+Skill 教它的是一套次序：先看**筆記庫地圖**知道有哪些資料夾，再**搜尋**定位，最後只**讀那一節**——不用把整個庫灌進上下文。
+
+在庫資料夾裡跑的 agent（Codex、Cursor…）還可以按「在筆記庫生成 AGENTS.md」，它開工先讀到同一套規矩。旁邊那顆「匯出到筆記庫」寫一份 `库地图.md`，AM·Note 沒開着時也看得到。
+
+**命令列 `amnote`**
+
+設定 → Agent → 命令列工具 →「安裝」，在 `~/.local/bin/amnote` 建一條符號連結，指到 app 裡的 `AM·Note.app/Contents/Resources/amnote`。不裝也行，直接叫那個絕對路徑一樣用。
+
+```bash
+amnote map                                    # 庫裡有哪些資料夾、每篇講什麼
+amnote search "報銷" --dir 工作筆記 --since 7   # 空格分詞＝AND，還能 --type md,pdf
+amnote outline 工作筆記/報銷.md                # 這份有哪些小節
+amnote read 工作筆記/報銷.md --section "發票"   # 只讀那一節
+amnote recent                                 # 最近改了什麼
+amnote new "會議記錄 0906" < 內文.md           # 新增，預設落在隨手記資料夾
+amnote save 工作筆記/報銷.md < 內文.md          # 整篇覆寫；要先 read 過這份（它記得你讀到的版本），或加 --based/--force
+```
+
+路徑一律是**庫相對路徑**。每條都能加 `--json` 拿原樣的 JSON，`--agent 名字` 給這次改動署名。
+
+AM·Note 沒開着時，只讀的那幾條會用 `.amnote/` 裡上一次的索引接着答（會在 stderr 說一聲），寫不了。
+
+結束代碼：0 成功 · 1 用法錯（含「沒讀過就 save」）· 2 AM·Note 沒有開着 · 3 衝突（這份在你讀完之後被別處改過，加 `--force` 才蓋）· 4 服務端拒絕。
+
+**MCP**
+
+```bash
+claude mcp add amnote -- /路徑/到/amnote mcp
+```
+
+Codex 的 `~/.codex/config.toml` 裡加：
+
+```toml
+[mcp_servers.amnote]
+command = "/路徑/到/amnote"
+args = ["mcp"]
+```
+
+八個工具：`search_notes`、`note_map`、`read_note`、`note_outline`、`recent_notes`、`note_links`、`create_note`、`save_note`。設定 → Agent 裡那兩顆「拷貝」按鈕已經把路徑填好了。
+
+**直接走 HTTP**
+
+寫腳本，或者用別的語言接，直接叫路由也行。服務只監聽 `127.0.0.1`，連接埠預設在 8870–8900 之間選一個，**永不輸出 CORS 標頭**——瀏覽器裡的網頁碰不到它。讀的路由不用口令，寫的路由（所有 POST）要在標頭裡帶 `X-AMN-Token`。
+
+> JSON 欄位名（`路径`、`正文`、`基于`…）是介面約定，任何介面語言下都保持簡體中文原樣。
 
 ```bash
 D=~/Library/Application\ Support/AMNote
 P=$(cat "$D/portal.port")
 T=$(cat "$D/portal.token")
 
-# 先確認服務還活着，不是 200 就別重試，改在資料夾裡直接搜
+# 先確認服務還活着，不是 200 就別重試，改叫 amnote（它會退到上次的索引）
 curl -s -m 3 -o /dev/null -w '%{http_code}\n' "http://127.0.0.1:$P/__status"
 
-# 搜整個庫。中文詞要用 --data-urlencode；n 預設 200，上限 500
+# 筆記庫地圖：一份 Markdown 的「這個庫裡有什麼」，開工先看它。
+# dir= 只畫一個資料夾，max= 每個資料夾列幾篇（預設 20），depth= 資料夾深度
+curl -sG "http://127.0.0.1:$P/__map" --data-urlencode "dir=工作筆記"
+
+# 搜整個庫。中文詞要用 --data-urlencode；n 預設 200，上限 500。
+# 還能篩：dir=資料夾、type=md,pdf、since=7 或 since=2026-09-01、sort=mtime、offset=20
 curl -sG "http://127.0.0.1:$P/__search" \
-     --data-urlencode "q=檢查表" --data-urlencode "n=10"
+     --data-urlencode "q=檢查表" --data-urlencode "n=10" \
+     --data-urlencode "dir=工作筆記" --data-urlencode "since=7"
+
+# 這一份有哪些小節：每個標題的級、文字、行號
+curl -sG "http://127.0.0.1:$P/__outline" --data-urlencode "path=工作筆記/發佈檢查表.md"
+
+# 讀一份 md 的原始碼。整份，或者 section=標題 只要那一節、lines=5-40 只要那幾行
+curl -sG "http://127.0.0.1:$P/__raw" \
+     --data-urlencode "path=工作筆記/發佈檢查表.md" --data-urlencode "section=打包"
+
+# 這篇指向誰、誰指向它
+curl -sG "http://127.0.0.1:$P/__links" --data-urlencode "path=工作筆記/發佈檢查表.md"
+
+# 最近改了什麼。days 預設 7、上限 365，n 預設 50、上限 500
+curl -sG "http://127.0.0.1:$P/__recent" --data-urlencode "days=7"
 
 # 庫裡有什麼：目錄樹 + 全部 md/html + 隨手記
 curl -s "http://127.0.0.1:$P/__tree"
 
-# 讀一份 md 的原始碼
-curl -sG "http://127.0.0.1:$P/__raw" --data-urlencode "path=工作筆記/發佈檢查表.md"
-
-# 寫回去。要口令；「基于」填上一次讀到的「改于」，別人改過就會被攔下來
-curl -s -X POST "http://127.0.0.1:$P/__save" -H "X-AMN-Token: $T" \
+# 寫回去。要口令；「基于」填上一次讀到的「改于」，別人改過就會被攔下來。
+# 帶上名字，卡片上會顯示是誰改的
+curl -s -X POST "http://127.0.0.1:$P/__save" \
+     -H "X-AMN-Token: $T" -H "X-AMN-Agent: 我的腳本" \
      --data-binary '{"路径":"工作筆記/發佈檢查表.md","正文":"# 標題\n\n內文\n","基于":"2026-09-05 09:42:00"}'
 
 # 移到系統垃圾桶。只搬位置不改內容，認 .md / .html / .htm
@@ -210,7 +280,9 @@ curl -s -X POST "http://127.0.0.1:$P/__untrash" -H "X-AMN-Token: $T" \
      --data-binary '{"路径":"工作筆記/建錯了.md"}'
 ```
 
-> JSON 欄位名（`路径`、`正文`、`基于`…）是介面約定，任何介面語言下都保持簡體中文原樣。
+`/__search` 每條命中帶 `路径`、`标题`、`类型`、`改于`、`大小`、`分数`，下面掛幾段 `片段`，每段帶 `行`（行號）和 `小节`（命中落在哪個標題下）。照着 `小节` 去 `/__raw?section=` 取那一節，別整份讀回來。
+
+`X-AMN-Agent` 所有 POST 都認：流水上記成「来源 Agent · 代理 你的名字」，卡片上也會多一行 `✦ 你的名字`。
 
 改檔案內容的只有 `/__save` 一條，只寫庫根以內的 `.md`，寫之前先留一版備份。另外兩條搬位置的是 `/__trash` 和 `/__untrash`：檔案原樣進出系統垃圾桶，一個位元組都不會動。備份資料夾、快取資料夾、隱藏資料夾一律不給動。
 
@@ -225,6 +297,10 @@ curl -s -X POST "http://127.0.0.1:$P/__untrash" -H "X-AMN-Token: $T" \
 **能同時管好幾個庫嗎？** 一個視窗一個庫。設定 → 筆記庫 →「更換資料夾…」換過去，兩邊的 `.amnote/` 各自留着，換回來接着用。
 
 **和 Obsidian 或別的編輯器同時開着，會撞車嗎？** 不會覆蓋。你在這邊儲存時，如果那份檔案在別處被改過，頂上會出來一條提示，讓你選「保留我的」還是「改用對方的」。
+
+**Agent 改了我的筆記我怎麼知道？** 卡片上會多一行 `✦ Claude Code`——這一篇最近一次是本機哪個 AI 助手寫的，七天內都標着。要看細賬翻 `.amnote/changes.jsonl`，每條都記着「来源」和「代理」。
+
+**暱稱和頭像儲存在哪？** `~/Library/Application Support/AMNote/` 下的 `profile.json` 和 `avatar.img`。它們跟着這部 Mac 走，不進筆記庫，也不上載，換一個筆記庫不用重新設定。不想被打招呼，設定 → 個人 裡把「開始頁向我問好」關掉。
 
 **要連網嗎？** 不用。只有檢查更新時會存取 GitHub。
 

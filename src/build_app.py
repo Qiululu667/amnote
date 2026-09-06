@@ -204,7 +204,7 @@ NATIVE_SRC = "app_shell.m"
 # （20260903）。有 digest 核 sha256，解开后核对 bundle id。
 # 5.0.0 = 开源首发。
 # 版本号是唯一能在「关于 AM·Note」里看出来跑的是新壳还是旧壳的地方，改了壳就要动它。
-NATIVE_VERSION = ("5.5.0", "29")
+NATIVE_VERSION = ("5.6.0", "30")
 MIN_MACOS = "12.0"
 
 
@@ -233,9 +233,25 @@ RESOURCE_FILES = (
     "portal_server.py",
     "portal_i18n.py",
     "fulltext.py",
+    "amnote_cli.py",
     "template.html",
     "icon-192.png",
     "icon-512.png",
+)
+
+# 命令行包装脚本。**可执行位要留住**：`~/.local/bin/amnote` 是一条指到它的
+# 符号链接（/__agent_setup 的 cli 动作建的），丢了 +x 那条链接就跑不起来。
+# shutil.copy2 在这台机器上留得住权限位，但目标已存在时不一定——所以再 chmod 一次。
+EXEC_RESOURCE_FILES = (
+    "amnote",
+)
+
+# 给 Agent 的两份模板。服务端 /__agent_setup 从这儿读，把 {{AMNOTE_BIN}}
+# 换成 app 里 amnote 的绝对路径再写到用户家目录 / 库根。
+AGENT_DIR = "agent"
+AGENT_FILES = (
+    "SKILL.md",
+    "AGENTS.md",
 )
 
 # 网页词典。整个 src/locales/ 拷成 Contents/Resources/locales/，门户按
@@ -279,6 +295,29 @@ def copy_resources(res_dir):
         src = os.path.join(HERE, name)
         if os.path.exists(src):
             shutil.copy2(src, os.path.join(res_dir, name))
+
+    for name in EXEC_RESOURCE_FILES:
+        src = os.path.join(HERE, name)
+        if not os.path.exists(src):
+            missing.append(src)
+            continue
+        dst = os.path.join(res_dir, name)
+        shutil.copy2(src, dst)
+        os.chmod(dst, 0o755)
+
+    # agent/ 整个目录拷过去，形状跟源码一样（Resources/agent/SKILL.md）。
+    src_agent = os.path.join(HERE, AGENT_DIR)
+    dst_agent = os.path.join(res_dir, AGENT_DIR)
+    if not os.path.isdir(src_agent):
+        missing.append(src_agent)
+    else:
+        os.makedirs(dst_agent, exist_ok=True)
+        for name in AGENT_FILES:
+            one = os.path.join(src_agent, name)
+            if not os.path.exists(one):
+                missing.append(one)
+                continue
+            shutil.copy2(one, os.path.join(dst_agent, name))
 
     # 网页词典整目录拷过去。先点名核对必需的那几份，再把目录里其余的 .js 一并带上
     # （以后加语言只要往 src/locales/ 里丢文件，这里不用改）。

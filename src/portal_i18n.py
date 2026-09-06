@@ -76,6 +76,7 @@ CODES = {
     "同名文件已经有了": "exists",
     "同名文件刚被建走了，换个标题": "exists",
     "原来那个位置又有文件了，先挪开": "exists",
+    "那个位置已经有一份文件了，先挪开": "exists",
 
     "文件不在了": "gone",
     "这份文件不在了": "gone",
@@ -88,6 +89,10 @@ CODES = {
     "这张图不在了": "gone",
     "没有这份留档": "gone",
     "本机没有新细明体": "gone",
+    "还没设过头像": "gone",
+    "找不到这个小节": "gone",
+    "行号超出这份的范围": "gone",
+    "缺一份模板：{p}": "gone",
 
     "新建时正文别超过 1 MB": "too_big",
     "这份太大了（超过 8 MB），别在门户里改": "too_big",
@@ -95,6 +100,7 @@ CODES = {
     "这张 {n} MB，上限 {m} MB": "too_big",
     "这份 {n} MB，上限 {m} MB": "too_big",
     "这张图太大了": "too_big",
+    "头像别超过 {m} MB": "too_big",
     "请求体为空或过大": "too_big",
 
     "你打开编辑之后，这份在别处被改过（{now}）。继续保存会盖掉那次改动。": "conflict",
@@ -124,6 +130,9 @@ CODES = {
     "「{k}」类型不对": "bad_type",
     "端口范围要填两个 1-65535 的整数，前小后大": "bad_type",
     "请求不是合法 JSON：{e}": "bad_type",
+    "行号要写成 A-B，都从 1 数起": "bad_type",
+    "since 要写成天数（7）或日期（2026-09-01）": "bad_type",
+    "不认识这个动作": "bad_type",
 
     "读不了：{e}": "io",
     "读不了原文：{e}": "io",
@@ -293,6 +302,29 @@ MESSAGES = {
 
         # 字体
         "本机没有新细明体": "PMingLiU isn't available on this Mac",
+
+        # 个人资料（5.6）
+        "还没设过头像": "No avatar has been set",
+        "头像别超过 {m} MB": "An avatar can't be larger than {m} MB",
+
+        # 取一段正文 ／ 大纲（5.6）
+        "找不到这个小节": "No section by that name",
+        "行号要写成 A-B，都从 1 数起":
+            "Line range has to look like A-B, counting from 1",
+        "行号超出这份的范围": "That line range is past the end of this file",
+        "since 要写成天数（7）或日期（2026-09-01）":
+            "since has to be a number of days (7) or a date (2026-09-01)",
+
+        # 接入向导（5.6）
+        "不认识这个动作": "That isn't something AM·Note can set up",
+        "缺一份模板：{p}": "A template file is missing: {p}",
+        "那个位置已经有一份文件了，先挪开":
+            "There's already a file there — move it aside first",
+        "命令行工具装好了：{p}": "The command line tool is set up: {p}",
+        "Skill 装好了：{p}": "The skill is installed: {p}",
+        "AGENTS.md 写好了：{p}": "AGENTS.md is written: {p}",
+        "库地图导出好了，{n} 篇：{p}":
+            "The vault map is exported, {n} notes: {p}",
     },
 
     # ── 繁體中文（香港）─────────────────────────────
@@ -403,6 +435,26 @@ MESSAGES = {
 
         # 字體
         "本机没有新细明体": "這部 Mac 上沒有新細明體",
+
+        # 個人資料（5.6）
+        "还没设过头像": "還未設定過大頭貼",
+        "头像别超过 {m} MB": "大頭貼不能超過 {m} MB",
+
+        # 取一段正文 ／ 大綱（5.6）
+        "找不到这个小节": "找不到這個小節",
+        "行号要写成 A-B，都从 1 数起": "行號要寫成 A-B，都由 1 開始數",
+        "行号超出这份的范围": "行號超出這份的範圍",
+        "since 要写成天数（7）或日期（2026-09-01）":
+            "since 要寫成日數（7）或日期（2026-09-01）",
+
+        # 接入嚮導（5.6）
+        "不认识这个动作": "AM·Note 不認得這個動作",
+        "缺一份模板：{p}": "缺少一份範本：{p}",
+        "那个位置已经有一份文件了，先挪开": "那個位置已經有一份檔案，先移開",
+        "命令行工具装好了：{p}": "命令列工具裝好了：{p}",
+        "Skill 装好了：{p}": "Skill 裝好了：{p}",
+        "AGENTS.md 写好了：{p}": "AGENTS.md 寫好了：{p}",
+        "库地图导出好了，{n} 篇：{p}": "筆記庫地圖匯出好了，{n} 篇：{p}",
     },
 }
 

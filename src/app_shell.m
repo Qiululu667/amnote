@@ -772,6 +772,10 @@ static void applySeamlessChrome(NSWindow *window) {
     env[@"AMNOTE_VAULT"] = self.vaultPath;
     env[@"AMN_TOKEN_FILE"] = tokenFilePath();
     env[@"AMNOTE_PORT_FILE"] = portFilePath();
+    // 个人资料（profile.json / avatar.img）落在这里。跟默认值一样，
+    // 明写一遍是为了「壳和服务对同一个目录」这件事有个唯一出处：
+    // 以后壳把支撑目录挪走，服务跟着挪，不用两边各改一次。
+    env[@"AMNOTE_SUPPORT_DIR"] = supportDir();
     t.environment = env;
 
     NSPipe *out = [NSPipe pipe], *err = [NSPipe pipe];
@@ -3574,6 +3578,38 @@ static BOOL isBenignNavError(NSError *e) {
     [a beginSheetModalForWindow:[self hostWindowFor:w] completionHandler:^(NSModalResponse r) {
         done(r == NSAlertFirstButtonReturn ? f.stringValue : nil);
     }];
+}
+
+/// 网页里的 `<input type=file>`。**不实现这条，按钮就是死的**——WKWebView 不像
+/// Safari 那样自带选文件面板，代理没接住就什么也不发生，用户只会觉得点了没反应。
+/// 5.6 的设置里「个人」那页要用它换头像。
+///
+/// 能不能多选、能不能选文件夹都按 parameters 来；文件一律能选——网页要的就是文件。
+/// 取消回 nil，**不能不叫 completionHandler**：不叫的话 WebKit 那边一直等着，
+/// 这个 input 之后再点也不响应了。
+///
+/// 面板上的按钮字不自己设：NSOpenPanel 的默认文案由 AppKit 按系统语言给，
+/// 比在 app_shell_i18n.h 里再养一条自己的翻译稳。
+- (void)webView:(WKWebView *)w
+    runOpenPanelWithParameters:(WKOpenPanelParameters *)parameters
+              initiatedByFrame:(WKFrameInfo *)frame
+             completionHandler:(void (^)(NSArray<NSURL *> *))done {
+    NSOpenPanel *panel = [NSOpenPanel openPanel];
+    panel.allowsMultipleSelection = parameters.allowsMultipleSelection;
+    panel.canChooseFiles = YES;
+    panel.canChooseDirectories = parameters.allowsDirectories;
+    panel.canCreateDirectories = NO;
+    // 贴在发起的那个窗口上。独立文稿窗 / 浏览器辅窗里也开得出设置面板，
+    // 面板跑去主窗口就成了「点了没反应、另一个窗口在等你」。
+    NSWindow *host = [self hostWindowFor:w];
+    void (^finish)(NSModalResponse) = ^(NSModalResponse r) {
+        done(r == NSModalResponseOK ? panel.URLs : nil);
+    };
+    if (host) {
+        [panel beginSheetModalForWindow:host completionHandler:finish];
+    } else {
+        [panel beginWithCompletionHandler:finish];
+    }
 }
 
 // MARK: 退出

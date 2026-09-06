@@ -62,6 +62,9 @@
   --recent:#727881;
   --accent:#8a63b4;
   --accent-soft:#f4eefa;
+  /* 头像位上的首字母：11.5px／600 落在 --accent-soft 上，--accent 只有 4.08:1，
+     过不了 4.5。单开一档更深的同色系（5.8:1），只在浅色下换，深色分支照旧。 */
+  --accent-ink:#6f4d96;
   /* 落在 --accent 实底上的字。浅色下是白，深色下 --accent 本身就亮，得反过来压深，
      不然右键菜单和主按钮上的白字直接糊掉。 */
   --on-accent:#ffffff;
@@ -175,7 +178,7 @@
   --win-blur:rgba(37,41,49,.94); --quote-b:#5f7d74;
   --hover:#303640; --sel:#303640;
   --t1:#e9edf3; --t2:#a4acb9; --t3:#929bab; --t4:#7d8593; --recent:#a4acb9; --accent:#c6a3e0;
-  --accent-soft:#3a3150; --on-accent:#171a20; --ok:#9ec2b4;
+  --accent-soft:#3a3150; --on-accent:#171a20; --ok:#9ec2b4; --accent-ink:#c6a3e0;
   --tip-bg:#3f4753; --tip-fg:#eef2f8;
   --pill:#2b3038; --field:#2b3038; --field2:#2b3038; --segon:#3a414d; --pop:#252931;
   --rule-head:rgba(215,226,250,.16); --rule-row:rgba(215,226,250,.11); --zebra:#22262d;
@@ -213,7 +216,7 @@
   --win-blur:rgba(37,41,49,.94); --quote-b:#5f7d74;
   --hover:#303640; --sel:#303640;
   --t1:#e9edf3; --t2:#a4acb9; --t3:#929bab; --t4:#7d8593; --recent:#a4acb9; --accent:#c6a3e0;
-  --accent-soft:#3a3150; --on-accent:#171a20; --ok:#9ec2b4;
+  --accent-soft:#3a3150; --on-accent:#171a20; --ok:#9ec2b4; --accent-ink:#c6a3e0;
   --tip-bg:#3f4753; --tip-fg:#eef2f8;
   --pill:#2b3038; --field:#2b3038; --field2:#2b3038; --segon:#3a414d; --pop:#252931;
   --rule-head:rgba(215,226,250,.16); --rule-row:rgba(215,226,250,.11); --zebra:#22262d;
@@ -254,7 +257,7 @@
   .note-card:hover,.note-card:active,.resume:hover,.resume:active,
   .hbtn:hover,.hbtn:active,.btn:hover,.btn:active,.dt-btn:hover,.dt-btn:active,
   .dirchip:hover,.card-pin:hover,.resume:hover .continue svg,
-  #appmark:hover img,#appmark:active{transform:none}
+  #navHome:hover img{transform:none}
   button:active:not([disabled]){transform:none}
 }
 /* 系统里关掉「透明」时，毛玻璃退回实色，别糊成一团。 */
@@ -300,8 +303,8 @@ svg{fill:none;stroke:currentColor}
 #app{padding-top:var(--chrome-h)}
 
 /* ═══ 浏览器壳：只剩一条标签条 ═══════════
-   42px 一行装下全部窗口层控件：左 ‹ › ⌂（壳里从红绿灯右缘 80px 起），
-   中间标签，右边搜索胶囊 ＋ ⚙ ＋ 品牌标。空处可拖窗口，控件一律 no-drag。
+   42px 一行装下全部窗口层控件：左 ☁ ‹ ›（壳里从红绿灯右缘 80px 起，云就是 ⌂），
+   中间标签，右边搜索胶囊 ＋ ⚙。空处可拖窗口，控件一律 no-drag。
    当前标签是一枚 9px 圆角白卡片，浮在 --chrome 灰底上。 */
 /* 5.4 起顶栏与正文之间不画线：--chrome（#f7f8fa）和 --win（#fff）本来就差一档，
    色差就是分界。要加回来的话记得用 inset 阴影，不要用 border——border 会额外
@@ -324,9 +327,9 @@ body.solo #chrome{display:none!important}
 #tabcluster{
   display:flex;align-items:center;gap:5px;
   flex:0 1 auto;min-width:0;
-  /* 右边那簇（搜索胶囊 ＋ ⚙ ＋ 品牌标）加左边三颗导航钮大概 320px，
+  /* 右边那簇（搜索胶囊 ＋ ⚙ ＋ 26px 头像）加左边那三颗导航钮大概 316px，
      给标签留出上限，剩下的交给 flex 收缩和 layoutTabs 的 ▾ 收纳。 */
-  max-width:max(120px, calc(100% - 320px));
+  max-width:max(120px, calc(100% - 316px));
   transition:opacity var(--d-base) var(--ease-out);
 }
 #tabstrip .tabbar{
@@ -383,27 +386,10 @@ body.solo #chrome{display:none!important}
   flex:1 1 auto;min-width:8px;align-self:stretch;
   -webkit-app-region:drag;
 }
-#appmark{
-  width:30px;height:30px;border-radius:9px;flex:none;
-  align-self:center;margin:0;
-  display:flex;align-items:center;justify-content:center;
-  position:relative;z-index:6;
-  -webkit-app-region:no-drag;
-  transition:background-color .15s ease,transform .15s ease;
-}
-#appmark img{
-  width:22px;height:22px;border-radius:6px;display:block;
-  box-shadow:0 1px 2px rgba(58,48,80,.14);
-  -webkit-user-drag:none;pointer-events:none;
-}
-#appmark:hover{background:var(--hover)}
-#appmark:hover img{transform:scale(1.06)}
-#appmark:active{transform:scale(.96)}
 #tabstrip .tab,
-#tabstrip .tabmore,
-#appmark{-webkit-app-region:no-drag}
+#tabstrip .tabmore{-webkit-app-region:no-drag}
 
-/* 导航钮：‹ › ⌂ 三颗，5.4 起搬进标签条左端（壳里贴红绿灯右缘，浏览器里贴左缘）。 */
+/* 导航钮：☁ ‹ › 三颗，5.4 起搬进标签条左端（壳里贴红绿灯右缘，浏览器里贴左缘）。 */
 .navgrp{
   display:flex;align-items:center;gap:2px;flex:none;margin-right:10px;
   -webkit-app-region:no-drag;
@@ -420,8 +406,18 @@ body.solo #chrome{display:none!important}
 .navb[disabled]{opacity:.28;pointer-events:none}
 .navb.on{background:var(--hover);color:var(--t1)}
 .navb svg{width:16px;height:16px;stroke-width:1.6}
+/* 品牌标：5.5 起⌂ 换成这颗云，还挪到了 ‹ › 前面（壳里紧挨红绿灯）。
+   它不参与 syncChrome 的灰化——永远满不透明、永远可点；已经在开始页上时
+   只把这一页滚回顶，不再顺手弹 ⌘K。壳色浅，阴影沿用原来那点淡紫，深浅两套通用。 */
+#navHome img{
+  width:20px;height:20px;border-radius:5px;display:block;
+  box-shadow:0 1px 2px rgba(58,48,80,.14);
+  -webkit-user-drag:none;pointer-events:none;
+  transition:transform var(--d-fast) var(--ease-out);
+}
+#navHome:hover img{transform:scale(1.06)}
 
-/* 标签条右端：搜索胶囊（⌘K 的唯一入口）＋ ⚙ ＋ 品牌标。 */
+/* 标签条右端：搜索胶囊（⌘K 的唯一入口）＋ ⚙。品牌标 5.5 起挪去了左端当 ⌂。 */
 .rightgrp{
   display:flex;align-items:center;gap:6px;flex:none;
   -webkit-app-region:no-drag;
@@ -446,6 +442,52 @@ body.solo #chrome{display:none!important}
   .topsearch{width:28px;padding:0;gap:0;justify-content:center}
   .topsearch .lbl,.topsearch kbd{display:none}
 }
+/* ── 右上角那颗人 ────────────────────────
+   26px 圆：有头像就是头像，没有就是显示名的第一个字，--accent-soft 底 --accent 字。
+   两套色板里 --accent / --accent-soft 都已经有了，这里不引新色。 */
+.uchip{
+  width:26px;height:26px;border-radius:50%;flex:none;padding:0;border:0;overflow:hidden;
+  display:inline-flex;align-items:center;justify-content:center;
+  background:var(--accent-soft);color:var(--accent-ink);
+  font:600 11.5px/1 var(--ui);letter-spacing:0;
+  -webkit-app-region:no-drag;
+  transition:box-shadow var(--d-fast) var(--ease-out),transform var(--d-fast) var(--ease-out);
+}
+.uchip img{width:100%;height:100%;object-fit:cover;display:block;-webkit-user-drag:none}
+.uchip svg{width:14px;height:14px;stroke-width:1.6}
+.uchip:hover{box-shadow:var(--el-1);transform:translateY(-1px)}
+.uchip:active{transform:translateY(0);box-shadow:none}
+.uchip[aria-expanded="true"]{box-shadow:0 0 0 2px var(--accent)}
+
+/* 头像浮层：贴着芯片右缘往下掉一格。窗口右边挤不下就往里收，不出屏。 */
+#userPop{
+  position:fixed;z-index:110;display:none;width:236px;padding:14px 14px 10px;
+  background:var(--card-face);border:0;border-radius:14px;
+  box-shadow:var(--el-3);animation:arrive .16s ease-out;
+  -webkit-app-region:no-drag;
+}
+#userPop.on{display:block}
+#userPop .who{display:flex;align-items:center;gap:11px}
+#userPop .av{width:48px;height:48px;border-radius:50%;flex:none;overflow:hidden;
+  display:inline-flex;align-items:center;justify-content:center;
+  background:var(--accent-soft);color:var(--accent-ink);font:600 19px/1 var(--ui)}
+#userPop .av img{width:100%;height:100%;object-fit:cover;display:block;-webkit-user-drag:none}
+#userPop .nm{flex:1;min-width:0;font-size:14px;font-weight:600;color:var(--t1);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 底色用 --hover 不用 --field：深色里 --field(#2b3038) 跟 --card-face(#2c313a)
+   差不多是同一档灰，这一块就浮不出来了。 */
+#userPop .vault{margin:12px 0 0;padding:9px 10px;border-radius:9px;background:var(--hover)}
+#userPop .vault .k{display:block;font-size:10.5px;color:var(--t3)}
+#userPop .vault .v{display:block;font-size:12.5px;color:var(--t1);margin-top:2px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+#userPop .acts{margin-top:9px;display:flex;flex-direction:column;gap:1px}
+#userPop .acts button{display:block;width:100%;text-align:left;
+  height:30px;padding:0 9px;border-radius:8px;font-size:13px;color:var(--t1);
+  background:none;border:0;cursor:pointer}
+#userPop .acts button:hover{background:var(--hover)}
+/* 专注模式里 .rightgrp 整簇淡出，浮层不该单独留在屏上。 */
+body.focus-mode #userPop{display:none!important}
+
 /* 载入细条：地址栏没了，改贴标签条上缘。 */
 .loadbar{position:absolute;left:0;right:0;top:0;height:2px;z-index:8;
   overflow:hidden;pointer-events:none}
@@ -666,6 +708,14 @@ kbd{
 .card-footer svg{width:11px;height:11px;flex:none}
 .card-footer .fdr{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .card-footer .when{margin-left:auto;flex:none;padding-left:8px}
+/* 5.6：这一篇最近一次是本机某个 AI 助手改的。页脚时间前挂一枚 ✦ ＋ 它的名字，
+   颜色借强调色（深浅两支已经各自定义过），不新开颜色。
+   auto 边距从「时间」挪到这一枚上，不然两个 auto 会把余白对半分，
+   署名就飘到中间去了。 */
+.agentmark{color:var(--accent);font-weight:500;
+  max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.card-footer .agentmark{flex:none;margin-left:auto;padding-left:8px;max-width:56%}
+.card-footer .agentmark+.when{margin-left:0}
 .card-pin{
   position:absolute;right:10px;top:12px;width:25px;height:25px;border-radius:var(--r-xs);
   color:var(--t3);opacity:0;display:flex;align-items:center;justify-content:center;
@@ -686,7 +736,13 @@ kbd{
 .cards.list .kind-label{display:none}
 .cards.list h3{min-height:0;-webkit-line-clamp:1}
 .cards.list .card-excerpt{min-height:0;-webkit-line-clamp:1;margin:0;grid-column:2}
-.cards.list .card-footer{grid-column:3;grid-row:1 / 3;margin:0;padding-right:15px}
+.cards.list .card-footer{grid-column:3;grid-row:1 / 3;margin:0;padding-right:15px;
+  justify-content:flex-end}
+/* 换行只给挂了署名的那几张。整列都 wrap 的话，没署名的卡片上文件夹名一长
+   也会被折成两行——列表模式的右列本来就是一行装完的。:has 在 Safari 15.4
+   以前不认，认不出来就是老样子：一行摆不下时署名自己省略号收尾。 */
+.cards.list .card-footer:has(.agentmark){flex-wrap:wrap;row-gap:2px}
+.cards.list .card-footer .agentmark{max-width:100%}
 .cards.list .card-pin{top:19px;right:6px}
 .cards.list .note-card:hover{transform:translateY(-1px)}
 .cards.list .note-card:active{transform:translateY(0) scale(.997)}
@@ -1504,12 +1560,38 @@ body.focus-mode.peek .doc-toolbar{transform:none;opacity:1;pointer-events:auto;
 #viewCfg .sw.on{background:var(--accent)}
 #viewCfg .sw.on::after{transform:translateX(14px)}
 
+/* 「个人」段：72 头像 ＋ 两颗按钮。整块是拖放目标，拖进来时染一层强调色。
+   高亮块比行本身往外扩 12px，而 #cfgBody 顶上没有内边距、又是滚动区——
+   这一段自己让出 12px，第一行的高亮才不会被切掉半条边。 */
+#viewCfg [data-cfgpanel="profile"]{padding-top:12px}
+#viewCfg .avrow{display:flex;align-items:center;gap:16px;padding:12px;margin:-12px;
+  border-radius:12px;transition:background-color var(--d-base) ease}
+#viewCfg .avrow.drop{background:var(--accent-soft)}
+#viewCfg .av{width:72px;height:72px;border-radius:50%;flex:none;overflow:hidden;
+  display:inline-flex;align-items:center;justify-content:center;
+  background:var(--accent-soft);color:var(--accent-ink);font:600 28px/1 var(--ui)}
+#viewCfg .av img{width:100%;height:100%;object-fit:cover;display:block;-webkit-user-drag:none}
+#viewCfg .avacts{min-width:0}
+#viewCfg .avacts .btns{display:flex;align-items:center;gap:8px}
+#viewCfg .avacts .hint{margin-top:8px}
+
+/* 「Agent」段：标签列比别处宽一点——「Claude Code」「Codex 与其他」按 58px 排不下。
+   路径动辄七八十个字符，等宽小字、随处断行地摆着，720 宽的弹层才不会横着长出去。 */
+#viewCfg [data-cfgpanel="agent"] .flab{white-space:nowrap}
+#viewCfg .agnote{font-size:12.5px;color:var(--t2);line-height:1.7;margin:0 0 18px}
+#viewCfg .agwait{margin-top:0}
+#viewCfg .fctl>.btns{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+#viewCfg .hint.pth,#viewCfg .hint .pth{font-family:var(--mono);font-size:11px;
+  line-height:1.55;word-break:break-all}
+#viewCfg .hint.pth{margin-top:7px}
+
 /* 弹层里的次级按钮：图标＋文字要有间距，图标压成 --t2（主按钮里跟着强调色） */
 #viewCfg .btn{display:inline-flex;align-items:center;justify-content:center;gap:7px}
 #viewCfg .btn svg{width:13px;height:13px;color:var(--t2)}
 #viewCfg .btn.key svg{color:var(--accent)}
 #viewCfg .btnt{height:28px;padding:0 8px;border-radius:7px;font-size:12px;color:var(--t2)}
 #viewCfg .btnt:hover{color:var(--t1);background:var(--hover)}
+#viewCfg .btnt[disabled]{opacity:.4;pointer-events:none}
 #viewCfg .link{font-size:12px;color:var(--accent);background:none;border:0;padding:0;cursor:pointer}
 #viewCfg .link:hover{text-decoration:underline}
 #viewCfg .link[disabled]{opacity:.4;pointer-events:none}
@@ -1612,6 +1694,11 @@ body.focus-mode.peek .doc-toolbar{transform:none;opacity:1;pointer-events:auto;
    主题那三张 120px 的卡（共 384px）仍排得下一行。 */
 :root:lang(en) #viewCfg .flab{width:90px}
 :root:lang(en) #viewCfg .kvrow b{width:110px}
+/* Agent 段的标签列要比别处宽：「Codex 与其他」按 58px 排不下，英文的
+   「Command Line」「Codex & Others」按 90px 更排不下。写在上面那条 90px
+   之后、再多挂一个 :root 顶上去——不然同样重的两条里后面那条赢。 */
+:root #viewCfg [data-cfgpanel="agent"] .flab{width:132px}
+:root:lang(en) #viewCfg [data-cfgpanel="agent"] .flab{width:150px}
 :root:lang(en) #viewCfg .lblrow .ih{white-space:normal;overflow:visible;
   text-overflow:clip;line-height:1.5}
 
@@ -1776,7 +1863,7 @@ body.solo #chrome{display:none!important}
   #chrome,#toast,
   .doc-toolbar,.formatbar,.doc-end,.editor-hint,
   #banners,#ctx,#fmt,#wlpick,#tabpick,#cmdkWrap,#qlwrap,#cfgWrap,#slash,#typeWrap,
-  #onbWrap,#onbDrag{display:none!important}
+  #userPop,#onbWrap,#onbDrag{display:none!important}
   #app{display:block!important;padding-top:0!important;height:auto!important}
   #docpane{position:static;overflow:visible}
   #panes{position:static}
@@ -1826,14 +1913,14 @@ body.solo #chrome{display:none!important}
 <div id="chrome">
   <div id="tabstrip">
     <div class="navgrp">
+      <button type="button" class="navb" id="navHome" title="AM·Note · 回到开始页" aria-label="回到开始页">
+        <img src="/icon-192.png" width="20" height="20" alt="">
+      </button>
       <button type="button" class="navb" id="navBack" title="后退 ⌘[" aria-label="后退" disabled>
         <i data-ic="left" data-sz="16"></i>
       </button>
       <button type="button" class="navb" id="navFwd" title="前进 ⌘]" aria-label="前进" disabled>
         <i data-ic="right" data-sz="16"></i>
-      </button>
-      <button type="button" class="navb" id="navHome" title="回到开始页" aria-label="回到开始页">
-        <i data-ic="home" data-sz="16"></i>
       </button>
     </div>
     <div id="tabcluster">
@@ -1852,13 +1939,13 @@ body.solo #chrome{display:none!important}
       <button type="button" class="navb" id="navCfgTop" title="设置 ⌘," aria-label="设置">
         <i data-ic="gear" data-sz="16"></i>
       </button>
-      <button type="button" id="appmark" title="AM·Note · 回到开始页" aria-label="回到开始页">
-        <img src="/icon-192.png" width="24" height="24" alt="">
-      </button>
+      <button type="button" class="uchip" id="userChip" title="个人资料" aria-label="个人资料"
+        aria-haspopup="dialog" aria-expanded="false"><i data-ic="user" data-sz="14"></i></button>
     </div>
     <div class="loadbar" id="loadbar"></div>
   </div>
 </div>
+<div id="userPop" role="dialog" aria-modal="false" aria-label="个人资料"></div>
 <div id="toast" role="status" aria-live="polite"></div>
 
 <div id="banners">
@@ -1935,8 +2022,10 @@ body.solo #chrome{display:none!important}
   <div id="viewCfg" role="dialog" aria-modal="true" aria-label="设置">
     <nav class="cfg-rail" id="cfgRail" aria-label="设置分类">
       <div class="rt">设置</div>
+      <button type="button" class="cfg-navi" data-tab="profile"><i data-ic="user"></i>个人</button>
       <button type="button" class="cfg-navi" data-tab="reading"><i data-ic="text-size"></i>阅读与外观</button>
       <button type="button" class="cfg-navi" data-tab="library"><i data-ic="folder"></i>笔记库</button>
+      <button type="button" class="cfg-navi" data-tab="agent"><i data-ic="sparkle"></i>Agent</button>
       <button type="button" class="cfg-navi" data-tab="advanced"><i data-ic="sliders"></i>高级</button>
       <button type="button" class="cfg-navi" data-tab="about"><i data-ic="info"></i>关于</button>
     </nav>
@@ -2018,7 +2107,7 @@ const withKbd = (label, kbd, wide) => kbd ? label + (wide ? KBDSEP : ' ') + kbd 
    界面原来一个图标都没有，全靠文字。这里是一套 24×24、描边 1.6 的内联 SVG，
    跟 SF Symbols 同一种视觉语言（自己画的，不是苹果的路径数据）。
    用法：markup 里写 <i data-ic="inbox"></i>，paintIcons() 换成真 SVG。 */
-const ICONS = /*__ICONS__*/{"inbox":{"d":["M4,8 L4,17 A1.5,1.5 0 0 0 5.5,18.5 L18.5,18.5 A1.5,1.5 0 0 0 20,17 L20,8","M4,8 L9.5,8 L12,11.5 L14.5,8 L20,8"],"fill":false},"inbox-full":{"d":["M4,8 L4,17 A1.5,1.5 0 0 0 5.5,18.5 L18.5,18.5 A1.5,1.5 0 0 0 20,17 L20,8","M4,8 L9.5,8 L12,11.5 L14.5,8 L20,8","M7,4.5 L17,4.5 L17,8 L7,8 Z"],"fill":false},"checklist":{"d":["M2.2,7.03 L4.8,9.63 L9.48,3.91","M9,8.8 L20.5,8.8","M2.2,15.23 L4.8,17.83 L9.48,12.11","M9,17 L20.5,17"],"fill":false},"clock":{"d":["M3.5,12 A8.5,8.5 0 1,0 20.5,12 A8.5,8.5 0 1,0 3.5,12","M12,12 L12,7","M12,12 L15.8,13.6"],"fill":false},"docs":{"d":["M8,3 L19,3 L19,14 L8,14 Z","M5,8 L14,8 L17,11 L17,21 L5,21 Z","M14,8 L14,11 L17,11"],"fill":false},"gear":{"d":["M12,2.8 L14.45,6.09 L18.51,5.49 L17.91,9.55 L21.2,12 L17.91,14.45 L18.51,18.51 L14.45,17.91 L12,21.2 L9.55,17.91 L5.49,18.51 L6.09,14.45 L2.8,12 L6.09,9.55 L5.49,5.49 L9.55,6.09 Z","M8.9,12 A3.1,3.1 0 1,0 15.1,12 A3.1,3.1 0 1,0 8.9,12"],"fill":false},"tag":{"d":["M3,12 L9,4.5 L20,4.5 L20,19.5 L9,19.5 Z","M6.6,12 A1.4,1.4 0 1,0 9.4,12 A1.4,1.4 0 1,0 6.6,12"],"fill":false},"folder":{"d":["M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10H3Z"],"fill":false},"doc-text":{"d":["M6,3 L15,3 L18,6 L18,21 L6,21 Z","M15,3 L15,6 L18,6","M8.5,10 L15.5,10","M8.5,13.5 L15.5,13.5","M8.5,17 L13,17"],"fill":false},"globe":{"d":["M3.5,12 A8.5,8.5 0 1,0 20.5,12 A8.5,8.5 0 1,0 3.5,12","M3.5,12 L20.5,12","M12,3.5 L12,20.5","M12,3.5 A4.2,8.5 0 0,0 12,20.5","M12,3.5 A4.2,8.5 0 0,1 12,20.5"],"fill":false},"doc-rich":{"d":["M6,3 L15,3 L18,6 L18,21 L6,21 Z","M15,3 L15,6 L18,6","M8,9 L16,9 L16,13 L8,13 Z","M8,15.5 L16,15.5","M8,18 L13,18"],"fill":false},"table":{"d":["M3,5 L21,5 L21,19 L3,19 Z","M3,10 L21,10","M3,14.5 L21,14.5","M9,5 L9,19","M15,5 L15,19"],"fill":false},"pencil":{"d":["M4,21 L16.59,5.59 L19.41,8.41 Z","M14.07,8.67 L16.33,10.93"],"fill":false},"text-size":{"d":["M3,18 L7,4 L11,18","M4.43,13 L9.57,13","M14,18 L17,9 L20,18","M15.2,14.4 L18.8,14.4"],"fill":false},"search":{"d":["M4,10.5 A6.5,6.5 0 1,0 17,10.5 A6.5,6.5 0 1,0 4,10.5","M15.1,15.1 L21,21"],"fill":false},"refresh":{"d":["M16.3,5.86 A7.5,7.5 0 1,1 7.7,5.86","M5.79,9.6 L7.7,5.86 L3.53,6.37"],"fill":false},"new-note":{"d":["M11,15 L3,15 L3,3 L15,3 L15,10","M9.5,16.5 L16.87,6.87 L19.13,9.13 Z"],"fill":false},"sidebar":{"d":["M5,5 L19,5 A2.4,2.4 0 0 1 21.4,7.4 L21.4,16.6 A2.4,2.4 0 0 1 19,19 L5,19 A2.4,2.4 0 0 1 2.6,16.6 L2.6,7.4 A2.4,2.4 0 0 1 5,5","M9,5 L9,19"],"fill":false},"share":{"d":["M14.5,4 L19,4 L19,19 L5,19 L5,4 L9.5,4","M12,16 L12,3","M8.7,6.3 L12,3 L15.3,6.3"],"fill":false},"chevron-left":{"d":["M14.5,5 L8,12 L14.5,19"],"fill":false},"chevron-right":{"d":["M9.5,5 L16,12 L9.5,19"],"fill":false},"chevron-down":{"d":["M5,9.5 L12,16 L19,9.5"],"fill":false},"chevron-up":{"d":["M5,14.5 L12,8 L19,14.5"],"fill":false},"close":{"d":["M5.5,5.5 L18.5,18.5","M18.5,5.5 L5.5,18.5"],"fill":false},"check":{"d":["M5,12.5 L10,17.5 L19,6.5"],"fill":false},"list":{"d":["M4,6.5 L20,6.5","M4,12 L20,12","M4,17.5 L20,17.5"],"fill":false},"grid":{"d":["M3.5,3.5 L11,3.5 L11,11 L3.5,11 Z","M13,3.5 L20.5,3.5 L20.5,11 L13,11 Z","M3.5,13 L11,13 L11,20.5 L3.5,20.5 Z","M13,13 L20.5,13 L20.5,20.5 L13,20.5 Z"],"fill":false},"info":{"d":["M3.5,12 A8.5,8.5 0 1,0 20.5,12 A8.5,8.5 0 1,0 3.5,12","M12,10.5 L12,16.5","M12,7.2 L12,7.32"],"fill":false},"newwin":{"d":["M12.5,4 L4,4 L4,20 L20,20 L20,11.5","M11,13 L20,4","M14,4 L20,4 L20,10"],"fill":false},"copy":{"d":["M9,9 L20,9 L20,20 L9,20 Z","M15,9 L15,6 A1.5,1.5 0 0 0 13.5,4.5 L5.5,4.5 A1.5,1.5 0 0 0 4,6 L4,14 A1.5,1.5 0 0 0 5.5,15.5 L9,15.5"],"fill":false},"plus":{"d":["M12 5v14","M5 12h14"],"fill":false},"left":{"d":["M14 5l-7 7 7 7"],"fill":false},"right":{"d":["M10 5l7 7-7 7"],"fill":false},"home":{"d":["M3 10l9-7 9 7","M5 9v11h14V9","M9 20v-7h6v7"],"fill":false},"star":{"d":["M12 3l2.7 5.8 6.3.9-4.5 4.4 1.1 6.3L12 17.4l-5.6 3 1.1-6.3L3 9.7l6.3-.9Z"],"fill":false},"sliders":{"d":["M4 6h7","M15 6h5","M4 12h2","M10 12h10","M4 18h9","M17 18h3","M11 6a2 2 0 1 0 4 0 2 2 0 1 0-4 0","M6 12a2 2 0 1 0 4 0 2 2 0 1 0-4 0","M13 18a2 2 0 1 0 4 0 2 2 0 1 0-4 0"],"fill":false},"doc":{"d":["M6 3h8l4 4v14H6Z","M14 3v5h4","M9 12h6","M9 16h5"],"fill":false},"leaf":{"d":["M20 4C5 1 1 11 7 17c7 5 14-1 13-13Z","M7 17l9-9","M7 17l-3 3"],"fill":false},"arrow":{"d":["M4 12h15","M14 7l5 5-5 5"],"fill":false},"focus":{"d":["M8 3H3v5","M16 3h5v5","M21 16v5h-5","M8 21H3v-5"],"fill":false},"source":{"d":["M8 7L3 12L8 17","M16 7L21 12L16 17","M14 4L10 20"],"fill":false},"edit":{"d":["M15 4l5 5","M4 20l4-1L20 7a2 2 0 0 0-4-4L4 15Z"],"fill":false},"more":{"d":["M4.5,12 A1.3,1.3 0 1,0 7.1,12 A1.3,1.3 0 1,0 4.5,12","M10.7,12 A1.3,1.3 0 1,0 13.3,12 A1.3,1.3 0 1,0 10.7,12","M16.9,12 A1.3,1.3 0 1,0 19.5,12 A1.3,1.3 0 1,0 16.9,12"],"fill":false},"undo":{"d":["M5 5v6h6","M5 11a8 8 0 1 1 2 8"],"fill":false},"redo":{"d":["M19 5v6h-6","M19 11a8 8 0 1 0-2 8"],"fill":false},"quote":{"d":["M5 7h5v6H5m0-6v7c0 3 2 4 4 4","M14 7h5v6h-5m0-6v7c0 3 2 4 4 4"],"fill":false},"link":{"d":["M10 13l4-4","M8 15l-2 2a3 3 0 0 1-4-4l5-5a3 3 0 0 1 4 0","M13 16a3 3 0 0 0 4 0l5-5a3 3 0 0 0-4-4l-2 2"],"fill":false}}/*__ICONS__*/;
+const ICONS = /*__ICONS__*/{"inbox":{"d":["M4,8 L4,17 A1.5,1.5 0 0 0 5.5,18.5 L18.5,18.5 A1.5,1.5 0 0 0 20,17 L20,8","M4,8 L9.5,8 L12,11.5 L14.5,8 L20,8"],"fill":false},"inbox-full":{"d":["M4,8 L4,17 A1.5,1.5 0 0 0 5.5,18.5 L18.5,18.5 A1.5,1.5 0 0 0 20,17 L20,8","M4,8 L9.5,8 L12,11.5 L14.5,8 L20,8","M7,4.5 L17,4.5 L17,8 L7,8 Z"],"fill":false},"checklist":{"d":["M2.2,7.03 L4.8,9.63 L9.48,3.91","M9,8.8 L20.5,8.8","M2.2,15.23 L4.8,17.83 L9.48,12.11","M9,17 L20.5,17"],"fill":false},"clock":{"d":["M3.5,12 A8.5,8.5 0 1,0 20.5,12 A8.5,8.5 0 1,0 3.5,12","M12,12 L12,7","M12,12 L15.8,13.6"],"fill":false},"docs":{"d":["M8,3 L19,3 L19,14 L8,14 Z","M5,8 L14,8 L17,11 L17,21 L5,21 Z","M14,8 L14,11 L17,11"],"fill":false},"gear":{"d":["M12,2.8 L14.45,6.09 L18.51,5.49 L17.91,9.55 L21.2,12 L17.91,14.45 L18.51,18.51 L14.45,17.91 L12,21.2 L9.55,17.91 L5.49,18.51 L6.09,14.45 L2.8,12 L6.09,9.55 L5.49,5.49 L9.55,6.09 Z","M8.9,12 A3.1,3.1 0 1,0 15.1,12 A3.1,3.1 0 1,0 8.9,12"],"fill":false},"tag":{"d":["M3,12 L9,4.5 L20,4.5 L20,19.5 L9,19.5 Z","M6.6,12 A1.4,1.4 0 1,0 9.4,12 A1.4,1.4 0 1,0 6.6,12"],"fill":false},"folder":{"d":["M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10H3Z"],"fill":false},"doc-text":{"d":["M6,3 L15,3 L18,6 L18,21 L6,21 Z","M15,3 L15,6 L18,6","M8.5,10 L15.5,10","M8.5,13.5 L15.5,13.5","M8.5,17 L13,17"],"fill":false},"globe":{"d":["M3.5,12 A8.5,8.5 0 1,0 20.5,12 A8.5,8.5 0 1,0 3.5,12","M3.5,12 L20.5,12","M12,3.5 L12,20.5","M12,3.5 A4.2,8.5 0 0,0 12,20.5","M12,3.5 A4.2,8.5 0 0,1 12,20.5"],"fill":false},"doc-rich":{"d":["M6,3 L15,3 L18,6 L18,21 L6,21 Z","M15,3 L15,6 L18,6","M8,9 L16,9 L16,13 L8,13 Z","M8,15.5 L16,15.5","M8,18 L13,18"],"fill":false},"table":{"d":["M3,5 L21,5 L21,19 L3,19 Z","M3,10 L21,10","M3,14.5 L21,14.5","M9,5 L9,19","M15,5 L15,19"],"fill":false},"pencil":{"d":["M4,21 L16.59,5.59 L19.41,8.41 Z","M14.07,8.67 L16.33,10.93"],"fill":false},"text-size":{"d":["M3,18 L7,4 L11,18","M4.43,13 L9.57,13","M14,18 L17,9 L20,18","M15.2,14.4 L18.8,14.4"],"fill":false},"search":{"d":["M4,10.5 A6.5,6.5 0 1,0 17,10.5 A6.5,6.5 0 1,0 4,10.5","M15.1,15.1 L21,21"],"fill":false},"refresh":{"d":["M16.3,5.86 A7.5,7.5 0 1,1 7.7,5.86","M5.79,9.6 L7.7,5.86 L3.53,6.37"],"fill":false},"new-note":{"d":["M11,15 L3,15 L3,3 L15,3 L15,10","M9.5,16.5 L16.87,6.87 L19.13,9.13 Z"],"fill":false},"sidebar":{"d":["M5,5 L19,5 A2.4,2.4 0 0 1 21.4,7.4 L21.4,16.6 A2.4,2.4 0 0 1 19,19 L5,19 A2.4,2.4 0 0 1 2.6,16.6 L2.6,7.4 A2.4,2.4 0 0 1 5,5","M9,5 L9,19"],"fill":false},"share":{"d":["M14.5,4 L19,4 L19,19 L5,19 L5,4 L9.5,4","M12,16 L12,3","M8.7,6.3 L12,3 L15.3,6.3"],"fill":false},"chevron-left":{"d":["M14.5,5 L8,12 L14.5,19"],"fill":false},"chevron-right":{"d":["M9.5,5 L16,12 L9.5,19"],"fill":false},"chevron-down":{"d":["M5,9.5 L12,16 L19,9.5"],"fill":false},"chevron-up":{"d":["M5,14.5 L12,8 L19,14.5"],"fill":false},"close":{"d":["M5.5,5.5 L18.5,18.5","M18.5,5.5 L5.5,18.5"],"fill":false},"check":{"d":["M5,12.5 L10,17.5 L19,6.5"],"fill":false},"list":{"d":["M4,6.5 L20,6.5","M4,12 L20,12","M4,17.5 L20,17.5"],"fill":false},"grid":{"d":["M3.5,3.5 L11,3.5 L11,11 L3.5,11 Z","M13,3.5 L20.5,3.5 L20.5,11 L13,11 Z","M3.5,13 L11,13 L11,20.5 L3.5,20.5 Z","M13,13 L20.5,13 L20.5,20.5 L13,20.5 Z"],"fill":false},"info":{"d":["M3.5,12 A8.5,8.5 0 1,0 20.5,12 A8.5,8.5 0 1,0 3.5,12","M12,10.5 L12,16.5","M12,7.2 L12,7.32"],"fill":false},"newwin":{"d":["M12.5,4 L4,4 L4,20 L20,20 L20,11.5","M11,13 L20,4","M14,4 L20,4 L20,10"],"fill":false},"copy":{"d":["M9,9 L20,9 L20,20 L9,20 Z","M15,9 L15,6 A1.5,1.5 0 0 0 13.5,4.5 L5.5,4.5 A1.5,1.5 0 0 0 4,6 L4,14 A1.5,1.5 0 0 0 5.5,15.5 L9,15.5"],"fill":false},"plus":{"d":["M12 5v14","M5 12h14"],"fill":false},"left":{"d":["M14 5l-7 7 7 7"],"fill":false},"right":{"d":["M10 5l7 7-7 7"],"fill":false},"home":{"d":["M3 10l9-7 9 7","M5 9v11h14V9","M9 20v-7h6v7"],"fill":false},"star":{"d":["M12 3l2.7 5.8 6.3.9-4.5 4.4 1.1 6.3L12 17.4l-5.6 3 1.1-6.3L3 9.7l6.3-.9Z"],"fill":false},"sliders":{"d":["M4 6h7","M15 6h5","M4 12h2","M10 12h10","M4 18h9","M17 18h3","M11 6a2 2 0 1 0 4 0 2 2 0 1 0-4 0","M6 12a2 2 0 1 0 4 0 2 2 0 1 0-4 0","M13 18a2 2 0 1 0 4 0 2 2 0 1 0-4 0"],"fill":false},"doc":{"d":["M6 3h8l4 4v14H6Z","M14 3v5h4","M9 12h6","M9 16h5"],"fill":false},"leaf":{"d":["M20 4C5 1 1 11 7 17c7 5 14-1 13-13Z","M7 17l9-9","M7 17l-3 3"],"fill":false},"arrow":{"d":["M4 12h15","M14 7l5 5-5 5"],"fill":false},"focus":{"d":["M8 3H3v5","M16 3h5v5","M21 16v5h-5","M8 21H3v-5"],"fill":false},"source":{"d":["M8 7L3 12L8 17","M16 7L21 12L16 17","M14 4L10 20"],"fill":false},"edit":{"d":["M15 4l5 5","M4 20l4-1L20 7a2 2 0 0 0-4-4L4 15Z"],"fill":false},"more":{"d":["M4.5,12 A1.3,1.3 0 1,0 7.1,12 A1.3,1.3 0 1,0 4.5,12","M10.7,12 A1.3,1.3 0 1,0 13.3,12 A1.3,1.3 0 1,0 10.7,12","M16.9,12 A1.3,1.3 0 1,0 19.5,12 A1.3,1.3 0 1,0 16.9,12"],"fill":false},"undo":{"d":["M5 5v6h6","M5 11a8 8 0 1 1 2 8"],"fill":false},"redo":{"d":["M19 5v6h-6","M19 11a8 8 0 1 0-2 8"],"fill":false},"quote":{"d":["M5 7h5v6H5m0-6v7c0 3 2 4 4 4","M14 7h5v6h-5m0-6v7c0 3 2 4 4 4"],"fill":false},"link":{"d":["M10 13l4-4","M8 15l-2 2a3 3 0 0 1-4-4l5-5a3 3 0 0 1 4 0","M13 16a3 3 0 0 0 4 0l5-5a3 3 0 0 0-4-4l-2 2"],"fill":false},"user":{"d":["M8.6,8.2 A3.4,3.4 0 1,0 15.4,8.2 A3.4,3.4 0 1,0 8.6,8.2","M4.6,19.8 C5.3,16.1 8.3,13.9 12,13.9 C15.7,13.9 18.7,16.1 19.4,19.8"],"fill":false},"sparkle":{"d":["M10.5,3 C10.5,7.6 11.9,9.4 16.5,10.5 C11.9,11.6 10.5,13.4 10.5,18 C10.5,13.4 9.1,11.6 4.5,10.5 C9.1,9.4 10.5,7.6 10.5,3 Z","M17.6,14.5 C17.6,16.6 18.1,17.2 20.1,17.5 C18.1,17.8 17.6,18.4 17.6,20.5 C17.6,18.4 17.1,17.8 15.1,17.5 C17.1,17.2 17.6,16.6 17.6,14.5 Z"],"fill":false}}/*__ICONS__*/;
 const ICON_FALLBACK={d:['M4 6h16','M4 12h16','M4 18h10'],fill:false};
 function icon(name, size){
   const s=ICONS[name]||ICON_FALLBACK, px=size||16;
@@ -2085,6 +2174,8 @@ function bnr(id, on){
   document.body.classList.toggle('bnr-on', !!n);
   // 三条同时挂出来的时候（升级 ＋ 离线），标签条要按实际条数往下让
   document.documentElement.style.setProperty('--bnr-h', (n*33)+'px');
+  // 芯片跟着往下挪了，开着的浮层得重新贴上去（没开着这一句自己就返回）
+  placeUserPop();
 }
 
 /* 写死在 <body> 里的那些字。键＝trim 并把连续空白压成一个空格之后的原文；
@@ -2163,6 +2254,190 @@ function applyST(){
 /* 库根绝对路径。从 /__status 拿——分享、拖出去的 file:// URI、
    报给壳的当前文件路径都要它。拿不到就是空串，那几件事静默不做。 */
 let LIBROOT='';
+
+/* ═══ 个人资料 ═══════════════════════════
+   名字、头像、要不要问候，三样都在服务端（Application Support 里的 profile.json），
+   一个都不进 localStorage——localStorage 是按端口分家的，端口一变就是另一份，
+   个人资料不该跟着丢。启动时并行拉一次，之后每存成功一次就换成响应里的那份。 */
+let PROFILE = {名字:'', 默认名字:'', 头像:false, 头像版本:0, 问候:true, 更新于:''};
+async function loadProfile(){
+  try{
+    const r=await fetch('/__profile',{cache:'no-store'}); if(!r.ok) throw 0;
+    const p=await r.json();
+    if(p && p.ok) PROFILE=p;
+  }catch(e){}                       // 老服务没有这条路由：一切如旧，不问好、芯片留空
+  applyProfile();
+}
+/* 显示名＝自己起的名字，没起就用这台 Mac 的账户名。两个都空＝一句都不问。 */
+function profileName(){
+  return String((PROFILE.名字||'').trim() || (PROFILE.默认名字||'').trim());
+}
+/* 首字母：整个码位取一个（emoji 是两个 UTF-16 单元），拉丁字母抬成大写。 */
+function profileInitial(){
+  const s=profileName();
+  if(!s) return '';
+  const c=String.fromCodePoint(s.codePointAt(0));
+  return /[a-z]/.test(c) ? c.toUpperCase() : c;
+}
+/* 头像地址带版本号：服务端出的是 no-store，但换头像后地址也变，图片缓存一并让开。 */
+function avatarSrc(){ return PROFILE.头像 ? '/__avatar?v='+(PROFILE.头像版本||0) : ''; }
+/* 有头像画头像，没头像画首字母；名字也拿不到（服务没起、旧服务没这条路由）
+   就画一枚人形，右上角不留一个空圈。 */
+function avatarHtml(sz){
+  const src=avatarSrc();
+  if(src) return `<img src="${esc(src)}" alt="" data-av>`;
+  const c=profileInitial();
+  return c ? esc(c) : icon('user', sz||14);
+}
+/* 图裂了（服务重启、文件被人删了）就退回首字母，不留一块空白。
+   只重画裂掉的这一处：PROFILE.头像 不动——一次超时就把整份资料判成「没有头像」，
+   别处的头像会跟着一起掉成首字母，下一次存资料还会把这个错值写回去。 */
+function wireAvatars(root){
+  (root||document).querySelectorAll('img[data-av]').forEach(img=>{
+    img.onerror=()=>{
+      const b=img.parentElement; if(!b) return;
+      const c=profileInitial();
+      b.innerHTML = c ? esc(c) : icon('user', b.clientHeight>40 ? 32 : 14);
+    };
+  });
+}
+/* 三档问候按本地时间分：5–11 早上，12–17 下午，其余晚上。 */
+const GREETINGS = [K('早上好，{name}'), K('下午好，{name}'), K('晚上好，{name}')];
+function greetOn(){ return PROFILE.问候!==false && !!profileName(); }
+/* 「开始页向我问好」那颗开关的回填。按下去先翻面再存，存不成得翻回来，
+   所以单拎成一条，syncPrefControls 和 syncProfilePanel 都走它。 */
+function syncGreetSwitch(){
+  const gr=$('#cfgGreet'); if(!gr) return;
+  const on=PROFILE.问候!==false;
+  gr.classList.toggle('on', on);
+  gr.setAttribute('aria-checked', on?'true':'false');
+}
+function greetTitle(){
+  const h=new Date().getHours();
+  return TR(GREETINGS[(h>=5&&h<12) ? 0 : ((h>=12&&h<18) ? 1 : 2)], {name:profileName()});
+}
+/* 存一笔（任意子集）。存成了就把 PROFILE 换成响应，芯片和开始页跟着刷新。
+   排成一队发：昵称是边打边存的，两发并行时先送出去的那一发后回来，PROFILE
+   就退回了上一个值。串起来之后，最后送出去的那一发一定最后落地。 */
+let profileQueue=Promise.resolve();
+function saveProfile(patch){
+  const run=()=>postProfile(patch);
+  const p=profileQueue.then(run, run);
+  profileQueue=p.then(()=>{}, ()=>{});     // 队列本身不带失败，不然后面全被短路
+  return p;
+}
+async function postProfile(patch){
+  try{
+    const r=await (await fetch('/__profile',{method:'POST', headers:hdrs(),
+      body:JSON.stringify(patch||{})})).json();
+    if(!r.ok){ notify(r.错误||TR('没保存成功')); return null; }
+    PROFILE=r; applyProfile(); return r;
+  }catch(e){ notify(TR('服务没应答')); return null; }
+}
+/* 资料变了要动的三处：右上角芯片、设置页那块头像、开始页的问候。
+   设置页只回填控件不重画整段——昵称输入框正在打字，重画会把焦点弄丢。 */
+function applyProfile(){
+  syncUserChip();
+  syncProfilePanel();
+  repaintPages();
+}
+function syncUserChip(){
+  const b=$('#userChip'); if(!b) return;
+  b.innerHTML=avatarHtml();
+  wireAvatars(b);
+  b.title=profileName() || TR('个人资料');
+  if(userPopOn()) openUserPop();          // 开着就顺手重画一遍浮层
+}
+
+/* ── 右上角浮层 ───────────────────────── */
+function userPopOn(){ const p=$('#userPop'); return !!(p && p.classList.contains('on')); }
+function closeUserPop(){
+  const p=$('#userPop'); if(!p || !p.classList.contains('on')) return;
+  p.classList.remove('on');
+  const b=$('#userChip'); if(b) b.setAttribute('aria-expanded','false');
+}
+/* 当前库：壳注入的绝对路径优先，浏览器里退回 /__status 的库根。 */
+function vaultPath(){ return String(window.__AMN_VAULT_PATH__ || LIBROOT || ''); }
+function openUserPop(){
+  const p=$('#userPop'), b=$('#userChip'); if(!p || !b) return;
+  const nm=profileName(), path=vaultPath();
+  const swap = SHELL
+    ? `<button type="button" data-up="choose">${esc(TR('更换笔记库…'))}</button>` : '';
+  p.innerHTML=`<div class="who">
+      <span class="av">${avatarHtml(22)}</span>
+      <span class="nm">${esc(nm||TR('个人资料'))}</span>
+    </div>
+    ${path?`<div class="vault"><span class="k">${esc(TR('当前笔记库'))}</span>
+      <span class="v" title="${esc(path)}">${esc(baseName(path))}</span></div>`:''}
+    <div class="acts">
+      <button type="button" data-up="edit">${esc(TR('编辑资料…'))}</button>
+      ${swap}
+    </div>`;
+  wireAvatars(p);
+  p.querySelectorAll('[data-up]').forEach(x=>x.onclick=()=>{
+    const a=x.dataset.up;
+    closeUserPop();
+    if(a==='edit'){ ST.cfgTab='profile'; saveST(); openCfg(); }
+    else if(a==='choose') post({type:'chooseVault'});
+  });
+  p.classList.add('on');
+  b.setAttribute('aria-expanded','true');
+  placeUserPop();
+}
+/* 贴着芯片右缘往下掉一格；窗口右边挤不下就往里收，浮层不出屏。 */
+function placeUserPop(){
+  const p=$('#userPop'), b=$('#userChip');
+  if(!p || !b || !p.classList.contains('on')) return;
+  const r=b.getBoundingClientRect(), w=p.offsetWidth||236;
+  p.style.left=Math.max(10, Math.min(r.right-w, innerWidth-w-10))+'px';
+  p.style.top=(r.bottom+7)+'px';
+}
+
+/* ── 头像图片：裁方、缩到 256、转 PNG ──────
+   服务端只认原始字节，所以缩放在这边做完再发：一张 4000×3000 的照片直接传上去
+   既慢又占地方，而芯片最大也只画到 72 逻辑像素。 */
+const AVATAR_PX = 256;
+async function avatarBase64(file){
+  const img=await loadBitmap(file);
+  try{
+    const w=img.width||img.naturalWidth, h=img.height||img.naturalHeight;
+    if(!w || !h) throw new Error('empty');
+    const side=Math.min(w, h);                     // 居中裁一个正方形
+    const cv=document.createElement('canvas');
+    cv.width=cv.height=AVATAR_PX;
+    const cx=cv.getContext('2d');
+    cx.imageSmoothingQuality='high';
+    cx.drawImage(img, (w-side)/2, (h-side)/2, side, side, 0, 0, AVATAR_PX, AVATAR_PX);
+    return String(cv.toDataURL('image/png')).split(',')[1]||'';
+  }finally{
+    if(img.close) try{ img.close(); }catch(e){}
+    // objectURL 要等画完再撤：撤早了 Safari 有机会画出一张白图
+    if(img._objUrl) try{ URL.revokeObjectURL(img._objUrl); }catch(e){}
+  }
+}
+/* <img> ＋ objectURL 那条路。WebKit 的 <img> 解得了 HEIC，createImageBitmap 不解，
+   所以这不只是「旧浏览器兜底」，是 iPhone 照片真正走的那一条。 */
+function loadImgEl(file){
+  return new Promise((ok,no)=>{
+    const u=URL.createObjectURL(file), im=new Image();
+    im._objUrl=u;                                  // 画完由 avatarBase64 撤
+    im.onload=()=>ok(im);
+    im.onerror=()=>{ URL.revokeObjectURL(u); no(new Error('decode')); };
+    im.src=u;
+  });
+}
+/* createImageBitmap 认不了这一张（HEIC、或者旧 WebKit 压根不吃 File）时是
+   **异步 reject** 的：包一层 try/catch 只兜得住同步抛错（比如不认第二个参数），
+   真正的退路得挂在 .catch 上，不然这一发直接变成一条没人接的 rejection。 */
+function loadBitmap(file){
+  if(window.createImageBitmap){
+    try{
+      return Promise.resolve(createImageBitmap(file, {imageOrientation:'from-image'}))
+        .catch(()=>loadImgEl(file));
+    }catch(e){}
+  }
+  return loadImgEl(file);
+}
 
 const IS_HTTP = location.protocol.startsWith('http');
 
@@ -2381,6 +2656,8 @@ function applyPref(){
    行距／栏宽是三档预设：值不在三档里（老档案自己拖过滑杆）就一档都不亮，
    也不去改它——用户按了哪一档才算他要换。 */
 function syncPrefControls(){
+  /* 问候开关住在「个人」段里，那一段没有 #cfgFs，得赶在下面那句 early return 之前回填。 */
+  syncGreetSwitch();
   const fs=$('#cfgFs');
   if(!fs){ syncPopControls(); return; }
   fs.value=PREF.fs;
@@ -2901,6 +3178,7 @@ function flashLoad(){
 
 async function navigate(entry, opt){
   opt=opt||{};
+  closeUserPop();
   entry=makeEntry(entry.kind, entry);
   let t=opt.tab || active();
   if(!t || opt.newTab){
@@ -3159,16 +3437,21 @@ function sectionHead(label, n){
     <button type="button" class="view-toggle" data-view="1" title="${esc(swap)}" aria-label="${esc(swap)}">${icon(list?'grid':'list',14)}</button>
   </div>`;
 }
+/* 署名：这一篇最近一次是本机某个 AI 助手写的（/__tree 带回来的「代理」）。
+   ✦ ＋ 名字，摆在时间前面；没有这一笔就一个字都不多。 */
+const agentMark = i => (i && i.代理)
+  ? `<span class="agentmark">✦ ${esc(i.代理)}</span>` : '';
 function cardHtml(i){
   const rel=i.路径, html=kindOf(i)==='html', pinned=isPinned(rel);
   const title=cleanTitle(i), ex=cardText(i);
   const pinTip=pinned?TR('取消收藏'):TR('收藏');
+  const mark=agentMark(i);
   return `<div class="note-card">
     <button type="button" class="card-open" data-open="${esc(rel)}" data-kind="${html?'html':'md'}" aria-label="${esc(TR('打开 {title}',{title}))}">
       <span class="card-top"><span class="file-icon${html?' html':''}">${icon(html?'globe':'doc',15)}</span><span class="kind-label">${html?'HTML':'MD'}</span></span>
       <h3>${esc(title)}</h3>
       <p class="card-excerpt">${esc(ex)}</p>
-      <span class="card-footer">${icon('folder',11)}<span class="fdr">${esc(folderLabel(rel))}</span><span class="when num">${esc(fmtWhen(i.修改时间))}</span></span>
+      <span class="card-footer">${icon('folder',11)}<span class="fdr">${esc(folderLabel(rel))}</span>${mark}<span class="when num">${esc(fmtWhen(i.修改时间))}</span></span>
     </button>
     <button type="button" class="card-pin${pinned?' pinned':''}" data-pin="${esc(rel)}"
       title="${esc(pinTip)}" aria-label="${esc(pinTip+' '+title)}" aria-pressed="${pinned?'true':'false'}">${icon('star',13)}</button>
@@ -3190,12 +3473,13 @@ function emptyHtml(title, text, opts){
 }
 function resumeHtml(i){
   const ex=cardText(i) || TR('写下来的想法，下次还可以接着想。');
+  const mark=agentMark(i);
   return `<button type="button" class="resume" data-open="${esc(i.路径)}" data-kind="md">
     <span class="rs-text">
       <span class="overline">${icon('clock',12)} ${esc(TR('继续阅读'))}</span>
       <h2>${esc(cleanTitle(i))}</h2>
       <p class="excerpt">${esc(ex)}</p>
-      <span class="resume-bottom"><span>${esc(folderLabel(i.路径))} · ${esc(fmtWhen(i.修改时间))}</span><span class="continue">${esc(TR('接着读'))} ${icon('arrow',13)}</span></span>
+      <span class="resume-bottom"><span>${esc(folderLabel(i.路径))} · ${mark?mark+' · ':''}${esc(fmtWhen(i.修改时间))}</span><span class="continue">${esc(TR('接着读'))} ${icon('arrow',13)}</span></span>
     </span>
     <span class="paper-art" aria-hidden="true">
       <span class="paper-front"><b></b><i></i><i></i><i></i><i></i><i></i></span>
@@ -3212,7 +3496,8 @@ function paintStart(box){
     const btns=`<button type="button" class="hbtn key" data-act="newnote">${icon('edit',15)}<span class="lbl">${esc(TR('写下第一篇'))}</span></button>
       <button type="button" class="hbtn" data-act="revealvault">${icon('folder',15)}<span class="lbl">${esc(TR('在访达中打开这个文件夹'))}</span></button>`;
     box.innerHTML=`<div class="home">
-      ${greetingHtml(icon('leaf',13),TR('我的笔记'),TR('今天，想记下什么？'),TR('笔记库已经就位，就差第一篇。'),{scan:true})}
+      ${greetingHtml(icon('leaf',13),TR('我的笔记'),
+        greetOn()?greetTitle():TR('今天，想记下什么？'),TR('笔记库已经就位，就差第一篇。'),{scan:true})}
       ${emptyHtml(TR('这里还空着'),esc(TR('把 Markdown 或网页放进笔记库，它们会自动出现在这里。'))+'<br>'+esc(TR('文件留在原地，不上传，不改格式。')),{big:true, buttons:btns})}
       </div>`;
     return;
@@ -3225,8 +3510,14 @@ function paintStart(box){
   const more=all.length>shown.length
     ? `<button type="button" class="see-all" data-folder="">${icon('folder',14)}<span>${esc(TR('看全部 {n} 篇',{n:all.length}))}</span></button>`
     : '';
+  /* 问候开着时大标题让给「早上好，某某」，副句接着说下去：上次读到哪儿，
+     没读过就问一句今天想写什么。问候关掉＝原来那两句，一个字不动。 */
+  const sub = !greetOn() ? TR('从上次的思路，轻松继续。')
+    : (last ? TR('上次停在《{title}》，接着来？',{title:cleanTitle(last)})
+            : TR('今天，想记下什么？'));
   box.innerHTML=`<div class="home">
-    ${greetingHtml(icon('leaf',13),TR('我的笔记'),TR('今天，想记下什么？'),TR('从上次的思路，轻松继续。'),{scan:true})}
+    ${greetingHtml(icon('leaf',13),TR('我的笔记'),
+      greetOn()?greetTitle():TR('今天，想记下什么？'),sub,{scan:true})}
     ${startChipsHtml()}
     ${last?resumeHtml(last):''}
     ${tipsCardHtml()}
@@ -3331,21 +3622,20 @@ function paintFolder(t, box){
     ${cardsHtml(list, emptyHtml(subs.length?TR('这一层还没有文件'):TR('空文件夹'), esc(subs.length?TR('点上面的子文件夹看看。'):TR('这里还没有 md 或 html。'))))}
   </div>`;
 }
-function openStartTab(){
+/* wait＝一个 Promise：标签照样立刻建（标签条、前进后退都指着它），只把第一次
+   落笔押后。开始页的 h1 就是问候那一句，个人资料没回来就画，会先出
+   「今天，想记下什么？」再跳成「早上好，某某」——闪一下。只有启动那一次传它。 */
+function openStartTab(wait){
   if(SOLO) return;
   const t=makeTab(makeEntry('start', {title:TR('开始')}));
   TABS.push(t); newPane(t);
   enterReader(); showTab(t.id);
-  loadEntry(t);
+  if(wait && wait.then) wait.then(()=>{ if(TABS.indexOf(t)>=0) loadEntry(t); });
+  else loadEntry(t);
   return t;
 }
 function newTab(){
   openStartTab();
-}
-function goAppHome(){
-  const t=active();
-  if(isStartTab(t)){ focusOmnibox({pulse:true}); return; }
-  navigate(makeEntry('start', {title:TR('开始')}));
 }
 
 /* 5.4 起标签条上只剩「能不能前进后退」要跟着当前标签走；
@@ -3601,6 +3891,7 @@ function syncTabDirty(){
 
 function showTab(id){
   const t=TABS.find(x=>x.id===id); if(!t) return;
+  closeUserPop();
   const prev=active();
   if(prev && prev.id!==id && prev.editing) flushSave(prev);   // 切文档强制落盘
   curTab=id;
@@ -4119,6 +4410,7 @@ function setFocus(on){
   const next=!!on;
   if(next===FOCUS) return;
   FOCUS=next;
+  closeUserPop();               // 专注模式把 .rightgrp 淡掉，浮层不能留在那儿
   document.body.classList.toggle('focus-mode', FOCUS);
   document.body.classList.remove('peek');
   closeType();
@@ -6269,7 +6561,8 @@ function setTree(t){
   }
   items=docs.map(d=>({
     路径:d.路径, 标题:d.标题||'', 类型:d.类型||'md',
-    修改时间:d.改于||0, 日期:ymd(d.改于), 预览:d.预览||''}));
+    修改时间:d.改于||0, 日期:ymd(d.改于), 预览:d.预览||'',
+    代理:d.代理||''}));                       // 有名字＝最近一次是本机 AI 助手改的
   prepItems(); syncNotePv(); prunePins();
   buildNav(); render();
   syncScanChip();
@@ -6769,6 +7062,7 @@ function docMenu(e, t){
 let qlOn=false, qlItem=null;
 async function quickLook(i){
   if(!i) return;
+  closeUserPop();
   qlItem=i; qlOn=true;
   $('#qlwrap').classList.add('on');
   $('#qlt').textContent=i.标题||'';
@@ -6815,14 +7109,26 @@ function toggleBookmarks(){
 
 (function wireChromeBtns(){
   const back=$('#navBack'), fwd=$('#navFwd'), home=$('#navHome'), plus=$('#tabplus'),
-        mark=$('#appmark'), sp=$('#topSearch'), cfg=$('#navCfgTop');
+        sp=$('#topSearch'), cfg=$('#navCfgTop'), uc=$('#userChip');
   if(back) back.onclick=()=>goHist(-1);
   if(fwd) fwd.onclick=()=>goHist(1);
-  if(home) home.onclick=()=>{ navigate(makeEntry('start', {title:TR('开始')})); home.blur(); };
+  /* 品牌标：不在开始页就回开始页；已经在开始页就把这一页滚回顶——
+     不弹 ⌘K，搜索只有右边那颗胶囊一个入口。 */
+  if(home) home.onclick=()=>{
+    home.blur();
+    const t=active();
+    if(isStartTab(t)){
+      const p=paneOf(t);
+      const box=(p && p.classList.contains('pg') && p.querySelector('.pagebox')) || p;
+      if(box) box.scrollTo({top:0, behavior:'smooth'});
+      return;
+    }
+    navigate(makeEntry('start', {title:TR('开始')}));
+  };
   if(plus) plus.onclick=()=>{ newTab(); plus.blur(); };
   if(sp) sp.onclick=()=>{ sp.blur(); AMN.quickOpen(); };
   if(cfg) cfg.onclick=()=>{ cfg.blur(); openCfg(); };
-  if(mark) mark.onclick=()=>goAppHome();
+  if(uc) uc.onclick=()=>{ userPopOn() ? closeUserPop() : openUserPop(); };
 })();
 
 /* ── ⌘K 直达 ────────────────────────────
@@ -6854,6 +7160,7 @@ const CK_ACTS=[
    （开始页敲第一个字那条路：接着敲第二个字不能把第一个顶掉）。 */
 function openQuick(seed, opt){
   opt=opt||{};
+  closeUserPop();               // 盖住了就不该还开着：Esc 得先关面板
   $('#cmdkWrap').classList.add('on');
   const el=$('#ck'); el.value=seed||''; ckSel=0; ckRender();
   setTimeout(()=>{
@@ -7260,11 +7567,12 @@ let CFG_FORM=null;            // 六个可编辑键的工作副本，界面改�
 let CFG_BASE='';              // 载入时那一刻的快照，用来判断脏不脏
 let cfgBusy=false;            // 「重新整理」转着的时候
 const CFG_KEYS=['跳过目录关键词','噪声目录','噪声文件','通用标题','端口范围','随手记目录'];
-const CFG_TABS={reading:TR('阅读与外观'), library:TR('笔记库'), advanced:TR('高级'), about:TR('关于')};
+const CFG_TABS={profile:TR('个人'), reading:TR('阅读与外观'), library:TR('笔记库'),
+                agent:TR('Agent'), advanced:TR('高级'), about:TR('关于')};
 const REPO='https://github.com/Qiululu667/amnote';
 const LINKS=[[TR('GitHub 项目'),REPO],[TR('使用说明'),REPO+'#readme'],[TR('反馈问题'),REPO+'/issues']];
 
-function openCfg(){ $('#cfgWrap').classList.add('on'); loadCfg(); }
+function openCfg(){ closeUserPop(); $('#cfgWrap').classList.add('on'); loadCfg(); }
 function closeCfg(){ $('#cfgWrap').classList.remove('on'); }
 const cfgOn = () => $('#cfgWrap').classList.contains('on');
 
@@ -7324,7 +7632,57 @@ function tsOf(s){
 }
 const baseName = p => String(p||'').replace(/\/+$/,'').split('/').pop() || '/';
 
-/* ── 四段内容 ─────────────────────────── */
+/* ── 五段内容 ─────────────────────────── */
+/* 「个人」跟「阅读与外观」一样即时保存：改一下发一次 POST，底下那条脏条不出来。
+   脏条只认服务端那六个配置键（CFG_FORM），个人资料不进它的账。 */
+function panelProfile(){
+  const nm=(PROFILE.名字||'');
+  return `<section class="cfg-panel on" data-cfgpanel="profile">
+    <div class="frow"><span class="flab">${esc(TR('头像'))}</span><div class="fctl">
+      <div class="avrow" id="cfgAvRow">
+        <span class="av" id="cfgAv">${avatarHtml(32)}</span>
+        <span class="avacts">
+          <span class="btns">
+            <button type="button" class="btn" id="cfgAvPick">${esc(TR('选择图片…'))}</button>
+            <button type="button" class="btnt" id="cfgAvDrop"${PROFILE.头像?'':' disabled'}>${esc(TR('移除'))}</button>
+          </span>
+          <p class="hint">${esc(TR('也可以把图片拖进来，或者直接粘贴一张。'))}</p>
+        </span>
+        <input type="file" id="cfgAvFile" accept="image/*" hidden>
+      </div>
+    </div></div>
+
+    <div class="frow"><span class="flab">${esc(TR('昵称'))}</span><div class="fctl">
+      <input class="tin" id="cfgName" spellcheck="false" maxlength="40"
+        value="${esc(nm)}" placeholder="${esc(PROFILE.默认名字||'')}"
+        aria-label="${esc(TR('昵称'))}">
+      <p class="hint">${esc(TR('留空就用这台 Mac 的账户名'))}</p>
+    </div></div>
+
+    <div class="frow"><span class="flab">${esc(TR('问候'))}</span><div class="fctl"><div class="swrow">
+      <span class="txt">${esc(TR('开始页向我问好'))}</span>
+      <button type="button" class="sw" id="cfgGreet" role="switch" aria-checked="false"
+        aria-label="${esc(TR('开始页向我问好'))}"></button>
+    </div></div></div>
+
+    <div class="frow"><span class="flab"></span><div class="fctl">
+      <p class="hint">${esc(TR('个人资料只保存在这台 Mac 上，不会上传，换笔记库也不用重设。'))}</p>
+    </div></div>
+  </section>`;
+}
+/* 存完只回填控件，不重画整段——昵称输入框可能正被打着字。 */
+function syncProfilePanel(){
+  const av=$('#cfgAv');
+  if(av){ av.innerHTML=avatarHtml(32); wireAvatars(av); }
+  const rm=$('#cfgAvDrop'); if(rm && !avBusy) rm.disabled=!PROFILE.头像;
+  const nm=$('#cfgName');
+  if(nm){
+    nm.placeholder=PROFILE.默认名字||'';
+    if(document.activeElement!==nm) nm.value=PROFILE.名字||'';
+  }
+  syncGreetSwitch();
+}
+
 function panelReading(){
   const mini = k => `<span class="mw ${k}"><span class="bar"><em></em><em></em><em></em></span>`
     + `<span class="body"><u></u><s style="width:100%"></s><s style="width:88%"></s>`
@@ -7461,6 +7819,148 @@ function offlineNotice(){
   return `<div class="sec">${noticeHtml(TR('服务没起，读不到配置文件。重开一次 AM·Note 再来改。'))}</div>`;
 }
 
+/* ── 「Agent」段 ─────────────────────────
+   这台 Mac 上的 AI 助手怎么接进来，四件事一行一件：命令行工具、Claude Code 的
+   skill、Codex 那份配置、库地图。状态全从 /__agent_setup 来；装完拿响应里的
+   新状态只重画这四行，不重画整段——上面那句说明不该跟着闪一下。 */
+let AGENT=null;              // /__agent_setup 的整包；null＝还没问，false＝问不到
+let agentAct='';             // 正在跑的动作名：这期间四行都按不动
+let agentSeq=0;              // 每发一次请求 +1：慢的那一发回来发现号变了就闭嘴
+let agentMap='';             // 预取好的库地图正文（拷贝那一拍要现成的）
+let agentMapBusy=false;
+const MAP_REL='库地图.md';   // 导出以后要在访达里选中的那一份（库相对）
+/* 服务端给的是绝对路径，/__reveal 要的是库相对——库根就在这份文件的上一级，
+   取文件名就够了。服务端哪天改了名字这里也跟得上，取不到才回落到常量。 */
+const mapRel = () => (((AGENT||{}).地图文件||{}).路径||'').split('/').pop() || MAP_REL;
+
+function panelAgent(){
+  return `<section class="cfg-panel on" data-cfgpanel="agent">
+    <p class="agnote">${esc(TR('AM·Note 开着的时候，这台 Mac 上的 AI 助手可以搜索和读写这个库。只在本机，不联网。'))}</p>
+    <div id="agentRows">${agentRowsHtml()}</div>
+  </section>`;
+}
+/* 还没问回来（或者服务没起）：摆一句话，不摆四行按不动的按钮。 */
+function agentRowsHtml(){
+  if(!AGENT) return `<p class="hint agwait">${esc(AGENT===false
+    ? TR('读不到接入状态，服务可能没起。') : TR('正在检查…'))}</p>`;
+  const cli=AGENT.命令行||{}, sk=AGENT.skill||{}, am=AGENT.agents_md||{}, mp=AGENT.地图文件||{};
+  return agRow(TR('命令行工具'),
+      agDo('cli', TR('安装'), cli.已链接, TR('已安装')) + agCopy('cli', TR('拷贝路径'), 1),
+      cli.已链接 ? agInstalledAt(cli.链接路径||'')
+                 : `<p class="hint">${esc(TR('未安装'))}</p>`)
+    + agRow(TR('Claude Code'),
+      agDo('skill', TR('安装 Skill'), sk.已安装, TR('已安装')) + agCopy('mcp', TR('拷贝 MCP 命令'), 1),
+      agPath(sk.路径||''))
+    + agRow(TR('Codex 与其他'),
+      agCopy('codex', TR('拷贝 MCP 配置'))
+        + agDo('agents_md', TR('在库根生成 AGENTS.md'), am.已存在, TR('已存在'), 1),
+      agPath(am.路径||''))
+    + agRow(TR('库地图'),
+      agCopy('map', TR('拷贝库地图')) + agDo('map_export', TR('导出到库根'), false, '', 1),
+      agPath(mp.路径||''));
+}
+const agRow = (label, btns, foot) => `<div class="frow"><span class="flab">${esc(label)}</span>`
+  + `<div class="fctl"><span class="btns">${btns}</span>${foot}</div></div>`;
+const agPath = pth => `<p class="hint pth">${esc(pth)}</p>`;
+/* 「已安装到 <路径>」：等宽只给路径那一段，前面那三个字跟别处一样。
+   先拿一个占位符走完翻译、整条 esc()，最后把占位符换成那一段 <span>——
+   标签和路径都逃不掉转义，i18n 还是「已安装到 {path}」这一个键。 */
+function agInstalledAt(pth){
+  const M='\u0001';
+  // 替换值写成函数：路径里真有 $& 这种字样时，别被 replace 当成替换语法吃掉
+  const seg=`<span class="pth">${esc(pth)}</span>`;
+  return `<p class="hint">${esc(TR('已安装到 {path}',{path:M})).replace(M, ()=>seg)}</p>`;
+}
+/* 装好了就换成一颗按不动的「已安装」。不做「重新安装」——按下去看不出差别的按钮
+   只会让人怀疑自己有没有按到。 */
+function agDo(act, label, done, doneLabel, flat){
+  const cls = flat ? 'btnt' : 'btn';
+  if(done) return `<button type="button" class="${cls}" disabled>${esc(doneLabel)}</button>`;
+  // 一次只跑一个动作：跑着的时候四颗一起灰掉，不然按下别的那几颗毫无反应
+  return `<button type="button" class="${cls}" data-ag="${act}"${agentAct?' disabled':''}>${esc(label)}</button>`;
+}
+const agCopy = (what, label, flat) => `<button type="button" class="${flat?'btnt':'btn'}"`
+  + ` data-agc="${what}">${esc(label)}</button>`;
+
+function wireAgent(){
+  wireAgentRows();
+  loadAgentSetup();            // 每次进这一段都重问一遍：外头可能已经装过了
+}
+function wireAgentRows(){
+  const box=$('#agentRows'); if(!box) return;
+  box.querySelectorAll('[data-ag]').forEach(b=>b.onclick=()=>agentDo(b.dataset.ag));
+  box.querySelectorAll('[data-agc]').forEach(b=>b.onclick=()=>agentCopy(b.dataset.agc));
+  fetchAgentMap();             // 「拷贝库地图」按下去那一拍不能有 await，先备着
+}
+/* 浏览器模式下 navigator.clipboard.writeText 只认「用户手势那一拍」：在 await
+   后面写会被拒（壳里走 NSPasteboard 没这问题，但两边得是同一条路）。所以地图
+   在画这四行的时候就先拉回来，按下去只是同步地拷一份现成的。
+   地图随笔记变，所以导出到库根之后强制再拉一次。 */
+function fetchAgentMap(force, loud){
+  if(!IS_HTTP || agentMapBusy || (agentMap && !force)) return;
+  agentMapBusy=true;
+  fetch('/__map',{cache:'no-store'}).then(r=>r.json()).then(r=>{
+    if(r && r.ok) agentMap=String(r.地图||'');
+    else if(loud) notify((r&&r.错误)||TR('读不到库地图'));
+  }).catch(()=>{ if(loud) notify(TR('服务没应答')); })
+    .then(()=>{ agentMapBusy=false; });
+}
+function syncAgentRows(){
+  const box=$('#agentRows'); if(!box) return;
+  box.innerHTML=agentRowsHtml();
+  wireAgentRows();
+}
+/* 问不到的时候：手上已经有一份就留着，别把好好的四行换成一句「读不到」。 */
+async function loadAgentSetup(){
+  if(agentAct) return;                    // 正在装：POST 的响应比这一发新，不去打扰
+  const my=++agentSeq;
+  let r=null;
+  if(IS_HTTP){
+    try{ r=await (await fetch('/__agent_setup',{cache:'no-store'})).json(); }catch(e){ r=null; }
+  }
+  /* 这中间又问过一次、或者已经装起来了：这一发是旧的，扔掉。
+     不然「进来 → GET 慢 → 装好了 → 慢的那一发回来」会把四行退回没装的样子。 */
+  if(my!==agentSeq || agentAct) return;
+  if(r && r.ok) AGENT=r; else if(!AGENT) AGENT=false;
+  if(cfgOn() && ST.cfgTab==='agent') syncAgentRows();
+}
+/* 一次只跑一个动作。成功了拿响应当新状态（响应＝GET 的形状再加一句「结果」）。 */
+async function agentDo(act){
+  if(agentAct) return;
+  agentAct=act; agentSeq++;               // 在路上的那些 GET 一律作废
+  syncAgentRows();
+  let r=null;
+  try{
+    r=await (await fetch('/__agent_setup',{method:'POST', headers:hdrs(),
+      body:JSON.stringify({动作:act})})).json();
+  }catch(e){ r=null; }
+  agentAct='';
+  if(!r){ notify(TR('服务没应答')); syncAgentRows(); return; }
+  if(!r.ok){ notify(r.错误||TR('没保存成功')); syncAgentRows(); return; }
+  AGENT=r; syncAgentRows();
+  if(r.结果) notify(r.结果);
+  // 导出完在访达里选中它——一份写在库根的文件，看得见才算真的到手
+  if(act==='map_export'){ fetchAgentMap(true); revealPath(mapRel()); }
+}
+/* 四颗拷贝钮都走这里。要害是：真正写剪贴板那一句必须还在用户手势这一拍里，
+   所以这上面一个 await 都不能有——库地图是 fetchAgentMap() 提前备好的。 */
+async function agentCopy(what){
+  const a=AGENT||{};
+  let txt='';
+  if(what==='cli') txt=(a.命令行||{}).路径||'';
+  else if(what==='mcp') txt=a.mcp命令||'';
+  else if(what==='codex') txt=a.codex配置||'';
+  else if(what==='map'){
+    // 还没备好：催一发，请人再按一次。在这儿等，剪贴板就写不进去了
+    if(!agentMap){ fetchAgentMap(true, 1); notify(TR('正在准备库地图，再点一次')); return; }
+    txt=agentMap;
+  }
+  // 服务端这一栏是空的（老服务、字段改过名）：也得说一句，不能一按没反应
+  if(!txt){ notify(TR('拷不了')); return; }
+  const ok=await copyText(txt);
+  notify(ok ? TR('已拷贝') : TR('拷不了'));
+}
+
 function panelAdvanced(){
   /* 有一条「问题」落在这一段的字段上就强制展开——黄条藏在折叠区里等于没说。
      这时候不画折叠钮：它按下去也收不起来（下一次渲染又被 hasAdvProblem 顶开），
@@ -7562,8 +8062,10 @@ function renderCfg(){
   });
   $('#cfgTitle').textContent=CFG_TABS[tab];
   const body=$('#cfgBody');
-  body.innerHTML = tab==='reading' ? panelReading()
+  body.innerHTML = tab==='profile' ? panelProfile()
+    : tab==='reading' ? panelReading()
     : tab==='library' ? panelLibrary()
+    : tab==='agent' ? panelAgent()
     : tab==='advanced' ? panelAdvanced()
     : panelAbout();
   body.scrollTop=0;
@@ -7576,6 +8078,8 @@ function wireCfg(tab){
   const body=$('#cfgBody');
   // 「访达 / 更换文件夹 / 检查更新 / 拷路径」四段里都可能有，统一先贴一遍
   body.querySelectorAll('[data-cfga]').forEach(b=>b.onclick=()=>cfgAction(b.dataset.cfga));
+  if(tab==='profile'){ wireProfile(); return; }
+  if(tab==='agent'){ wireAgent(); return; }
   if(tab==='reading'){
     $$('#cfgBody [data-tc]').forEach(b=>b.onclick=()=>setPref('theme', b.dataset.tc));
     $$('#cfgBody [data-fc]').forEach(b=>b.onclick=()=>setPref('font', b.dataset.fc));
@@ -7618,6 +8122,87 @@ function wireCfg(tab){
   const ad=$('#cfgAdvT');
   if(ad) ad.onclick=()=>{ ST.cfgAdv = ST.cfgAdv!==true; saveST(); renderCfg(); };
 }
+
+/* 「个人」段的接线。头像三条路进来：按钮选、拖进来、粘贴；出口都是 putAvatar()。 */
+let avBusy=false;                 // 一张图正在传：两颗按钮都按不动
+let nameT=null;                   // 昵称防抖
+function wireProfile(){
+  clearTimeout(nameT); nameSent=null;          // 这一段是新画的，防抖账清零
+  const row=$('#cfgAvRow'), file=$('#cfgAvFile');
+  const pick=$('#cfgAvPick'), rm=$('#cfgAvDrop');
+  if(pick) pick.onclick=()=>{ if(file) file.click(); };
+  if(file) file.onchange=()=>{
+    const f=file.files && file.files[0];
+    file.value='';                // 同一张图再选一次也要触发 change
+    if(f) putAvatar(f);
+  };
+  if(rm) rm.onclick=()=>{ if(!avBusy && PROFILE.头像) putAvatar(null); };
+  if(row){
+    /* 停传：窗口上还挂着一条「拖进来的文件」的总处理（库内的开、库外的 .md 只读、
+       别的弹一句「打不开」）。不掐住的话，往头像上放一张图会先换掉头像，
+       再当头弹一句说这张图打不开——甚至跳去开别的文件。 */
+    row.ondragover=e=>{ e.preventDefault(); e.stopPropagation(); row.classList.add('drop'); };
+    /* 只有真的离开这一块才熄灯：光标从空处挪到里面的按钮上也来一发 dragleave，
+       照单全收就是一路闪。 */
+    row.ondragleave=e=>{ if(!row.contains(e.relatedTarget)) row.classList.remove('drop'); };
+    row.ondrop=e=>{
+      e.preventDefault(); e.stopPropagation(); row.classList.remove('drop');
+      const f=(e.dataTransfer && e.dataTransfer.files || [])[0];
+      if(f) putAvatar(f);
+    };
+  }
+  const nm=$('#cfgName');
+  if(nm){
+    nm.oninput=()=>{ clearTimeout(nameT); nameT=setTimeout(()=>putName(nm.value), 500); };
+    nm.onblur=()=>{ clearTimeout(nameT); putName(nm.value); };
+    nm.onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); nm.blur(); } };
+  }
+  const gr=$('#cfgGreet');
+  if(gr) gr.onclick=()=>{
+    const on=!(PROFILE.问候!==false);
+    gr.classList.toggle('on', on);
+    gr.setAttribute('aria-checked', on?'true':'false');
+    // 先翻面是为了按下去当场有反应；没存成就照 PROFILE 翻回去，别留一个假状态
+    saveProfile({问候:on}).then(r=>{ if(!r) syncPrefControls(); });
+  };
+  syncProfilePanel();
+}
+/* 名字：一样就不发。空串合法，服务端会认回默认名字。
+   防抖那一发还在路上时刚好又失焦，比的是「上一次送出去的值」，不是 PROFILE
+   ——PROFILE 要等响应回来才换，光比它会白发第二遍。 */
+let nameSent=null;
+function putName(v){
+  const nv=String(v==null?'':v).trim().slice(0,40);
+  if(nv===(nameSent!=null ? nameSent : (PROFILE.名字||''))) return;
+  nameSent=nv;
+  saveProfile({名字:nv}).then(r=>{ if(!r) nameSent=null; });
+}
+/* file＝一张图，null＝移除。传的时候两颗按钮都禁掉，免得连点两次。 */
+async function putAvatar(file){
+  if(avBusy) return;
+  if(file && !/^image\//.test(file.type||'')){ notify(TR('读不了这张图')); return; }
+  avBusy=true; avSetBusy(true);
+  try{
+    const payload = file ? {头像:{数据: await avatarBase64(file)}} : {头像:null};
+    await saveProfile(payload);
+  }catch(e){ notify(TR('读不了这张图')); }
+  finally{ avBusy=false; avSetBusy(false); syncProfilePanel(); }
+}
+function avSetBusy(on){
+  const pick=$('#cfgAvPick'), rm=$('#cfgAvDrop');
+  if(pick) pick.disabled=on;
+  if(rm) rm.disabled=on || !PROFILE.头像;
+}
+/* 「个人」段开着时，⌘V 一张图就是换头像。挂在 document 上（那一段里没有可聚焦的
+   收图控件），所以先确认设置弹层开着、当前正是这一段，再动手。 */
+document.addEventListener('paste', e=>{
+  if(!cfgOn() || ST.cfgTab!=='profile' || !$('#cfgAvRow')) return;
+  const fs=(e.clipboardData && e.clipboardData.files) || [];
+  const f=[].slice.call(fs).filter(x=>/^image\//.test(x.type||''))[0];
+  if(!f) return;
+  e.preventDefault();
+  putAvatar(f);
+});
 
 /* 芯片输入：回车／逗号成片，× 删，空输入按退格删最后一枚。 */
 function wireChips(box){
@@ -7856,8 +8441,10 @@ addEventListener('pointerdown', e=>{
     closeOlFloat(); syncToc();
   }
   if(typeOn() && !e.target.closest('#typeWrap') && !e.target.closest('[data-dt="more"]')) closeType();
+  if(userPopOn() && !e.target.closest('#userPop') && !e.target.closest('#userChip')) closeUserPop();
 }, true);
 addEventListener('resize', ()=>{ layoutTabs(); growAllEd(); syncToc(); refitPaths(); placeType();
+  placeUserPop();
   if(tabPickOn()) openTabPick(); });
 if(window.ResizeObserver){
   const pane=$('#docpane');
@@ -7940,6 +8527,10 @@ window.AMN = {
     if(qlOn){ closeQL(); return; }
     if(cfgOn()){ closeCfg(); return; }
     if(FOCUS){ setFocus(false); return; }
+    /* 头像浮层排在这几层后面。它会被 ⌘K 面板／快看／设置整个盖住，专注模式下
+       还跟着 .rightgrp 一起淡出——看不见的一层不该抢走 Esc。上面那几处也都在
+       打开时顺手关掉它，这一条只兜「浮层是当前唯一开着的东西」。 */
+    if(userPopOn()){ closeUserPop(); return; }
     const t=active();
     if(t && t.editing){ cancelEdit(); return; }
     if(kw){ clearQ(false); return; }
@@ -8061,6 +8652,9 @@ addEventListener('compositionend', e=>{
    库内的照旧在门户里开；库外的 .md 走只读模式，不再静默丢弃。 */
 addEventListener('dragover', e=>{ if(e.dataTransfer && [...e.dataTransfer.types].includes('Files')) e.preventDefault(); });
 addEventListener('drop', e=>{
+  // 设置弹层里有自己的收图区（「个人」段那块头像）：那儿的拖放归它自己管。
+  // 那边也 stopPropagation 了，这一条是第二道保险。
+  if(e.target && e.target.closest && e.target.closest('#cfgWrap')) return;
   const f=e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
   if(!f) return;
   e.preventDefault();
@@ -8264,14 +8858,22 @@ if(EMBED){
   loadFilters();
   applyST();
   render();
+  /* 个人资料跟 /__tree 并行拉，但开始页的第一笔要等它落地：问候和
+     「今天，想记下什么？」是同一行 h1，先画一句再换成另一句就是闪。
+     最多等 800 毫秒——服务卡住了页面也得出来，晚到的那份照样会重画。 */
+  const profileReady = Promise.race([
+    loadProfile(),
+    new Promise(ok=>setTimeout(ok, 800)),
+  ]);
   if(!SOLO){
-    openStartTab();
+    openStartTab(profileReady);
   }
-  loadTree().then(()=>{
+  loadTree().then(()=>profileReady).then(()=>{
     if(!SOLO && !TABS.length) openStartTab();
     const at=active();
     if(at && isPageKind(kindOfTab(at))) paintPage(at);
   });
+
   if(!TOKEN_OK && IS_HTTP) bnr('upgrade', true);
   // solo 窗口一律不轮询：它只显示自己那一份，不该替主窗口收件
   if(LIVE && !SOLO){ tick(); setInterval(tick, 3000); }

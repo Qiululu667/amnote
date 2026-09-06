@@ -71,6 +71,7 @@ import subprocess
 import sys
 import threading
 import time
+import urllib.parse
 import zipfile
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
@@ -82,6 +83,7 @@ ROOT = None
 CONFIG_PATH = None
 DB_PATH = None
 JOURNAL = None
+READONLY = False                                  # configure(readonly=True) 之后为真
 BACKUP_DIR = None                                 # 跟 portal_server 的编辑备份同一个
 BACKUP_KEEP = 10                                  # 每份文件留几版，跟编辑备份同额
 BACKUP_TOTAL_MB = 500                             # 备份目录总大小上限，超了删最旧的
@@ -105,13 +107,17 @@ def take_root_arg(argv):
     return root, rest
 
 
-def configure(root=None):
+def configure(root=None, readonly=False):
     """定库根，并把索引 / 流水 / 备份 / 配置指到 {vault}/.amnote/。
 
     必须在 import 之后、用 ROOT 之前调一次。库根来自参数或环境变量
     AMNOTE_VAULT，不再往上找标志文件。没给就在 stderr 说明原因后退出。
+
+    `readonly=True`：只把路径算出来，**一个目录都不建**。命令行在门户没开
+    时读上一次的索引走这条——那是别人的笔记文件夹，一条只读命令不该在里面
+    留下 `.amnote/`、`backups/` 或者 WAL 的边角料。connect() 跟着看这个开关。
     """
-    global ROOT, CONFIG_PATH, DB_PATH, JOURNAL, BACKUP_DIR
+    global ROOT, CONFIG_PATH, DB_PATH, JOURNAL, BACKUP_DIR, READONLY
     raw = (root if root is not None else "") or os.environ.get("AMNOTE_VAULT") or ""
     raw = str(raw).strip()
     if not raw:
@@ -126,20 +132,23 @@ def configure(root=None):
         print(f"找不到这个文件夹：{ROOT}", file=sys.stderr)
         sys.exit(1)
     amdir = os.path.join(ROOT, ".amnote")
-    try:
-        os.makedirs(amdir, exist_ok=True)
-    except OSError as e:
-        print(f"建不了 {amdir}：{e}", file=sys.stderr)
-        sys.exit(1)
+    READONLY = bool(readonly)
+    if not READONLY:
+        try:
+            os.makedirs(amdir, exist_ok=True)
+        except OSError as e:
+            print(f"建不了 {amdir}：{e}", file=sys.stderr)
+            sys.exit(1)
     CONFIG_PATH = os.path.join(amdir, "config.json")
     DB_PATH = os.path.join(amdir, "fulltext.db")
     JOURNAL = os.path.join(amdir, "changes.jsonl")
     BACKUP_DIR = os.path.join(amdir, "backups")
-    try:
-        os.makedirs(BACKUP_DIR, exist_ok=True)
-    except OSError as e:
-        print(f"建不了 {BACKUP_DIR}：{e}", file=sys.stderr)
-        sys.exit(1)
+    if not READONLY:
+        try:
+            os.makedirs(BACKUP_DIR, exist_ok=True)
+        except OSError as e:
+            print(f"建不了 {BACKUP_DIR}：{e}", file=sys.stderr)
+            sys.exit(1)
     return ROOT
 
 
@@ -846,7 +855,49 @@ def extract_links(rel, body):
 
 # ── 数据库 ──────────────────────────────────────────────────
 
+def _connect_ro():
+    """纯读地开索引库。**一个字节都不往库文件夹里写。**
+
+    库是 WAL 模式的，而 WAL 的读者要一份 `-wal` 旁边的 `-shm`；`mode=ro` 不许
+    建它，干净退出的库（AM·Note 关掉时会把 -wal / -shm 收走）于是连开都开不了。
+    所以两步：
+
+    1. 先按 `mode=ro` 开。`-shm` 还在（AM·Note 正开着、或者上次是崩的）时走这条，
+       读的是带 WAL 的最新一致视图。
+    2. 开不起来就退到 `immutable=1`——它把加锁和变动检测整个关掉，只读主库文件。
+       **前提正是「没有 -shm」**：那说明这会儿没有别的连接开着，主库文件是完整的
+       一份。之后就算 AM·Note 起来了，它的写先落 -wal，主库要到 checkpoint 才动，
+       这一趟命令早读完了。
+
+    退化的后果最多是「读到的是上一次 checkpoint 那一版」——命令行离线本来就是
+    「用上次的索引」，stderr 上也这么说了。
+    """
+    uri = "file:" + urllib.parse.quote(DB_PATH) + "?mode=ro"
+    con = None
+    try:
+        con = sqlite3.connect(uri, timeout=30, uri=True)
+        con.execute("PRAGMA query_only=1")
+        # connect() 本身不真的去拿读锁，缺 -shm 要到第一条语句才炸。
+        # 在这儿逼它现在就试，别把这个错漏给上面每一个调用点
+        con.execute("SELECT count(*) FROM sqlite_master").fetchone()
+    except sqlite3.Error:
+        if con is not None:
+            try:
+                con.close()
+            except sqlite3.Error:
+                pass
+        con = sqlite3.connect(uri + "&immutable=1", timeout=30, uri=True)
+        con.execute("PRAGMA query_only=1")
+    con.execute("PRAGMA mmap_size=536870912")
+    return con
+
+
 def connect():
+    """开索引库。configure(readonly=True) 之后是**纯读**：URI 的 mode=ro，
+    不改 journal_mode（那一句会写主库文件的头）、不建表。库不在就直接抛，
+    调用方（命令行的离线通道）自己回一句「先打开 AM·Note」。"""
+    if READONLY:
+        return _connect_ro()
     con = sqlite3.connect(DB_PATH, timeout=30)
     con.execute("PRAGMA journal_mode=WAL")
     con.execute("PRAGMA synchronous=NORMAL")
@@ -957,24 +1008,38 @@ def archive_read(name):
 # （留档一次、记流水一次），所以 _sync_once 在一开始就把这一批的判定结果算好存下，
 # 后面全查那份结果，不重复消费。
 
+#
+# **5.6：每一笔另记「是谁写的」。** 带了 X-AMN-Agent 头的 POST 是本机某个 AI
+# 助手（Claude Code、Codex…）在写，流水上要看得出来，不能跟用户自己在门户里
+# 敲的那些混成一档。所以表里存的是 (时刻, 代理名字)，认领时把名字一起交回去：
+# 认领的结果是一对 `(认领到没有, 署名)`，**不是一个字符串**：署名是用户给的，
+# `--agent 门户` 那样叫一声就不该顶掉「这是用户自己写的」这条判断（原来把
+# 「没认领到」「门户」「Agent 名字」挤在同一个字符串上，两个哨兵值都能被冒名）。
+
 _pw_lock = threading.Lock()
-_portal_writes = {}                   # {相对路径: [写入时间, ...]}
+_portal_writes = {}                   # {相对路径: [(写入时间, 代理名字), ...]}
 PW_WINDOW = 120                       # 保存时间和文件 mtime 差这么多秒内算同一笔
 PW_FILES = 500                        # 活表最多盯这么多份文件
+
+SRC_PORTAL = "门户"                    # 认领到、但没署名 → 用户自己在门户里写的
+SRC_AGENT = "Agent"                   # 认领到、而且署了名 → 流水的「来源」写这个
+SRC_EXTERNAL = "外部"                  # 没认领到 → 别的编辑器 / 脚本动的
 
 
 def _pw_prune(now):
     """掐掉过了窗口的旧笔，顺带清空的键。调用方必须已经拿着锁。"""
     for k in list(_portal_writes):
-        keep = [w for w in _portal_writes[k] if now - w < PW_WINDOW]
+        keep = [w for w in _portal_writes[k] if now - w[0] < PW_WINDOW]
         if keep:
             _portal_writes[k] = keep
         else:
             _portal_writes.pop(k, None)
 
 
-def note_portal_write(rel):
+def note_portal_write(rel, agent=None):
     """门户里每写成功一笔（/__save）就记一条。portal_server 落盘前就叫。
+
+    `agent`＝X-AMN-Agent 头里那个名字（没有就是用户自己在门户里写）。
 
     **一份文件挂一串时间，不是一个格子。** 停笔 2 秒落一次盘，一趟同步跑着的时候
     可能已经又存了两回；同步这边是拿两份快照比 (mtime, 大小)，同一份文件因此
@@ -986,7 +1051,7 @@ def note_portal_write(rel):
         return
     now = time.time()
     with _pw_lock:
-        _portal_writes.setdefault(rel, []).append(now)
+        _portal_writes.setdefault(rel, []).append((now, (agent or "").strip()))
         _pw_prune(now)
         if len(_portal_writes) > PW_FILES:        # 兜底，正常到不了
             for k in list(_portal_writes)[:len(_portal_writes) - PW_FILES]:
@@ -998,20 +1063,24 @@ def take_portal_write(rel, mtime, window=PW_WINDOW):
 
     按「离这次 mtime 最近」挑，不是先进先出：同步看见的先后跟保存的先后
     不保证一致，挑最近的那笔才对得上号。
+
+    返回 `(认领到没有, 署名)`：`(False, "")`＝外部；`(True, "")`＝门户自己写的；
+    `(True, "名字")`＝那个 Agent 写的。署名跟「认领到没有」分成两个值，
+    署名叫「门户」也冒充不了用户自己那一档。
     """
     now = time.time()
     with _pw_lock:
         _pw_prune(now)
         lst = _portal_writes.get(rel)
         if not lst:
-            return False
-        i = min(range(len(lst)), key=lambda j: abs(mtime - lst[j]))
-        if abs(mtime - lst[i]) >= window:
-            return False
-        lst.pop(i)
+            return (False, "")
+        i = min(range(len(lst)), key=lambda j: abs(mtime - lst[j][0]))
+        if abs(mtime - lst[i][0]) >= window:
+            return (False, "")
+        who = lst.pop(i)[1]
         if not lst:
             _portal_writes.pop(rel, None)
-        return True
+        return (True, who)
 
 
 # ── 门户搬动活表：跟上面那张表同一个套路，只是记「搬位置的」 ───────
@@ -1035,32 +1104,37 @@ def take_portal_write(rel, mtime, window=PW_WINDOW):
 # 中间一定隔着另一次同步。
 
 _pm_lock = threading.Lock()
-_portal_moves = {}                    # {相对路径: 记账时刻}
+_portal_moves = {}                    # {相对路径: (记账时刻, 代理名字)}
 PM_WINDOW = 300                       # 记了这么多秒还没被同步认领就作废
 
 
-def note_portal_move(rel):
+def note_portal_move(rel, agent=None):
     """门户里每搬一份（/__trash 或 /__untrash）就记一条。动文件之前叫，
-    理由同 note_portal_write：晚一步就可能被正在跑的那趟同步判成「外部」。"""
+    理由同 note_portal_write：晚一步就可能被正在跑的那趟同步判成「外部」。
+
+    `agent` 同 note_portal_write：署了名的那些流水上记「Agent」。"""
     if not rel:
         return
     now = time.time()
     with _pm_lock:
-        _portal_moves[rel] = now
+        _portal_moves[rel] = (now, (agent or "").strip())
         for k in list(_portal_moves):
-            if now - _portal_moves[k] >= PM_WINDOW:
+            if now - _portal_moves[k][0] >= PM_WINDOW:
                 _portal_moves.pop(k, None)
 
 
 def take_portal_move(rel, window=PM_WINDOW):
     """这份文件这一次进出库根是不是门户自己搬的。查中即消费，一笔只认领一次。
 
+    返回值同 take_portal_write：`(认领到没有, 署名)`。
     搬失败的那条路上也叫它一次，把刚记的那笔收回来。
     """
     now = time.time()
     with _pm_lock:
-        at = _portal_moves.pop(rel, None)
-        return at is not None and now - at < window
+        rec = _portal_moves.pop(rel, None)
+    if rec is None or now - rec[0] >= window:
+        return (False, "")
+    return (True, rec[1])
 
 
 # ── 变更流水 ────────────────────────────────────────────────
@@ -1241,17 +1315,37 @@ def _sync_once(log):
     # 留档照留，见 note_portal_move 上面那段
     # 两张表都得问一遍：写成 `A or B` 的话，A 认领到就把 B 短路了，搬动表里那一笔
     # 留在原地，300 秒之内下一次真的外部改动就被它顶着记成「门户」。
+    # 5.6：认领到的那一笔另带一个署名。署了名的来源记「Agent」＋一个 代理 字段，
+    # 门户和外部两个既有值一个字不动。
+    def _who(claim):
+        got, agent = claim
+        if not got:
+            return (SRC_EXTERNAL, "")
+        if not agent:
+            return (SRC_PORTAL, "")
+        return (SRC_AGENT, agent)
+
     def _claim(r):
         w = take_portal_write(r, cur[r][0])
         m = take_portal_move(r)
-        return "门户" if (w or m) else "外部"
+        return _who(w if w[0] else m)
 
     src = {r: _claim(r) for r in added + changed}
     for r in removed:
-        src[r] = "门户" if take_portal_move(r) else "外部"
+        src[r] = _who(take_portal_move(r))
 
     def src_of(rel):
-        return src.get(rel, "外部")
+        return src.get(rel, (SRC_EXTERNAL, ""))[0]
+
+    def agent_of(rel):
+        return src.get(rel, (SRC_EXTERNAL, ""))[1]
+
+    def _ev(e, rel):
+        """事件加上署名（没署名就不加这个键，别在流水里堆一列空串）。"""
+        ag = agent_of(rel)
+        if ag:
+            e["代理"] = ag
+        return e
 
     # 留档要赶在重抽之前：改动前的原文还躺在 db 里，重抽一跑就被新内容盖掉了
     for r in changed:
@@ -1275,18 +1369,18 @@ def _sync_once(log):
     if not first_run:
         # 序号在 _journal_add 里发：合并进上一条的那些不占号，先攒着不编号
         for r in sorted(added):
-            events.append({"时间": now_iso, "事件": "新增", "路径": r,
-                           "类型": cur[r][2], "来源": src_of(r),
-                           "大小KB": round(cur[r][1] / 1024, 1)})
+            events.append(_ev({"时间": now_iso, "事件": "新增", "路径": r,
+                               "类型": cur[r][2], "来源": src_of(r),
+                               "大小KB": round(cur[r][1] / 1024, 1)}, r))
         for r in sorted(changed):
-            events.append({"时间": now_iso, "事件": "修改", "路径": r,
-                           "类型": cur[r][2], "来源": src_of(r),
-                           "大小KB": round(cur[r][1] / 1024, 1),
-                           "留档": baks.get(r, "")})
+            events.append(_ev({"时间": now_iso, "事件": "修改", "路径": r,
+                               "类型": cur[r][2], "来源": src_of(r),
+                               "大小KB": round(cur[r][1] / 1024, 1),
+                               "留档": baks.get(r, "")}, r))
         for r in sorted(removed):
-            events.append({"时间": now_iso, "事件": "删除", "路径": r,
-                           "类型": old[r][2], "来源": src_of(r),
-                           "留档": baks.get(r, "")})
+            events.append(_ev({"时间": now_iso, "事件": "删除", "路径": r,
+                               "类型": old[r][2], "来源": src_of(r),
+                               "留档": baks.get(r, "")}, r))
         seq, n_rows = _journal_add(events, seq)
         meta_set(con, "流水号", seq)
     else:
@@ -1401,8 +1495,96 @@ def _like_esc(t):
     return t.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
 
 
-def snippets(body, terms, per_term=2, radius=42):
-    """正文里每个词取前几处命中，带前后文。返回 [{前,中,后}]。"""
+# ── md 标题（大纲、片段的「小节」、库地图共用一份）───────────
+#
+# 一份 md 的 ATX 标题。三处都要它，口径必须是同一套，不然 /__outline 说这份有
+# 五个小节、/__raw?section= 却找不到其中一个，Agent 就没法照着大纲取正文了。
+
+_ATX_RE = re.compile(r"^(#{1,6})[ \t]+(.*)$")
+_ATX_TAIL_RE = re.compile(r"\s+#+\s*$")
+_FENCE_RE = re.compile(r"^(`{3,}|~{3,})")
+
+
+def _atx_text(s):
+    """ATX 标题的文本：只在收尾的 `#` 前面有空白时才当作闭合记号剥掉。
+
+    `## 打包 ##` → `打包`；`## C#` → `C#`（CommonMark 的口径）。原来一律
+    rstrip("#")，`C#`、`F#`、`目标 #1` 这些标题在大纲和 `--section` 里
+    对不上号。
+    """
+    return _ATX_TAIL_RE.sub("", s.strip()).strip()
+
+
+def md_headings(text):
+    """md 里的 ATX 标题，返回 [{级, 文本, 行, 偏移}]。
+
+    跳两样东西，跟 first_heading 一个理由：开头的 frontmatter（里面的
+    `标题: xxx` 不是 markdown 标题），以及 fenced code——库里的施工类
+    md 常带 bash 片段，`# 装依赖` 那种注释行不是小节。
+
+    围栏按 CommonMark 认：开的那一道记住它有几个记号，**只有同一种记号、
+    不比它短的一道才关得上**。`````` ```` `````` 里面套一道 ```` ``` ````
+    是合法写法（外层要包住内层），照 3 个字符比的话第一道内层就把外层关了，
+    后面整份文件的标题跟着错位。
+
+    frontmatter 那一道在窗口内找不到收尾就当没有 frontmatter（start = 0）：
+    一份以 `---` 开头、没写收尾的 md，正文里的标题照样是标题。
+
+    行是 1-based；偏移是这一行行首在全文里的字符下标，搜索片段按它回找
+    「这一处命中落在哪一节里」。
+    """
+    out = []
+    if not text:
+        return out
+    lines = text.split("\n")
+    start = 0
+    if lines[0].strip() in ("---", "+++"):            # 开头的 frontmatter
+        mark = lines[0].strip()
+        for j in range(1, min(len(lines), 200)):
+            if lines[j].strip() == mark:
+                start = j + 1
+                break
+    fence = ""                                        # 开着的那一道围栏的原样记号
+    off = 0
+    for i, ln in enumerate(lines):
+        if i >= start:
+            s = ln.lstrip()
+            m = _FENCE_RE.match(s)
+            if m:
+                tok = m.group(1)
+                if not fence:
+                    fence = tok
+                elif tok[0] == fence[0] and len(tok) >= len(fence):
+                    fence = ""
+            elif not fence:
+                m = _ATX_RE.match(ln)
+                if m:
+                    out.append({"级": len(m.group(1)),
+                                "文本": _atx_text(m.group(2)),
+                                "行": i + 1, "偏移": off})
+        off += len(ln) + 1
+    return out
+
+
+def _head_at(heads, pos):
+    """`pos` 这个字符位置落在哪一个标题底下。没有就返回 None。"""
+    hit = None
+    for h in heads:
+        if h["偏移"] <= pos:
+            hit = h
+        else:
+            break
+    return hit
+
+
+def snippets(body, terms, per_term=2, radius=42, heads=None):
+    """正文里每个词取前几处命中，带前后文。返回 [{前,中,后,行,小节?}]。
+
+    `行` 是 1-based，按命中位置前面有几个换行算。`heads` 给了（md 才给，
+    见 md_headings）就再带一个 `小节`＝命中位置之前最近的那个标题；这一份没有
+    标题时省略这个键——写成空串的话，调用方分不清「不在任何小节里」和
+    「小节名是空的」。
+    """
     low = body.lower()
     out, taken = [], []
     for t in terms:
@@ -1417,18 +1599,427 @@ def snippets(body, terms, per_term=2, radius=42):
                 continue
             taken.append(i)
             a, b = max(0, i - radius), min(len(body), i + len(tl) + radius)
-            out.append({
+            one = {
                 "前": ("…" if a > 0 else "") + body[a:i].replace("\n", " "),
                 "中": body[i:i + len(tl)],
                 "后": body[i + len(tl):b].replace("\n", " ") + ("…" if b < len(body) else ""),
-            })
+                "行": body.count("\n", 0, i) + 1,
+            }
+            h = _head_at(heads, i) if heads else None
+            if h and h["文本"]:
+                one["小节"] = h["文本"]
+            out.append(one)
             pos = i + len(tl)
             n += 1
     return out[:4]
 
 
-def search(q, limit=60):
+# ── 标题、切片、库地图：门户和命令行共用的那一份 ─────────────
+#
+# 5.6 之前这几样各写了两遍（portal_server 一份、amnote_cli 一份）。地图的排版、
+# `--lines A-B` 的钳位、「一句话」的口径只要有一处改了、另一处忘了跟，
+# `amnote map` 在 AM·Note 开着和没开着的时候就会印出两份不一样的地图，
+# 而 Agent 正是靠这份地图导航的。所以**只留这一份**，两边都从这里取。
+
+TAG_HEAD_RE = re.compile(r"^\s*---.*?\n---\s*", re.S)
+
+
+def first_heading(text):
+    """md 正文里第一个 `# ` 标题。
+
+    要跳两样东西：开头的标签块（里面的 `标题: xxx` 不是 markdown 标题），
+    以及代码块——库里的施工类 md 常带 bash 片段，`# 装依赖` 那种注释行
+    会被整份当成标题。只看前 400 行，再往后才出现的一级标题不算文档标题。
+    """
+    if not text:
+        return ""
+    fence = False
+    for ln in TAG_HEAD_RE.sub("", text, count=1).splitlines()[:400]:
+        s = ln.strip()
+        if s.startswith("```") or s.startswith("~~~"):
+            fence = not fence
+            continue
+        if fence or not s.startswith("# "):
+            continue
+        return _atx_text(s[2:])
+    return ""
+
+
+def clean_title(fn):
+    """文件名主干：剥掉 _vN 和八位日期，下划线换空格。库里的命名规矩是
+    `名称_vN_YYYYMMDD.md`，那两截在列表里另有一格，标题里再写一遍是重复。"""
+    t = os.path.splitext(fn)[0]
+    t = re.sub(r"_v[\d.]+(?=_|$)", "", t, flags=re.I)
+    t = re.sub(r"_?20\d{6}(?=_|$)", "", t)
+    return t.replace("_", " ").strip(" ·-—") or os.path.splitext(fn)[0]
+
+
+def html_title(head):
+    """html 抽取正文把 <title> 放在第一行。太长就当正文，不当标题。"""
+    if not head:
+        return ""
+    line = (head or "").split("\n", 1)[0].strip()
+    if not line or len(line) > 80:
+        return ""
+    return line
+
+
+def list_preview(head, kind):
+    """列表和本地搜索用的短摘录。html 已经是抽过的纯文本。"""
+    s = head or ""
+    if kind == "md":
+        s = TAG_HEAD_RE.sub("", s, count=1)
+        s = re.sub(r"^#+\s*", "", s, flags=re.M)
+        s = re.sub(r"!\[[^\]]*\]\([^)]*\)", " ", s)
+    return re.sub(r"\s+", " ", s).strip()[:240]
+
+
+def lines_of(text):
+    """按 \\n 切行，末尾那个空串不算一行。
+
+    行号在三处要对得上：md_headings 的「行」、/__raw 的 lines=A-B、/__outline
+    的「行数」。所以只在这一处定义「第几行」是什么意思。
+    """
+    ls = (text or "").split("\n")
+    if ls and ls[-1] == "":
+        ls.pop()
+    return ls
+
+
+LINES_RE = re.compile(r"^\s*(\d+)\s*-\s*(\d+)\s*$")
+
+
+def md_section(text, want):
+    """标题文本 → (行起, 行止)，1-based 闭区间。找不到返回 None。
+
+    先精确匹配，再不分大小写前缀匹配，都取第一个。范围是这一行起、到下一个
+    **同级或更高级**标题的前一行为止——`## 打包` 底下的 `### 细节` 是它的一部分，
+    要一起给出来。
+    """
+    want = (want or "").strip()
+    if not want:
+        return None
+    heads = md_headings(text)
+    hit = None
+    for h in heads:
+        if h["文本"] == want:
+            hit = h
+            break
+    if hit is None:
+        low = want.lower()
+        for h in heads:
+            if h["文本"].lower().startswith(low):
+                hit = h
+                break
+    if hit is None:
+        return None
+    end = len(lines_of(text))
+    for h in heads:
+        if h["行"] > hit["行"] and h["级"] <= hit["级"]:
+            end = h["行"] - 1
+            break
+    return hit["行"], max(hit["行"], end)
+
+
+def text_slice(text, section="", lines=""):
+    """按 `lines=A-B` 或 `section=<标题>` 切一段。两个都给时 lines 说了算。
+
+    返回 ({正文, 行起, 行止, 行数}, 错误代号)。错误代号是 ASCII 短码，
+    调用方自己翻成话：`bad_lines`（A-B 写错了）、`out_of_range`（起点在
+    全文之后）、`no_section`（这份里没有这一节）。没出错就是空串。
+
+    A > B 一律**对调**，不各钳各的：`--lines 5-2` 明显是手打反了，
+    给第 2–5 行比给一行第 5 行更像用户要的。
+    """
+    ls = lines_of(text)
+    total = len(ls)
+    a, b = (1 if total else 0), total
+    body = text
+    spec = (lines or "").strip()
+    if spec:
+        m = LINES_RE.match(spec)
+        if not m:
+            return None, "bad_lines"
+        a, b = int(m.group(1)), int(m.group(2))
+        if a > b:
+            a, b = b, a
+        a = max(1, a)
+        if a > total:
+            return None, "out_of_range"
+        b = min(total, b)
+        body = "\n".join(ls[a - 1:b])
+    elif (section or "").strip():
+        span = md_section(text, section)
+        if span is None:
+            return None, "no_section"
+        a, b = span
+        body = "\n".join(ls[a - 1:b])
+    return {"正文": body, "行起": a, "行止": b, "行数": total}, ""
+
+
+# ── 库地图 ────────────────────────────────────────────────────
+#
+# 一份 Markdown 的「这个库里有什么」，给 Agent 当导航图：先看地图，再决定搜哪个
+# 词、读哪一篇的哪一节，不用把几百份笔记的正文全灌进上下文。
+#
+# **只吃索引里的行，不读磁盘。** 调用方把 (路径, 类型, mtime, 大小, 正文前 4000 字)
+# 交进来就行——门户从 fulltext.db 查，命令行离线时也从同一张表查。
+
+MAP_SKIP = ("库地图.md", "AGENTS.md")   # 地图自己和给 Agent 的说明书不进地图
+MAP_MAX = 20                            # 每个目录默认列几篇
+MAP_MAX_CAP = 200
+MAP_STEPS = (20, 10, 5, 3, 2)           # 超预算时依次减半重画
+MAP_DEPTH_CAP = 12
+MAP_BUDGET = 40_000                     # 字符预算。上下文是有价的，地图不能没边
+MAP_BUDGET_CAP = 200_000
+MAP_RECENT = 10
+MAP_ONE = 80                            # 「一句话」的字数上限
+MAP_GIST_MIN = 24                       # 「一句话」不到这么长就再往下接一段
+MAP_FILE = "库地图.md"
+MAP_NOTE = "<!-- 由 AM·Note 生成，可随时重新导出覆盖 -->"
+
+_MD_IMG = re.compile(r"!\[[^\]]*\]\([^)]*\)")
+_MD_LINK = re.compile(r"\[([^\]]*)\]\([^)]*\)")
+_MD_WIKI = re.compile(r"\[\[([^\[\]|\n]+)\]\]")
+_MD_LIST = re.compile(r"^\s*(?:[-+*]|\d+[.)])\s+")
+_CJK_TAIL = re.compile(r"[　-〿㐀-鿿＀-￯]$")
+
+
+def _demark(s):
+    """一行 markdown → 一行人话。链接只留文字，图片、强调记号、行首标记去掉。
+    下划线**不动**——库里的文件名满是 `_v2_20260901` 这种，去了反而认不出。"""
+    s = _MD_IMG.sub(" ", s or "")
+    s = _MD_LINK.sub(r"\1", s)
+    s = _MD_WIKI.sub(r"\1", s)
+    s = re.sub(r"^\s*(?:[>\-+*]\s+|\d+[.)]\s+)+", "", s)
+    s = re.sub(r"[*`~]+", "", s)
+    return re.sub(r"\s+", " ", s).strip()
+
+
+def _stamp(ts, fmt):
+    try:
+        return datetime.fromtimestamp(ts or 0).strftime(fmt)
+    except (ValueError, OSError, OverflowError):
+        return ""
+
+
+def _size_text(n):
+    n = n or 0
+    if n >= 1048576:
+        return "%.1fMB" % (n / 1048576.0)
+    return "%.1fKB" % (n / 1024.0)
+
+
+def _join_gist(a, b, listy=False):
+    """接上一行。
+
+    · 上一行来自清单（`- 牛奶`）就用顿号接：一份购物清单的三行拼成
+      `牛奶 面包 苹果` 看着像一句断了的话，`牛奶、面包、苹果` 才是它。
+    · 其余按语种：中日韩的行之间不加空格（源文里换行只是排版），
+      拉丁文之间要加——不然 `the` ＋ `quick` 会粘成 `thequick`。
+    """
+    if not a:
+        return b
+    if listy:
+        return a + "、" + b
+    if _CJK_TAIL.search(a) or _CJK_TAIL.match(b[:1]):
+        return a + b
+    return a + " " + b
+
+
+def _map_gist(head, kind, title):
+    """地图上那句「一句话」：正文第一段，去 markdown，≤ MAP_ONE 字。
+
+    「一段」是连着的几行——源文里的换行多半只是排版，`周六：整理书桌。` 和
+    `周日：去公园散步。` 是同一段话的两行，拆开看都认不出这是哪一篇。
+    空行才算段落到头；但**第一段太短（不到 MAP_GIST_MIN 字）就再接一段**：
+    「这是一份示例笔记。」自己站着等于没说。标题、fenced code、表格分隔行
+    都不算正文。
+    """
+    if kind not in ("md", "html"):
+        return ""
+    s = TAG_HEAD_RE.sub("", head or "", count=1) if kind == "md" else (head or "")
+    fence = False
+    got = ""
+    for ln in s.splitlines():
+        t = ln.strip()
+        if t.startswith("```") or t.startswith("~~~"):
+            fence = not fence
+            continue
+        if not t:
+            if len(got) >= MAP_GIST_MIN:         # 空行＝一段到头，够长就收工
+                break
+            continue
+        if fence:
+            continue
+        if kind == "md" and t.startswith("#"):
+            if len(got) >= MAP_GIST_MIN:         # 下一个小节的标题，别再往下接
+                break
+            continue
+        if set(t) <= set("|-:= "):               # 表格分隔行、setext 的下划线
+            continue
+        listy = bool(_MD_LIST.match(t))
+        t = _demark(t)
+        if not t or t == (title or "").strip():  # html 抽出来的第一行就是标题
+            continue
+        got = _join_gist(got, t, listy)
+        if len(got) >= MAP_ONE:
+            break
+    return got[:MAP_ONE] + ("…" if len(got) > MAP_ONE else "")
+
+
+def _map_line(d, key):
+    """一篇一行：`文件名 · 标题 · 一句话 · 改于日期 · 大小`。
+
+    没有 `# 标题` 的那些省掉标题段——那时候标题只能退回文件名，行首已经写过了。
+    附件用 `[pdf]` 代替标题和一句话：它们的正文是抽出来的文本层，没有「第一段」。
+    `key` 是所在的目录，文件名按它相对写（depth 折叠时会是 `二级/三级/某篇.md`）。
+    """
+    p = d["路径"]
+    name = p[len(key) + 1:] if key and p.startswith(key + "/") else p
+    bits = [name]
+    if d["类型"] in ("md", "html"):
+        if d["标题"]:
+            bits.append(d["标题"])
+        if d["一句话"]:
+            bits.append(d["一句话"])
+    else:
+        bits.append("[%s]" % (d["类型"] or "附件"))
+    bits.append(_stamp(d["时"], "%Y-%m-%d"))
+    bits.append(_size_text(d["大小"]))
+    return " · ".join(bits)
+
+
+def _map_render(docs, root_name, per, depth):
+    """画一版地图。返回 (markdown, 目录数)。"""
+    n_md = sum(1 for d in docs if d["类型"] == "md")
+    n_html = sum(1 for d in docs if d["类型"] == "html")
+    newest = max([d["时"] for d in docs] or [0])
+    out = ["# 笔记库地图 · " + root_name,
+           "生成于 %s · 共 %d 篇（md %d · html %d · 其他 %d）· 最近改动 %s"
+           % (datetime.now().strftime("%Y-%m-%d %H:%M"), len(docs), n_md, n_html,
+              len(docs) - n_md - n_html,
+              # 空库时 newest 是 0，别在这儿印一个 1970 年
+              (_stamp(newest, "%Y-%m-%d %H:%M") if newest else "") or "—"),
+           "用法：amnote search \"关键词\"；amnote read <路径> --section \"<标题>\"；"
+           "amnote map --dir <目录> 展开某个目录。"]
+
+    recent = sorted(docs, key=lambda d: -d["时"])[:MAP_RECENT]
+    if recent:
+        out += ["", "## 最近改动"]
+        for d in recent:
+            # 没有 `# 标题` 的（附件、没写标题的 md）退回文件名主干，
+            # 别在这一行里把 `.csv` 再念一遍
+            name = clean_title(d["路径"].rsplit("/", 1)[-1])
+            out.append("- %s · %s · %s" % (_stamp(d["时"], "%Y-%m-%d %H:%M"),
+                                           d["路径"], d["标题"] or name))
+
+    groups = {}
+    for d in docs:
+        segs = [s for s in d["路径"].split("/")[:-1] if s]
+        if depth:
+            segs = segs[:depth]                  # 更深的折进这一层，文件名带上剩下的路径
+        groups.setdefault("/".join(segs), []).append(d)
+
+    out += ["", "## 目录"]
+    roots = sorted(groups.pop("", []), key=lambda x: -x["时"])   # 根目录的先列
+    for d in roots[:per]:
+        out.append("- " + _map_line(d, ""))
+    if len(roots) > per:
+        out.append("- …及另外 %d 篇（amnote map --max %d）"
+                   % (len(roots) - per, MAP_MAX_CAP))
+    n_dirs = 0
+    for key in sorted(groups):
+        items = sorted(groups[key], key=lambda x: -x["时"])
+        n_dirs += 1
+        out.append("- %s/（%d 篇）" % (key, len(items)))
+        for d in items[:per]:
+            out.append("  - " + _map_line(d, key))
+        if len(items) > per:
+            out.append("  - …及另外 %d 篇（amnote map --dir %s）"
+                       % (len(items) - per, key))
+    return "\n".join(out) + "\n", n_dirs
+
+
+def map_rows(con):
+    """地图要的那几列。门户和命令行离线都查这一句，列的顺序也就统一了。"""
+    return con.execute("SELECT 路径,类型,mtime,大小,substr(正文,1,4000) "
+                       "FROM 文档").fetchall()
+
+
+def map_text(rows, root_name, sub="", per=MAP_MAX, depth=0, budget=MAP_BUDGET):
+    """库地图的响应（§1.6 的形状）。`rows` 是 map_rows() 那五列。
+
+    超预算就按 MAP_STEPS 把每个目录列的篇数减半重画；减到 2 篇还超，
+    整体截断——一份读不完的地图不如一份有边界的。
+    """
+    sub = (sub or "").strip().strip("/")
+    docs = []
+    for rel, kind, mt, size, head in rows:
+        if rel.rsplit("/", 1)[-1] in MAP_SKIP:
+            continue
+        if sub and not _in_dir(rel, sub):
+            continue
+        head = head or ""
+        title = (first_heading(head) if kind == "md"
+                 else html_title(head) if kind == "html" else "")
+        docs.append({"路径": rel, "类型": kind, "时": mt or 0, "大小": size or 0,
+                     "标题": title,
+                     "一句话": _map_gist(head, kind, title)})
+    text, n_dirs = _map_render(docs, root_name, per, depth)
+    if len(text) > budget:
+        for step in MAP_STEPS:
+            if step >= per:
+                continue
+            text, n_dirs = _map_render(docs, root_name, step, depth)
+            if len(text) <= budget:
+                break
+    cut = len(text) > budget
+    if cut:
+        text = text[:budget].rsplit("\n", 1)[0] + \
+            "\n…（超出预算，地图截断了。用 --dir 一个目录一个目录地看）\n"
+    return {"ok": True, "地图": text, "篇数": len(docs), "目录数": n_dirs,
+            "截断": cut, "生成时间": datetime.now().strftime("%Y-%m-%d %H:%M")}
+
+
+def _mtime_text(mt):
+    """索引里的 mtime → "%Y-%m-%d %H:%M:%S"。跟 /__meta 的「改于」一个格式。"""
+    try:
+        return datetime.fromtimestamp(mt or 0).strftime("%Y-%m-%d %H:%M:%S")
+    except (ValueError, OSError, OverflowError):
+        return ""
+
+
+def since_ts(since):
+    """`since` 参数 → 时间戳下限。空的返回 None（＝不筛）。
+
+    ≤ 4 位的纯数字是天数（`7`＝最近七天）；再长的按日期读，`20260901` 和
+    `2026-09-01` 都认。**读不懂就抛 ValueError**：`since=20260901` 原来会被
+    当成「最近两千万天」，等于没筛，调用方和用户都看不出参数打错了。
+    """
+    s = str(since if since is not None else "").strip()
+    if not s:
+        return None
+    if s.isdigit() and len(s) <= 4:
+        return time.time() - int(s) * 86400
+    for fmt in ("%Y-%m-%d", "%Y%m%d"):
+        try:
+            return datetime.strptime(s, fmt).timestamp()
+        except ValueError:
+            pass
+    raise ValueError("since: %s" % s[:40])
+
+
+def _in_dir(rel, sub):
+    return rel == sub or rel.startswith(sub + "/")
+
+
+def search(q, limit=60, offset=0, subdir="", types=None, since=None, sort="score"):
     """正文 ＋ 文件名子串搜索。多个词（空格隔开）是 AND。
+
+    5.6 加了筛选和翻页（`offset` / `subdir` / `types` / `since` / `sort`），
+    每条多给 改于 / 分数 / 大小，片段多给 行 / 小节。**默认参数下的结果和排序
+    跟 5.5 逐条一样**——门户只传 q 和 n，那条路不能变。
 
     v21 修平了两处，都是「搜不到自己知道存在的那份文件」这一类问题：
 
@@ -1442,55 +2033,87 @@ def search(q, limit=60):
       第 4 次的差别，没有 4 次和 1 次那么大）、文件名／目录命中加分、
       再加一点时间新鲜度。
 
-    返回 [{路径, 类型, 命中数, 备注, 片段, 档}]，跟 v20 比只多一个 档 字段。
-    命中数 现在是「正文命中 ＋ 文件名命中」：只靠文件名中的那些，
+    返回 [{路径, 类型, 命中数, 备注, 片段, 档, 改于, 分数, 大小}]。
+    命中数 是「正文命中 ＋ 文件名命中」：只靠文件名中的那些，
     报 0 次命中会像是坏了。
+
+    **分数和排序不是同一个东西。** 第一档（文件名全中）内部照旧按改动时间排——
+    文件名打全了要的就是那一份；但把 mtime 那个十位数当「分数」发出去没有意义，
+    所以 分数 一律是那条加权分，第一档另加 10 分，档次在数上也看得出来。
     """
     terms = [t for t in (q or "").split() if t]
+    off = max(0, int(offset or 0))
+    sub = (subdir or "").strip().strip("/")
+    kinds = sorted(set(k.strip().lower() for k in (types or []) if str(k).strip()))
+    floor = since_ts(since)                  # 读不懂会抛 ValueError，调用方接住
     if not terms:
-        return {"ok": True, "状态": index_status(), "结果": []}
+        return {"ok": True, "状态": index_status(), "结果": [],
+                "总命中": 0, "偏移": off}
     con = connect()
     st = index_status(con)
-    where = " AND ".join(
-        ["(正文 LIKE ? ESCAPE '\\' OR 路径 LIKE ? ESCAPE '\\')"] * len(terms))
+    # 筛选条件全部下沉到 SQL。原来是把命中的**每一行连正文**取回来再在
+    # Python 里丢掉，`type=md&since=7` 这种查询等于白读几十 MB 正文
+    clauses = ["(正文 LIKE ? ESCAPE '\\' OR 路径 LIKE ? ESCAPE '\\')"] * len(terms)
     args = []
     for t in terms:
         pat = "%" + _like_esc(t) + "%"
         args += [pat, pat]
+    if floor is not None:
+        clauses.append("mtime >= ?")
+        args.append(floor)
+    if kinds:
+        clauses.append("lower(类型) IN (%s)" % ",".join("?" * len(kinds)))
+        args += kinds
+    if sub:
+        # 前缀比对用 substr 不用 LIKE：SQLite 的 LIKE 对 ASCII 是**不分大小写**的，
+        # 换成 LIKE 会让 `dir=notes` 连 `Notes/` 一起捞进来——跟原来那句
+        # `rel.startswith(sub + "/")` 不是一个意思
+        clauses.append("(路径 = ? OR substr(路径, 1, ?) = ?)")
+        args += [sub, len(sub) + 1, sub + "/"]
+    where = " AND ".join(clauses)
     rows = con.execute(
-        f"SELECT 路径,类型,正文,备注,mtime FROM 文档 WHERE {where}", args).fetchall()
+        f"SELECT 路径,类型,正文,备注,mtime,大小 FROM 文档 WHERE {where}", args).fetchall()
     con.close()
 
     lows = [t.lower() for t in terms]
     now = time.time()
     out = []
-    for rel, kind, body, note, mt in rows:
+    for rel, kind, body, note, mt, size in rows:
         body = body or ""
         low = body.lower()
         name = rel.rsplit("/", 1)[-1].lower()
         folder = rel.lower().rsplit("/", 1)[0] if "/" in rel else ""
         n_body = sum(low.count(t) for t in lows)
         n_name = sum(name.count(t) for t in lows)
+        # 一个月内的新鲜度接近满分，半年前掉到七分之一
+        fresh = 1.0 / (1.0 + max(0.0, now - (mt or 0)) / (30 * 86400))
+        score = (math.log1p(n_body)
+                 + (2.0 if n_name else 0.0)
+                 + (0.6 if any(t in folder for t in lows) else 0.0)
+                 + 1.2 * fresh)
         if all(t in name for t in lows):
-            tier, score = 1, (mt or 0)           # 第一档就按改动时间排
+            tier, rank, score = 1, (mt or 0), score + 10.0   # 第一档按改动时间排
         else:
-            # 一个月内的新鲜度接近满分，半年前掉到七分之一
-            fresh = 1.0 / (1.0 + max(0.0, now - (mt or 0)) / (30 * 86400))
-            tier = 2
-            score = (math.log1p(n_body)
-                     + (2.0 if n_name else 0.0)
-                     + (0.6 if any(t in folder for t in lows) else 0.0)
-                     + 1.2 * fresh)
+            tier, rank = 2, score
         out.append({"路径": rel, "类型": kind, "命中数": n_body + n_name,
-                    "备注": note, "档": tier, "_分": score, "_正文": body})
-    out.sort(key=lambda x: (x["档"], -x["_分"]))
+                    "备注": note, "档": tier, "改于": _mtime_text(mt),
+                    "分数": round(score, 2), "大小": size or 0,
+                    "_排": rank, "_时": mt or 0, "_正文": body})
+    if str(sort or "").lower() == "mtime":
+        out.sort(key=lambda x: -x["_时"])
+    else:
+        out.sort(key=lambda x: (x["档"], -x["_排"]))
+    total = len(out)
     # 片段是整份正文扫一遍，只给要返回的那几条算。n 上限从 200 提到 500 之后，
     # 给全部命中都算一遍片段是白扫几百 MB
-    out = out[:limit]
+    out = out[off:off + limit]
     for h in out:
-        h["片段"] = snippets(h.pop("_正文"), terms)
-        h.pop("_分", None)
-    return {"ok": True, "状态": st, "结果": out, "总命中": len(rows)}
+        body = h.pop("_正文")
+        h["片段"] = snippets(body, terms,
+                             heads=md_headings(body) if h["类型"] == "md" else None)
+        h.pop("_排", None)
+        h.pop("_时", None)
+    return {"ok": True, "状态": st, "结果": out, "总命中": total, "偏移": off}
 
 
 def index_status(con=None):

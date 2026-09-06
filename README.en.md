@@ -81,7 +81,8 @@ AM·Note doesn't move anything. Pick a folder and you get a window as light as a
 
 **Settings**
 
-- ⌘, opens it, or click the ⚙ in the top right. Four panes: Appearance, Vault, Advanced, About.
+- ⌘, opens it, or click the ⚙ in the top right. Six panes: Profile, Appearance, Vault, Agent, Advanced, About.
+- Profile: give yourself a name and a picture, and the Start page greets you by time of day (“Good morning, Lulu”). It never leaves this Mac.
 - Appearance: **interface language** (System / 简体中文 / 繁體中文（香港） / English — the menus and dialogs of the app switch with it), theme (System / Light / Dark), reading font, text size 15–21, line spacing Compact 1.6 / Comfortable 1.8 / Loose 2.0, column width Narrow 620 / Regular 690 / Wide 820, and "Show the outline when a note opens". Switch to dark and the title bar goes with it — window and page are one piece.
 - **Five reading fonts**, each previewed on its own card: System, Serif, Monospace, and new in 5.5 **PingFang HK** (with six weights, from Ultralight to Semibold) and **PMingLiU**. If PMingLiU isn't installed, AM·Note borrows it from a copy of Microsoft Office you already have; without Office it falls back to Songti TC.
 - Vault: which folder you're using, open it in Finder or change it; how many notes were indexed and when it last ran, plus a button to run it again; where quick notes go; which folders to leave out.
@@ -170,13 +171,62 @@ Delete `.amnote/` and every note is still there; the next launch just scans agai
 
 - Quick notes go into `随手记/` ("quick notes") inside the vault. The folder name is editable in Settings → Vault.
 - Images pasted into the text land in `_图/` ("images") next to that .md file.
-- The service's port and token live in `~/Library/Application Support/AMNote/` as `portal.port` and `portal.token` (the token file is 0600).
+- Two more files can show up in the vault root, both of them things you click for in Settings → Agent — otherwise they don't exist: `AGENTS.md` (instructions for an agent running inside this folder) and `库地图.md` ("vault map", an exported map; re-exporting overwrites the whole file, so don't hand-write in it).
+- The service's port and token live in `~/Library/Application Support/AMNote/` as `portal.port` and `portal.token` (the token file is 0600). The same folder holds `profile.json` and `avatar.img` — your name and picture, on this Mac only.
 
 ## A local API for agents and scripts
 
-While the app is running, anything on this Mac can search the vault directly. The service listens on `127.0.0.1` only, picks a port between 8870 and 8900 by default, and **never emits CORS headers** — a web page in a browser cannot reach it.
+While AM·Note is open, AI assistants on this Mac can search this vault and read and write notes in it. Everything stays on this Mac — nothing goes online.
 
-Read routes need no token. Write routes (every POST) need `X-AMN-Token` in the header.
+**Three steps**
+
+1. Settings (⌘,) → Agent.
+2. On the Claude Code row, click "Install Skill". For Codex or anything else, click "Copy MCP Command" or "Copy MCP Config" and paste it into that tool's own config.
+3. Back in Claude Code, just say "find me that release checklist from my notes".
+
+The skill teaches it an order: read the **vault map** to see what folders exist, then **search** to narrow down, then read **just that one section** — instead of pouring the whole vault into its context.
+
+For an agent that runs inside the vault folder (Codex, Cursor…), "Create AGENTS.md" puts the same rules where it will read them on startup. "Export to Vault" writes the map out as `库地图.md` ("vault map"), so it's readable even when AM·Note isn't running.
+
+**The `amnote` command line**
+
+Settings → Agent → Command Line → "Install" symlinks `~/.local/bin/amnote` to `AM·Note.app/Contents/Resources/amnote` inside the app. You don't have to install it — calling that absolute path works just as well.
+
+```bash
+amnote map                                    # what folders exist, what each note is about
+amnote search "报销" --dir 工作手记 --since 7   # spaces = AND; also --type md,pdf
+amnote outline 工作手记/报销.md                # the headings in one note
+amnote read 工作手记/报销.md --section "发票"   # just that section
+amnote recent                                 # what changed lately
+amnote new "会议纪要 0906" < body.md           # create one, in the quick-notes folder by default
+amnote save 工作手记/报销.md < body.md          # overwrite the whole file; read it first (it remembers the version you saw), or add --based/--force
+```
+
+Paths are always **relative to the vault**. Every command takes `--json` for the raw JSON, and `--agent NAME` to sign the change.
+
+When AM·Note isn't running, the read-only commands answer from the last index in `.amnote/` (with a note on stderr). Writes need the app open.
+
+Exit codes: 0 success · 1 usage error (including saving a note you haven't read) · 2 AM·Note isn't running · 3 conflict (the file changed elsewhere since you read it — `--force` overwrites) · 4 the service refused.
+
+**MCP**
+
+```bash
+claude mcp add amnote -- /path/to/amnote mcp
+```
+
+In Codex's `~/.codex/config.toml`:
+
+```toml
+[mcp_servers.amnote]
+command = "/path/to/amnote"
+args = ["mcp"]
+```
+
+Eight tools: `search_notes`, `note_map`, `read_note`, `note_outline`, `recent_notes`, `note_links`, `create_note`, `save_note`. The two "Copy" buttons in Settings → Agent already have the path filled in.
+
+**Straight HTTP**
+
+For a script, or any other language, call the routes directly. The service listens on `127.0.0.1` only, picks a port between 8870 and 8900 by default, and **never emits CORS headers** — a web page in a browser cannot reach it. Read routes need no token; write routes (every POST) need `X-AMN-Token` in the header.
 
 The JSON field names are Chinese — that's the wire format, so pass them through as they are.
 
@@ -186,23 +236,42 @@ P=$(cat "$D/portal.port")
 T=$(cat "$D/portal.token")
 
 # Check the service is alive first. Anything but 200 means don't retry —
-# search the folder directly instead.
+# call `amnote` instead, which falls back to the last index.
 curl -s -m 3 -o /dev/null -w '%{http_code}\n' "http://127.0.0.1:$P/__status"
 
+# The vault map: one Markdown page of "what's in here". Start with this.
+# dir= draws one folder, max= notes per folder (default 20), depth= folder depth
+curl -sG "http://127.0.0.1:$P/__map" --data-urlencode "dir=工作手记"
+
 # Search the whole vault. Non-ASCII terms need --data-urlencode;
-# n defaults to 200, with a ceiling of 500.
+# n defaults to 200, with a ceiling of 500. Filters: dir=folder, type=md,pdf,
+# since=7 or since=2026-09-01, sort=mtime, offset=20
 curl -sG "http://127.0.0.1:$P/__search" \
-     --data-urlencode "q=检查表" --data-urlencode "n=10"
+     --data-urlencode "q=检查表" --data-urlencode "n=10" \
+     --data-urlencode "dir=工作手记" --data-urlencode "since=7"
+
+# The headings in one note: level, text and line number for each
+curl -sG "http://127.0.0.1:$P/__outline" --data-urlencode "path=工作手记/发布检查表.md"
+
+# Read one .md as source. Whole file, or section=<heading> for one section,
+# or lines=5-40 for a line range
+curl -sG "http://127.0.0.1:$P/__raw" \
+     --data-urlencode "path=工作手记/发布检查表.md" --data-urlencode "section=打包"
+
+# What this note points to, and what points at it
+curl -sG "http://127.0.0.1:$P/__links" --data-urlencode "path=工作手记/发布检查表.md"
+
+# What changed lately. days defaults to 7 (max 365), n to 50 (max 500)
+curl -sG "http://127.0.0.1:$P/__recent" --data-urlencode "days=7"
 
 # What's in the vault: the folder tree, every md/html, and quick notes
 curl -s "http://127.0.0.1:$P/__tree"
 
-# Read one .md as source
-curl -sG "http://127.0.0.1:$P/__raw" --data-urlencode "path=工作手记/发布检查表.md"
-
 # Write it back. Needs the token. Put the "改于" you last read into "基于";
 # if someone else changed the file meanwhile, the write is refused.
-curl -s -X POST "http://127.0.0.1:$P/__save" -H "X-AMN-Token: $T" \
+# Send a name and the card will show who made the change.
+curl -s -X POST "http://127.0.0.1:$P/__save" \
+     -H "X-AMN-Token: $T" -H "X-AMN-Agent: My Script" \
      --data-binary '{"路径":"工作手记/发布检查表.md","正文":"# 标题\n\n正文\n","基于":"2026-09-05 09:42:00"}'
 
 # Move a file to the system Trash. It only moves, never edits;
@@ -215,6 +284,10 @@ curl -s -X POST "http://127.0.0.1:$P/__trash" -H "X-AMN-Token: $T" \
 curl -s -X POST "http://127.0.0.1:$P/__untrash" -H "X-AMN-Token: $T" \
      --data-binary '{"路径":"工作手记/建错了.md"}'
 ```
+
+Every `/__search` hit carries `路径`, `标题`, `类型`, `改于`, `大小` and `分数`, with a few `片段` (excerpts) under it. Each excerpt has a `行` (line number) and a `小节` (the heading it falls under) — follow the `小节` to `/__raw?section=` instead of reading the whole file back.
+
+`X-AMN-Agent` works on every POST: the change log records it as "来源 Agent · 代理 <your name>", and the card picks up a `✦ <your name>` line.
 
 `/__save` is the only route that changes a file's contents. It writes `.md` files inside the vault only, and backs one up before writing. The other two, `/__trash` and `/__untrash`, just move files in and out of the system Trash byte for byte. Backup folders, cache folders and hidden folders are all off limits.
 
@@ -229,6 +302,10 @@ curl -s -X POST "http://127.0.0.1:$P/__untrash" -H "X-AMN-Token: $T" \
 **Can I keep several vaults?** One vault per window. Settings → Vault → "Change Folder…" switches over; each folder keeps its own `.amnote/`, so switching back resumes where you were.
 
 **Will it fight with Obsidian or another editor?** It won't overwrite. When you save, if the file was changed elsewhere, a bar appears at the top and you choose "Keep Mine" or "Use Theirs".
+
+**How do I know when an agent edited my notes?** The card picks up a `✦ Claude Code` line — which assistant on this Mac last wrote that note, kept for seven days. For the details, read `.amnote/changes.jsonl`; every entry records its `来源` (source) and `代理` (agent).
+
+**Where do my name and picture live?** In `~/Library/Application Support/AMNote/`, as `profile.json` and `avatar.img`. They belong to this Mac, not to the vault: nothing is uploaded, and switching vaults doesn't reset them. To stop being greeted, turn off "Greet me on the start page" in Settings → Profile.
 
 **Does it need the internet?** No. Only checking for updates reaches out to GitHub.
 

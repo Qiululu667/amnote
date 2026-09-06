@@ -25,6 +25,16 @@ v21（界面与编辑改版，A 路）改了五处，其余一律照旧：
 v22（删除入口）新增两条搬文件的路由，见下方「写库内文件的路由」那一段：
     /__trash / /__untrash —— 移进废纸篓 ／ 撤销。**只搬位置，不改内容。**
 
+v24（5.6，个人资料 ＋ Agent 协作）加了三摊，都在下面各自的段落里：
+    ① 个人资料 —— GET/POST /__profile、GET /__avatar。落在 --support-dir
+       指的目录里（默认 ~/Library/Application Support/AMNote），**不进库**。
+    ② 给 Agent 用的读接口 —— /__map（库地图）、/__outline（一份的大纲）、
+       /__links（出链反链）、/__recent（最近改了什么），外加 /__search 的
+       筛选参数和 /__raw 的 section= / lines=。全是只读、免口令的 GET。
+    ③ 署名与接入 —— 所有 POST 认 X-AMN-Agent 头，流水上记「来源: Agent」
+       ＋「代理: 名字」；/__agent_setup 一条路装命令行工具、Claude Code 的
+       skill、库根的 AGENTS.md 和导出的库地图。
+
 ── 门户和 Agent 共用 ───────────────────────────────
     /__tree      目录树 ＋ 全部 md/html 文档 ＋ 随手记。**数据源是
                  .amnote/fulltext.db 的「文档」表**（v20 前是 scan_tags.py 生成的
@@ -102,6 +112,7 @@ import json
 import os
 import re
 import secrets
+import shlex
 import shutil
 import struct
 import subprocess
@@ -109,7 +120,7 @@ import sys
 import threading
 import time
 import urllib.parse
-from collections import OrderedDict
+from collections import OrderedDict, deque
 from datetime import datetime
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
@@ -226,6 +237,62 @@ def token_ok(got: str) -> bool:
     return hmac.compare_digest(got or "", TOKEN)
 
 
+# ── 两个目录：本机的资料目录、写用户级文件时的家目录 ──────────
+#
+# **个人资料不进库。** 名字、问候开关、头像放在 macOS 给每个 app 的那个位置
+# （~/Library/Application Support/AMNote），换一个笔记库不用重设，库跟着网盘
+# 同步也不会把头像带到别人机器上。`--support-dir` / `AMNOTE_SUPPORT_DIR`
+# 能把它整个挪走——测试时必须挪走，不然会写进用户真正在用的那一份。
+# 壳启动服务时传的就是默认值。
+#
+# AMNOTE_HOME 只给 /__agent_setup 用：装命令行工具和 Claude Code 的 skill 要往
+# ~/.local/bin 和 ~/.claude/skills 里写，测试时把「家」指到 scratch 目录。
+
+SUPPORT_DIR = os.path.abspath(os.path.expanduser(
+    os.environ.get("AMNOTE_SUPPORT_DIR")
+    or "~/Library/Application Support/AMNote"))
+HOME_DIR = os.path.abspath(os.path.expanduser(
+    os.environ.get("AMNOTE_HOME") or "~"))
+
+# 这一趟请求是谁发的（X-AMN-Agent 头）。每条连接一个线程，所以挂 threading.local；
+# 没有这个头就是空串＝用户自己在门户里点的。
+_req = threading.local()
+
+_CTRL_RE = re.compile(r"[\x00-\x1f\x7f]")
+NAME_MAX = 40
+
+
+def clean_name(s, limit=NAME_MAX):
+    """人给的名字（昵称、Agent 署名）洗一遍：去控制字符、去两头空白、截断。
+
+    控制字符要去掉——它们会原样落进 profile.json 和 changes.jsonl，
+    终端里打出来能改光标位置、清屏，甚至骗过一行日志。
+    """
+    return _CTRL_RE.sub("", str(s if s is not None else "")).strip()[:limit].strip()
+
+
+def header_name(raw):
+    """HTTP 头里那个名字。**先把 latin-1 还原成 UTF-8 再截断。**
+
+    http.client 按 latin-1 解请求头（RFC 7230 就是这么规定的），发送方要送
+    「露露的助手」只能把 UTF-8 的字节原样塞进去；这边拿到的是一串
+    `Ã¦Â¼Â...`，直接洗一遍就落进流水里，用户看到的是一行乱码。
+    还原不了（本来就是 ASCII、或者对方发的不是 UTF-8）就用原样那份。
+
+    **截断排在解码之后**：先截 40 会把一个多字节字符腰斩，解码整串就废了。
+    """
+    s = str(raw if raw is not None else "")
+    try:
+        s = s.encode("latin-1").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        pass
+    return clean_name(s)
+
+
+def cur_agent() -> str:
+    return getattr(_req, "agent", "") or ""
+
+
 _lock = threading.Lock()
 _cache = {"fp": None, "at": 0.0}
 _state = {"port": 0, "started": time.time()}
@@ -273,37 +340,13 @@ def cached_fingerprint(max_age=2.0):
 # 不动，只是门户不再读它）。推导顺序：md 取正文第一个 `# ` 标题；html 取抽取
 # 正文的第一行（_extract_html 把 <title> 放在最前）；都取不到再退回文件名主干。
 
-TAG_HEAD_RE = re.compile(r"^\s*---.*?\n---\s*", re.S)
-
-
-def first_heading(text: str) -> str:
-    """md 正文里第一个 `# ` 标题。
-
-    要跳两样东西：开头的标签块（里面的 `标题: xxx` 不是 markdown 标题），
-    以及代码块——库里的施工类 md 常带 bash 片段，`# 装依赖` 那种注释行
-    会被整份当成标题。只看前 400 行，再往后才出现的一级标题不算文档标题。
-    """
-    if not text:
-        return ""
-    fence = False
-    for ln in TAG_HEAD_RE.sub("", text, count=1).splitlines()[:400]:
-        s = ln.strip()
-        if s.startswith("```") or s.startswith("~~~"):
-            fence = not fence
-            continue
-        if fence or not s.startswith("# "):
-            continue
-        return s[2:].strip().strip("#").strip()
-    return ""
-
-
-def clean_title(fn: str) -> str:
-    """文件名主干：剥掉 _vN 和八位日期，下划线换空格。库里的命名规矩是
-    `名称_vN_YYYYMMDD.md`，那两截在列表里另有一格，标题里再写一遍是重复。"""
-    t = os.path.splitext(fn)[0]
-    t = re.sub(r"_v[\d.]+(?=_|$)", "", t, flags=re.I)
-    t = re.sub(r"_?20\d{6}(?=_|$)", "", t)
-    return t.replace("_", " ").strip(" ·-—") or os.path.splitext(fn)[0]
+# 标签块、`# 标题`、文件名主干、html 的 <title>：这四样搬进 fulltext 了
+# （命令行离线画地图要用同一份口径，见 fulltext 的「标题、切片、库地图」那一段）。
+# 这里留四个别名，本文件里的用法一个字不改。
+TAG_HEAD_RE = fulltext.TAG_HEAD_RE
+first_heading = fulltext.first_heading
+clean_title = fulltext.clean_title
+html_title = fulltext.html_title
 
 
 def disambiguate(title: str, rel: str, generic) -> str:
@@ -318,16 +361,6 @@ def disambiguate(title: str, rel: str, generic) -> str:
     return title
 
 
-def html_title(head: str) -> str:
-    """html 抽取正文把 <title> 放在第一行。太长就当正文，不当标题。"""
-    if not head:
-        return ""
-    line = head.split("\n", 1)[0].strip()
-    if not line or len(line) > 80:
-        return ""
-    return line
-
-
 def title_of(rel: str, head: str, kind: str, generic) -> str:
     if kind == "md":
         t = first_heading(head)
@@ -338,14 +371,7 @@ def title_of(rel: str, head: str, kind: str, generic) -> str:
     return disambiguate(t or clean_title(os.path.basename(rel)), rel, generic)
 
 
-def list_preview(head: str, kind: str) -> str:
-    """列表和本地搜索用的短摘录。html 已经是抽过的纯文本。"""
-    s = head or ""
-    if kind == "md":
-        s = TAG_HEAD_RE.sub("", s, count=1)
-        s = re.sub(r"^#+\s*", "", s, flags=re.M)
-        s = re.sub(r"!\[[^\]]*\]\([^)]*\)", " ", s)
-    return re.sub(r"\s+", " ", s).strip()[:240]
+list_preview = fulltext.list_preview   # 命令行离线列树用的也是它，见 fulltext
 
 
 def preview(raw: str, n=200) -> str:
@@ -429,8 +455,25 @@ def open_external(req: dict):
     return {"ok": True, "路径": full}
 
 
-def read_raw(rel: str):
-    """编辑器要的是源码，原样给。渲染那条路走静态服务，不走这里。"""
+# 「第几行」、按标题切一节、按行号切一段：都在 fulltext 里（命令行离线读
+# 走的是同一份，见 fulltext.text_slice）。这里只留别名和一张错误码 → 话的表。
+_lines_of = fulltext.lines_of
+
+SLICE_ERR = {"bad_lines": "行号要写成 A-B，都从 1 数起",
+             "out_of_range": "行号超出这份的范围",
+             "no_section": "找不到这个小节"}
+
+
+def read_raw(rel: str, section: str = "", lines: str = ""):
+    """编辑器要的是源码，原样给。渲染那条路走静态服务，不走这里。
+
+    5.6 多两个参数，都是给 Agent 用的——一份两千行的 md，为了看其中一节
+    把整份灌进上下文是浪费：
+        section=<标题文本>   只要那一节（见 fulltext.md_section）
+        lines=A-B           只要那几行，1-based 闭区间
+    两个都给时 lines 说了算。门户自己只传 path，走的还是「整份原样给」那条。
+    「字节」照旧是整份文件的大小，不是这一段的——前端拿它认「这份能不能编辑」。
+    """
     full, err = _view_full(rel)
     if err:
         return _bad(err)
@@ -441,8 +484,12 @@ def read_raw(rel: str):
             text = f.read()
     except (OSError, UnicodeDecodeError) as e:
         return _bad(T("读不了：{e}", e=e))
-    return {"ok": True, "路径": rel, "正文": text,
+    cut, err = fulltext.text_slice(text, section=section, lines=lines)
+    if err:
+        return _bad(T(SLICE_ERR[err]))
+    return {"ok": True, "路径": rel, "正文": cut["正文"],
             "字节": os.path.getsize(full),
+            "行起": cut["行起"], "行止": cut["行止"], "行数": cut["行数"],
             "改于": datetime.fromtimestamp(
                 os.path.getmtime(full)).strftime("%Y-%m-%d %H:%M:%S")}
 
@@ -601,7 +648,10 @@ def new_md(req: dict):
         return _bad(T("同名文件刚被建走了，换个标题"))
     except OSError as e:
         return _bad(T("写不进去：{e}", e=e))
-    return {"ok": True, "路径": rel, "字节": len(body.encode("utf-8"))}
+    # 「改于」跟 save_md 一个格式：命令行建完这一份就把它记进读表，
+    # 紧接着的一次 save 才有「基于」可填，不用先白跑一趟 /__meta
+    return {"ok": True, "路径": rel, "字节": len(body.encode("utf-8")),
+            "改于": _mtime_str(full)}
 
 
 def save_img(req: dict):
@@ -674,7 +724,7 @@ def _rename_md(rel: str, new_rel: str):
         # 旧名字在下一趟同步里是一条 removed。不记这一笔就落成「删除／外部」——
         # 随手记写出 H1 自动改名，流水上会冒出一行「不是我干的」。
         # 改名不动 mtime，所以走搬动表（note_portal_write 那张按 mtime 认领，对不上）。
-        fulltext.note_portal_move(rel)
+        fulltext.note_portal_move(rel, agent=cur_agent())
         os.rename(src, dest)
     except OSError as e:
         fulltext.take_portal_move(rel)            # 没改成，把刚记的那笔收回来
@@ -943,7 +993,7 @@ def trash(req: dict):
     dest = _trash_dest(os.path.basename(full))
     try:
         # 记账赶在文件消失之前，同 save_md：晚一步就会被同步判成「外部删除」
-        fulltext.note_portal_move(real_rel)
+        fulltext.note_portal_move(real_rel, agent=cur_agent())
         _move_file(full, dest)
     except OSError as e:
         fulltext.take_portal_move(real_rel)       # 没挪成，把刚记的那笔收回来
@@ -989,7 +1039,7 @@ def untrash(req: dict):
         return _bad(T("原来那个目录不在了"))
     try:
         # 记账赶在文件出现之前，同 save_md：晚一步就会被同步判成「外部新增」
-        fulltext.note_portal_move(real_rel)
+        fulltext.note_portal_move(real_rel, agent=cur_agent())
         _move_file(src, full)
     except OSError as e:
         fulltext.take_portal_move(real_rel)       # 没挪成，把刚记的那笔收回来
@@ -1061,13 +1111,235 @@ def write_config(req: dict):
     return {"ok": True, "问题": problems}
 
 
+# ── 个人资料：名字、问候开关、头像 ─────────────────────────────
+#
+# 两个文件，都在 SUPPORT_DIR 里（见那一段注释）：
+#   profile.json   {"名字", "问候", "头像类型", "更新于"}；文件不在＝全默认
+#   avatar.img     头像的原始字节，后缀记在「头像类型」里（png/jpg/gif/webp）
+#
+# 读免口令、写要口令：页面上的 <img src="/__avatar?v=…"> 带不了自定义头，
+# 跟库内图片、字体那两条一个道理。**一个字节都不出本机**：这里没有任何上传。
+
+PROFILE_JSON = "profile.json"
+AVATAR_FILE = "avatar.img"
+AVATAR_MAX = 1_000_000                # 页面上传前会裁成 256×256 的 png，撑死几十 KB
+AVATAR_CTYPE = {"png": "image/png", "jpg": "image/jpeg",
+                "gif": "image/gif", "webp": "image/webp"}
+
+
+def profile_path():
+    return os.path.join(SUPPORT_DIR, PROFILE_JSON)
+
+
+def avatar_path():
+    return os.path.join(SUPPORT_DIR, AVATAR_FILE)
+
+
+def default_name() -> str:
+    """这台 Mac 的账户全名。「系统设置 → 用户与群组」里那个名字。
+
+    pw_gecos 在 macOS 上就是全名（有些系统里是 "全名,办公室,电话,…"），
+    取逗号前那一段。取不到就退回短用户名。
+    """
+    try:
+        import pwd
+        full = (pwd.getpwuid(os.getuid()).pw_gecos or "").split(",")[0].strip()
+        if full:
+            return full
+    except Exception:
+        pass
+    try:
+        import getpass
+        return getpass.getuser()
+    except Exception:
+        return ""
+
+
+def profile_read() -> dict:
+    """profile.json 的内容。不在、读不了、不是对象一律当全默认（空 dict）。"""
+    try:
+        with open(profile_path(), encoding="utf-8") as f:
+            d = json.load(f)
+    except (OSError, ValueError):
+        return {}
+    return d if isinstance(d, dict) else {}
+
+
+def profile_view():
+    """GET /__profile 的形状。POST 成功之后也回这一份。
+
+    「头像版本」＝avatar.img 的 mtime 取整，页面拿它当 /__avatar?v= 的破缓存参数：
+    响应是 no-store，但换了头像之后 <img> 的 src 也得变，不然浏览器内存里那张
+    还在。没有头像就是 0。
+    """
+    p = profile_read()
+    kind = p.get("头像类型")
+    kind = kind if (isinstance(kind, str) and kind in AVATAR_CTYPE) else ""
+    ver = 0
+    if kind:
+        try:
+            ver = int(os.path.getmtime(avatar_path()))
+        except OSError:
+            kind = ""                            # 记着有、盘上没了 → 当没有
+    return {"ok": True, "名字": clean_name(p.get("名字")),
+            "默认名字": default_name(),
+            "头像": bool(kind), "头像版本": ver,
+            "问候": bool(p.get("问候", True)),
+            "更新于": str(p.get("更新于") or "")}
+
+
+def display_name() -> str:
+    """界面上显示的那个名字：自己设的优先，没设就用这台 Mac 的账户名。"""
+    p = profile_view()
+    return p["名字"] or p["默认名字"]
+
+
+def _tmp_path(path):
+    """同目录里一个只属于这条线程的临时名。
+
+    **不能是固定的 `path + ".tmp"`**：门户有几十个 handler 线程，两个人同时
+    换头像（或者一边存资料一边存头像）会踩同一个文件，后写的那个 replace
+    的是别人写了一半的内容。
+    """
+    return "%s.%d.%d.tmp" % (path, os.getpid(), threading.get_ident())
+
+
+def _write_json(path, data):
+    """先写临时文件再 os.replace。中途断电不会留半份读不出来的 json。"""
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    tmp = _tmp_path(path)
+    try:
+        with open(tmp, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, path)
+    except Exception:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        raise
+
+
+def _avatar_save(img):
+    """写／删头像。返回 (头像类型 或 None, 错误响应 或 None)。
+
+    **只认字节、不落盘**的那一半在这里做完；真正动 avatar.img 的是
+    `_avatar_commit`，它排在 profile.json 写成功之后——见 profile_write。
+    """
+    if img is None:                              # null ＝ 把头像去掉
+        return None, None
+    if not isinstance(img, dict):
+        return None, _bad(T("图片数据不对"))
+    raw64 = img.get("数据")
+    if not isinstance(raw64, str) or not raw64.strip():
+        return None, _bad(T("图片数据不对"))
+    if len(raw64) > AVATAR_MAX * 4 // 3 + 1024:  # base64 撑大 4/3，先卡一道免得白解
+        return None, _bad(T("头像别超过 {m} MB", m=AVATAR_MAX // 1000 // 1000))
+    try:
+        blob = base64.b64decode(raw64, validate=True)
+    except Exception:
+        return None, _bad(T("图片数据不对"))
+    if not blob:
+        return None, _bad(T("图片是空的"))
+    if len(blob) > AVATAR_MAX:
+        return None, _bad(T("头像别超过 {m} MB", m=AVATAR_MAX // 1000 // 1000))
+    ext = _sniff_img(blob)                       # 认头几个字节，不看前端报的 MIME
+    if not ext:
+        return None, _bad(T("只收 png / jpg / gif / webp"))
+    return (ext, blob), None
+
+
+def _avatar_commit(got):
+    """真正动 avatar.img。`got` 是 _avatar_save 的结果：None ＝删掉，
+    (扩展名, 字节) ＝写进去。返回错误响应或 None。"""
+    if got is None:
+        try:
+            os.remove(avatar_path())
+        except OSError:
+            pass
+        return None
+    tmp = _tmp_path(avatar_path())
+    try:
+        os.makedirs(SUPPORT_DIR, exist_ok=True)
+        with open(tmp, "wb") as f:
+            f.write(got[1])
+        os.replace(tmp, avatar_path())
+    except OSError as e:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        return _bad(T("图片写不进去：{e}", e=e))
+    return None
+
+
+_profile_lock = threading.Lock()
+
+
+def profile_write(req):
+    """POST /__profile。body 是任意子集：给了哪个键就改哪个，其余原样留着。
+
+    **整段读—改—写在一把锁里。** 页面上昵称是防抖保存、头像是另一条 fetch，
+    两条几乎同时到是常事；各读各的旧 profile.json 再各写各的，后到的那条
+    会把先到的那条改的键抹掉（改完名字换头像＝名字被打回去）。
+
+    **profile.json 先落，avatar.img 后动。** 反过来的话，写图成功、写 json
+    失败就留下一张没人认领的头像；而先落 json 的最坏情况是「记着有头像、
+    盘上没有」，profile_view 已经认这一种（当没有头像）。
+    """
+    if not isinstance(req, dict):
+        return _bad(T("配置得是一个对象"))
+    with _profile_lock:
+        p = profile_read()
+        if "名字" in req:
+            if not isinstance(req["名字"], str):
+                return _bad(T("「{k}」类型不对", k="名字", g=gloss("名字")))
+            p["名字"] = clean_name(req["名字"])   # 空串合法＝用默认名字
+        if "问候" in req:
+            p["问候"] = bool(req["问候"])
+        got = None
+        if "头像" in req:
+            got, err = _avatar_save(req["头像"])
+            if err:
+                return err
+            p["头像类型"] = got[0] if got else None
+        p["更新于"] = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            _write_json(profile_path(), p)
+        except OSError as e:
+            return _bad(T("写失败：{e}", e=e))
+        if "头像" in req:
+            err = _avatar_commit(got)
+            if err:
+                return err
+        return profile_view()
+
+
+def avatar_bytes():
+    """/__avatar 要发的字节。返回 (字节, content-type) 或 (None, 错误)。"""
+    p = profile_read()
+    kind = p.get("头像类型")
+    ctype = AVATAR_CTYPE.get(kind) if isinstance(kind, str) else None
+    if not ctype:
+        return None, T("还没设过头像")
+    try:
+        with open(avatar_path(), "rb") as f:
+            return f.read(), ctype
+    except OSError:
+        return None, T("还没设过头像")
+
+
 def status():
     """服务状态。**字段只有这几个**：前端要的就是端口、库根和索引进度，
     v19 那批「产出数 / 核心数 / 登记数 / 待补标签数 / 问题数」全是标签层的账，
     随标签层一起撤了；「收件箱未读 / 待打开」两条队列也撤了。
 
     v21 加了「门禁」一个字段，给前端认版本用。**能加字段的是 status，不是
-    pulse**——pulse 那串是被当指纹整串比对的，加一个字段就是死循环。"""
+    pulse**——pulse 那串是被当指纹整串比对的，加一个字段就是死循环。
+
+    5.6 又加两个：「名字」（＝个人资料里的名字，没设就是这台 Mac 的账户名，
+    命令行 `amnote status` 用它打招呼）和「接口版本」——调用方靠它知道
+    /__map、/__outline、/__profile 这些新路由在不在，不用一条条去试。"""
     try:
         s = fulltext.index_status()
         idx = {"收录": s.get("收录", 0), "状态": s.get("状态", "")}
@@ -1078,7 +1350,8 @@ def status():
             "状态": "扫描中" if idx["状态"] == "同步中" else "就绪",
             "端口": _state["port"], "库根": ROOT,
             "上次扫描": last, "索引": idx, "门禁": True,
-            "随手记目录": note_dir()}
+            "随手记目录": note_dir(),
+            "名字": display_name(), "接口版本": 2}
 
 
 # ── Agent 接口层 ──────────────────────────────────────────
@@ -1096,8 +1369,11 @@ def note_portal_write(rel):
     活表本身在 fulltext 里（v21 起）。**这里不再往 sync 里传快照**：
     快照是在起线程那一刻拷的，撞上「已有一趟在跑」的补跑就会用旧的那份，
     把刚记的这笔漏掉、判成外部。判定改到 fulltext 里当刻加锁查活表。
+
+    5.6 起把这一趟请求的署名（X-AMN-Agent）一起记进去，流水上分得出
+    「用户自己存的」和「本机某个 AI 助手写的」。
     """
-    fulltext.note_portal_write(rel)
+    fulltext.note_portal_write(rel, agent=cur_agent())
 
 
 def kick_sync():
@@ -1107,6 +1383,85 @@ def kick_sync():
 
 
 _tree_cache = {"key": None, "data": None}
+
+# ── 「这一篇最近被哪个 Agent 动过」──────────────────────────
+#
+# 卡片右下角那一行要标 ✦ Claude Code。数据源是变更流水：一条事件的 来源 是
+# "Agent" 就带着 代理 字段（见 fulltext._sync_once）。只认**每条路径最近的
+# 那一条**——用户后来自己改过，这一篇就不再算 Agent 写的了——而且只认七天内的，
+# 再往前标着也没意义。
+#
+# 只读流水尾部 2000 行：整份流水能到几 MB，而卡片上要的信息都在末尾。
+
+JOURNAL_TAIL = 2000
+JOURNAL_TAIL_BYTES = 512 * 1024        # 只把流水的最后这么多字节读进来
+AGENT_MARK_TTL = 7 * 86400
+_marks_cache = {"key": None, "data": None}
+
+
+def _journal_key():
+    """缓存键。**要带上「现在是第几个钟头」**：这张表里每条都带 7 天的期限，
+    而键只看流水文件的话，一份不再改动的流水会让「三个月前那次 Agent 改动」
+    永远留在缓存里，标记过了期也退不下去。"""
+    hour = int(time.time() // 3600)
+    try:
+        st = os.stat(fulltext.JOURNAL)
+        return (round(st.st_mtime, 2), st.st_size, hour)
+    except OSError:
+        return (None, hour)
+
+
+def agent_marks():
+    """{路径: Agent 名字}。跟着流水文件的指纹（＋钟点）缓存，随 tree 一起失效。"""
+    key = _journal_key()
+    with _lock:
+        if _marks_cache["key"] == key and _marks_cache["data"] is not None:
+            return _marks_cache["data"]
+    # 只读尾部：流水能到几 MB，而这里要的信息全在末尾。seek 之后第一行多半是
+    # 半条，丢掉；剩下的再按行数收进 deque
+    tail = deque(maxlen=JOURNAL_TAIL)
+    try:
+        with open(fulltext.JOURNAL, "rb") as f:
+            f.seek(0, os.SEEK_END)
+            size = f.tell()
+            back = min(size, JOURNAL_TAIL_BYTES)
+            f.seek(size - back)
+            blob = f.read(back)
+        if back < size:                          # 从中间切进去的，头一行是半条
+            blob = blob.split(b"\n", 1)[-1] if b"\n" in blob else b""
+        for line in blob.decode("utf-8", "replace").split("\n"):
+            if line:
+                tail.append(line)
+    except OSError:
+        pass
+    last = {}
+    for line in tail:
+        try:
+            e = json.loads(line)
+        except ValueError:
+            continue
+        p = e.get("路径")
+        if isinstance(p, str) and p:
+            last[p] = e                          # 尾部的顺序就是时间顺序
+    now = time.time()
+    out = {}
+    for p, e in last.items():
+        if e.get("来源") != fulltext.SRC_AGENT:
+            continue
+        who = clean_name(e.get("代理"))
+        if not who:
+            continue
+        try:
+            at = datetime.strptime(e.get("时间") or "",
+                                   "%Y-%m-%d %H:%M:%S").timestamp()
+        except (TypeError, ValueError):
+            continue
+        if 0 <= now - at <= AGENT_MARK_TTL:
+            out[p] = who
+    with _lock:
+        _marks_cache["key"] = key
+        _marks_cache["data"] = out
+    return out
 
 
 def _db_key():
@@ -1139,8 +1494,12 @@ def tree_view():
 
     目录树只把「装着文件的目录」列出来，空壳目录和被跳过的目录自动消失。
     份数是含子目录的累计数。缓存跟着索引库的指纹走，没同步过就不重算。
+
+    5.6 起每篇可能多一个「代理」：这一篇最近一次改动是本机某个 AI 助手写的
+    （见 agent_marks）。没有这回事就没有这个键。**流水的指纹也进缓存键**——
+    署名只落在流水里，光盯 db 的话卡片上那行 ✦ 会等到下一次索引变动才出现。
     """
-    key = _db_key()
+    key = (_db_key(), _journal_key())
     with _lock:
         if _tree_cache["key"] == key and _tree_cache["data"]:
             return _tree_cache["data"]
@@ -1156,10 +1515,14 @@ def tree_view():
         return _bad(T("fulltext.db 读不了：{e}（跑一次重扫）", e=e))
 
     generic = tuple(cfg().get("通用标题") or ())
+    marks = agent_marks()
     docs = [{"路径": rel, "标题": title_of(rel, head or "", kind, generic),
              "类型": kind, "改于": round(mt or 0, 1),
              "预览": list_preview(head or "", kind)}
             for rel, kind, mt, head in rows]
+    for d in docs:
+        if marks.get(d["路径"]):
+            d["代理"] = marks[d["路径"]]
     docs.sort(key=lambda x: -x["改于"])
 
     # 每层目录的累计份数。a/b/c.md 要让 a 和 a/b 都加一
@@ -1203,9 +1566,12 @@ def tree_view():
             continue
         # 标题要在剥之前从原文里取：preview 会把 `# ` 一起削掉。
         # 早期随手记只有标签块、没有 `# ` 标题行，退回文件名
-        notes.append({"路径": nd_rel + "/" + fn,
-                      "标题": first_heading(raw) or clean_title(fn),
-                      "改于": round(st.st_mtime, 1), "预览": preview(raw, 200)})
+        one = {"路径": nd_rel + "/" + fn,
+               "标题": first_heading(raw) or clean_title(fn),
+               "改于": round(st.st_mtime, 1), "预览": preview(raw, 200)}
+        if marks.get(one["路径"]):
+            one["代理"] = marks[one["路径"]]
+        notes.append(one)
     notes.sort(key=lambda x: -x["改于"])
 
     out = {"ok": True, "目录": tree, "文档": docs, "附件": [], "随手记": notes,
@@ -1249,17 +1615,237 @@ def search_view(query):
 
     v21 起 n 默认 200、上限 500（原来是 60 / 200）：搜「的」这种字在库里命中
     七八百份，60 条截出来的那一段没有意义，前端要的是能一次滚完的一整批。
+
+    5.6 加了筛选和翻页，都是给 Agent 用的（页面只传 q 和 n，那条路一个字没变）：
+        dir=工作手记      只搜这个目录底下的
+        type=md,pdf      只要这几类
+        since=7 ／ 2026-09-01   最近 N 天 ／ 这天之后改过的
+        sort=mtime       按改动时间排，不按相关度
+        offset=20        翻页
     """
     q = (query.get("q") or [""])[0]
+
+    def _num(k, dflt, lo, hi):
+        try:
+            return max(lo, min(int((query.get(k) or [str(dflt)])[0]), hi))
+        except ValueError:
+            return dflt
+
+    n = _num("n", 200, 1, 500)
+    off = _num("offset", 0, 0, 100000)
+    # 逗号可能是中文的——手打参数时常见，不值得为这个回一条错
+    raw_types = (query.get("type") or [""])[0].replace("，", ",")
+    types = [t.strip() for t in raw_types.split(",") if t.strip()]
     try:
-        n = max(1, min(int((query.get("n") or ["200"])[0]), 500))
-    except ValueError:
-        n = 200
-    r = fulltext.search(q, limit=n)
+        r = fulltext.search(q, limit=n, offset=off,
+                            subdir=(query.get("dir") or [""])[0].strip(),
+                            types=types,
+                            since=(query.get("since") or [""])[0].strip(),
+                            sort=(query.get("sort") or [""])[0].strip())
+    except ValueError:                           # since= 读不懂，见 fulltext.since_ts
+        return _bad(T("since 要写成天数（7）或日期（2026-09-01）"))
     by = {d["路径"]: d["标题"] for d in (tree_view().get("文档") or [])}
     for h in r.get("结果", []):
         h["标题"] = by.get(h["路径"]) or clean_title(os.path.basename(h["路径"]))
     return r
+
+
+def outline_view(query):
+    """一份文件的目录。Agent 先看大纲再 /__raw?section= 取那一节，
+    不用把整份灌进上下文。
+
+    **从磁盘读最新的那一份**，不读索引：刚写完还没同步的那几秒里，
+    大纲得是刚写下去的样子。
+    """
+    rel = (query.get("path") or [""])[0]
+    full, err = _view_full(rel)
+    if err:
+        return _bad(err)
+    low = full.lower()
+    kind = ("md" if low.endswith(".md")
+            else "html" if low.endswith((".html", ".htm")) else "")
+    if not kind:
+        return _bad(T("这个格式门户不认"))
+    try:
+        with open(full, encoding="utf-8", errors="replace") as f:
+            text = f.read(fulltext.MD_MAX_BYTES)
+    except OSError as e:
+        return _bad(T("读不了：{e}", e=e))
+    if kind == "md":
+        heads = [{"级": h["级"], "文本": h["文本"], "行": h["行"]}
+                 for h in fulltext.md_headings(text)]
+        head = text
+    else:
+        # html 没有可靠的大纲（h1/h2 常常只是排版），标题走既有那套抽取
+        heads = []
+        head = fulltext._extract_html(full)[0]
+    return {"ok": True, "路径": rel,
+            "标题": title_of(rel, head, kind, tuple(cfg().get("通用标题") or ())),
+            "大纲": heads, "行数": len(_lines_of(text)), "字数": len(text),
+            "改于": _mtime_str(full)}
+
+
+def links_view(query):
+    """这一篇指向谁、谁指向它。数据源是索引里的「链接」表（见 extract_links）。
+
+    出链的「存在」：路径链接看那份文件在不在；[[题名]] 看库里有没有同名
+    （文件名主干或标题对上）的一篇——按名找本来就允许晚点再建，所以
+    「不存在」不等于写错了。
+    """
+    rel = (query.get("path") or [""])[0]
+    full, err = _view_full(rel)
+    if err:
+        return _bad(err)
+    docs = tree_view().get("文档") or []
+    titles = set()
+    stems = set()
+    for d in docs:
+        titles.add((d["标题"] or "").strip().lower())
+        stems.add(os.path.splitext(d["路径"].rsplit("/", 1)[-1])[0].lower())
+    me = next((d for d in docs if d["路径"] == rel), None)
+    mine = {os.path.splitext(rel.rsplit("/", 1)[-1])[0].strip().lower()}
+    if me:
+        mine.add((me["标题"] or "").strip().lower())
+    mine.discard("")
+
+    def _named(name):
+        n = (name or "").strip().lower()
+        return bool(n) and (n in stems or n in titles)
+
+    try:
+        con = fulltext.connect()
+        outs = []
+        for kind, tgt, txt in con.execute(
+                "SELECT 类型,目标,文本 FROM 链接 WHERE 源=?", (rel,)):
+            live = (os.path.isfile(fulltext._full(tgt)) if kind == "路径"
+                    else _named(tgt))
+            outs.append({"目标": tgt, "文本": txt or "",
+                         "存在": bool(live), "类型": kind})
+        # 反链只捞两类行，走 链接_目标 那条索引：路径链接直接按 目标 命中，
+        # [[题名]] 那批要在 Python 里比名字（大小写、标题 / 文件名两种写法），
+        # 但也只是全库题名链接，不再是整张表
+        backs, seen = [], set()
+        for src, kind, tgt, txt in con.execute(
+                "SELECT 源,类型,目标,文本 FROM 链接 "
+                "WHERE (类型='路径' AND 目标=?) OR 类型='题名' ORDER BY 源",
+                (rel,)):
+            if src == rel:
+                continue
+            hit = True if kind == "路径" else \
+                ((tgt or "").strip().lower() in mine)
+            if hit and (src, txt) not in seen:
+                seen.add((src, txt))
+                backs.append({"源": src, "文本": txt or ""})
+        con.close()
+    except Exception as e:
+        return _bad(T("fulltext.db 读不了：{e}（跑一次重扫）", e=e))
+    return {"ok": True, "路径": rel, "出链": outs, "反链": backs}
+
+
+def recent_view(query):
+    """最近改过的那些。Agent 的开工第一问：「我不在的时候库里动了什么」。
+
+    数据源是索引的「文档」表（不是流水）：要的是「现在库里最新的那几篇」，
+    一篇改了十次也只该出现一次。
+    """
+    def _num(k, dflt, lo, hi):
+        try:
+            return max(lo, min(int((query.get(k) or [str(dflt)])[0]), hi))
+        except ValueError:
+            return dflt
+
+    days = _num("days", 7, 1, 365)
+    n = _num("n", 50, 1, 500)
+    raw_types = (query.get("type") or [""])[0].replace("，", ",")
+    kinds = sorted(set(t.strip().lower() for t in raw_types.split(",") if t.strip()))
+    floor = time.time() - days * 86400
+    # 筛选和条数都下沉到 SQL：原来是把 365 天内每一篇连 4000 字正文都取回来，
+    # 再在 Python 里丢掉——`days=365&n=5` 等于白读全库
+    sql = ["SELECT 路径,类型,mtime,大小,substr(正文,1,4000) FROM 文档 WHERE mtime>=?"]
+    args = [floor]
+    if kinds:
+        sql.append("AND lower(类型) IN (%s)" % ",".join("?" * len(kinds)))
+        args += kinds
+    sql.append("ORDER BY mtime DESC LIMIT ?")
+    args.append(n)
+    try:
+        con = fulltext.connect()
+        rows = con.execute(" ".join(sql), args).fetchall()
+        con.close()
+    except Exception as e:
+        return _bad(T("fulltext.db 读不了：{e}（跑一次重扫）", e=e))
+    generic = tuple(cfg().get("通用标题") or ())
+    marks = agent_marks()
+    out = []
+    for rel, kind, mt, size, head in rows:
+        one = {"路径": rel,
+               "标题": title_of(rel, head or "", kind, generic),
+               "类型": kind, "改于": fulltext._mtime_text(mt), "大小": size or 0}
+        if marks.get(rel):
+            one["代理"] = marks[rel]
+        out.append(one)
+        if len(out) >= n:
+            break
+    return {"ok": True, "文档": out}
+
+
+# ── 库地图 ────────────────────────────────────────────────────
+#
+# 排版本体在 fulltext（`map_rows` / `map_text`）：命令行在 AM·Note 没开着时
+# 画的是同一张图，一处改了两处跟不上的话，Agent 手上那份导航图就会随
+# 「门户开没开」变样。这里只负责查索引、缓存和参数钳位。
+#
+# **只查索引，不读磁盘。** 全库 walk 一遍再逐份开文件，一千份就是几秒；这条路是
+# 「每次开工先问一句」的量级，必须几十毫秒回来。代价是刚写完还没同步的那几秒里
+# 地图上还是旧的——地图本来就是概览，那几秒不重要（要最新的走 /__outline）。
+
+MAP_MAX = fulltext.MAP_MAX
+MAP_MAX_CAP = fulltext.MAP_MAX_CAP
+MAP_DEPTH_CAP = fulltext.MAP_DEPTH_CAP
+MAP_BUDGET = fulltext.MAP_BUDGET
+MAP_BUDGET_CAP = fulltext.MAP_BUDGET_CAP
+MAP_FILE = fulltext.MAP_FILE
+MAP_NOTE = fulltext.MAP_NOTE
+
+# 一张图画一遍要扫全库正文的前 4000 字，而设置面板、`amnote map` 和导出
+# 会连着问同一组参数。跟树一个套路：索引没动、参数没变就发上一张
+_map_cache = {"key": None, "data": None}
+
+
+def map_payload(sub="", per=MAP_MAX, depth=0, budget=MAP_BUDGET):
+    """/__map 的响应（成功时是 §1.6 那个形状，失败时是 _bad(...)）。"""
+    key = (_db_key(), sub, per, depth, budget)
+    with _lock:
+        if _map_cache["key"] == key and _map_cache["data"] is not None:
+            return _map_cache["data"]
+    try:
+        con = fulltext.connect()
+        rows = fulltext.map_rows(con)
+        con.close()
+    except Exception as e:
+        return _bad(T("fulltext.db 读不了：{e}（跑一次重扫）", e=e))
+    root_name = os.path.basename(REAL_ROOT.rstrip(os.sep)) or REAL_ROOT
+    out = fulltext.map_text(rows, root_name, sub=sub, per=per,
+                            depth=depth, budget=budget)
+    with _lock:
+        _map_cache["key"] = key
+        _map_cache["data"] = out
+    return out
+
+
+def map_view(query):
+    """GET /__map。参数见 fulltext.map_text；`depth` 给 0 或不给＝不限深度。"""
+    def _num(k, dflt, lo, hi):
+        try:
+            return max(lo, min(int((query.get(k) or [str(dflt)])[0]), hi))
+        except ValueError:
+            return dflt
+
+    return map_payload(
+        sub=(query.get("dir") or [""])[0],
+        per=_num("max", MAP_MAX, 1, MAP_MAX_CAP),
+        depth=_num("depth", 0, 0, MAP_DEPTH_CAP),
+        budget=_num("budget", MAP_BUDGET, 1000, MAP_BUDGET_CAP))
 
 
 def meta_view(query):
@@ -1286,6 +1872,167 @@ def meta_view(query):
         out["大小"] = st.st_size                  # 字节
     except OSError:
         out["改于"], out["大小"] = "", 0
+    return out
+
+
+# ── 接入向导：把这个库接给本机的 AI 助手 ─────────────────────
+#
+# 设置面板「Agent」那一段的后端。四件事，每件都是一次性的：
+#   cli         ~/.local/bin/amnote → src/amnote 的软链接（命令行能直接叫）
+#   skill       ~/.claude/skills/amnote/SKILL.md（Claude Code 认得的技能包）
+#   agents_md   <库根>/AGENTS.md（在库目录里跑的 agent 开工先读它）
+#   map_export  <库根>/库地图.md（§1.6 那份地图落成文件，给不联服务的场合）
+#
+# 家目录走 HOME_DIR（env AMNOTE_HOME），测试时指到 scratch——这四件事里有三件
+# 写在用户的家目录里，写错地方是要在真人的 ~/.claude 里留垃圾的。
+
+AGENT_DIR = os.path.join(HERE, "agent")          # 模板：SKILL.md / AGENTS.md
+AMNOTE_BIN = os.path.join(HERE, "amnote")        # 命令行包装脚本（dev 时是 src/amnote）
+AGENTS_FILE = "AGENTS.md"
+SKILL_MARK = "amnote-skill"                      # 我们写的那份 SKILL.md 的标记
+SKILL_MARK_LINES = 8                             # 标记在 frontmatter 之后，前几行里找
+
+
+def _cli_link():
+    return os.path.join(HOME_DIR, ".local", "bin", "amnote")
+
+
+def _skill_file():
+    return os.path.join(HOME_DIR, ".claude", "skills", "amnote", "SKILL.md")
+
+
+def _vault_file(name):
+    return os.path.join(ROOT, name)
+
+
+def agent_setup_view():
+    """GET /__agent_setup：四样东西各自装没装、路径是什么，外加两段能拷走的配置。"""
+    link = _cli_link()
+    try:
+        linked = (os.path.islink(link)
+                  and os.path.realpath(link) == os.path.realpath(AMNOTE_BIN))
+    except OSError:
+        linked = False
+    return {"ok": True,
+            "命令行": {"路径": AMNOTE_BIN, "链接路径": link, "已链接": bool(linked)},
+            "skill": {"路径": _skill_file(),
+                      "已安装": os.path.isfile(_skill_file())},
+            "agents_md": {"路径": _vault_file(AGENTS_FILE),
+                          "已存在": os.path.lexists(_vault_file(AGENTS_FILE))},
+            "地图文件": {"路径": _vault_file(MAP_FILE),
+                         "已存在": os.path.lexists(_vault_file(MAP_FILE))},
+            "mcp命令": "claude mcp add amnote -- %s mcp" % shlex.quote(AMNOTE_BIN),
+            "codex配置": ("[mcp_servers.amnote]\ncommand = %s\n"
+                          "args = [\"mcp\"]\n" % json.dumps(AMNOTE_BIN))}
+
+
+def _tpl(name):
+    """读一份模板并把 {{AMNOTE_BIN}} 换成真路径。返回 (正文, 错误)。
+
+    路径是**给 shell 抄的**，一律 shlex.quote：app 可以被拖到
+    `/Users/我的 "笔记" 工具/` 这种文件夹里，裸着写进 SKILL.md 里的命令，
+    Agent 照抄一句就跑到别的地方去了。
+    """
+    p = os.path.join(AGENT_DIR, name)
+    try:
+        with open(p, encoding="utf-8") as f:
+            return f.read().replace("{{AMNOTE_BIN}}",
+                                    shlex.quote(AMNOTE_BIN)), ""
+    except OSError:
+        return "", T("缺一份模板：{p}", p=p)
+
+
+def _write_text(path, text):
+    """写一份文本文件，先 .tmp 再改名。返回错误响应或 None。"""
+    try:
+        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+        tmp = path + ".tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(text)
+        os.replace(tmp, path)
+    except OSError as e:
+        return _bad(T("写不进去：{e}", e=e))
+    return None
+
+
+def _setup_cli():
+    """~/.local/bin/amnote → src/amnote。指到别处的旧链接直接换掉；
+    是一个普通文件就不动它——那多半是用户自己放的东西，不该被我们盖掉。"""
+    link = _cli_link()
+    if not os.path.isfile(AMNOTE_BIN):
+        return _bad(T("缺一份模板：{p}", p=AMNOTE_BIN))
+    try:
+        os.makedirs(os.path.dirname(link), exist_ok=True)
+        if os.path.lexists(link):
+            if not os.path.islink(link):
+                return _bad(T("那个位置已经有一份文件了，先挪开"))
+            os.remove(link)
+        os.symlink(AMNOTE_BIN, link)
+    except OSError as e:
+        return _bad(T("写不进去：{e}", e=e))
+    return T("命令行工具装好了：{p}", p=link)
+
+
+def _setup_skill():
+    """写 Claude Code 的技能包。已经有一份、但不是我们生成的就不覆盖。"""
+    text, err = _tpl("SKILL.md")
+    if err:
+        return _bad(err)
+    dest = _skill_file()
+    if os.path.lexists(dest):
+        try:
+            with open(dest, encoding="utf-8", errors="replace") as f:
+                head = "".join([f.readline() for _ in range(SKILL_MARK_LINES)])
+        except OSError as e:
+            return _bad(T("读不了：{e}", e=e))
+        if SKILL_MARK not in head:
+            return _bad(T("那个位置已经有一份文件了，先挪开"))
+    bad = _write_text(dest, text)
+    return bad or T("Skill 装好了：{p}", p=dest)
+
+
+def _setup_agents_md():
+    """在库根写 AGENTS.md。已经有就不动——那是用户自己写给 agent 的话。"""
+    text, err = _tpl(AGENTS_FILE)
+    if err:
+        return _bad(err)
+    dest = _vault_file(AGENTS_FILE)
+    if os.path.lexists(dest):
+        return _bad(T("那个位置已经有一份文件了，先挪开"))
+    note_portal_write(AGENTS_FILE)               # 别让下一趟同步记成「外部新增」
+    bad = _write_text(dest, text)
+    if bad:
+        return bad
+    kick_sync()
+    return T("AGENTS.md 写好了：{p}", p=dest)
+
+
+def _setup_map():
+    """把地图导成库根的一份 md。可以反复覆盖，首行留一句「这是生成的」。"""
+    d = map_payload()
+    if not d.get("ok"):
+        return d
+    dest = _vault_file(MAP_FILE)
+    note_portal_write(MAP_FILE)
+    bad = _write_text(dest, MAP_NOTE + "\n" + d["地图"])
+    if bad:
+        return bad
+    kick_sync()
+    return T("库地图导出好了，{n} 篇：{p}", n=d["篇数"], p=dest)
+
+
+def agent_setup_do(req):
+    """POST /__agent_setup。响应＝GET 的形状再加一句「结果」。"""
+    act = str(req.get("动作") or "").strip()
+    fn = {"cli": _setup_cli, "skill": _setup_skill,
+          "agents_md": _setup_agents_md, "map_export": _setup_map}.get(act)
+    if not fn:
+        return _bad(T("不认识这个动作"))
+    r = fn()
+    if isinstance(r, dict):                      # _bad(...) 原样上抛
+        return r
+    out = agent_setup_view()
+    out["结果"] = str(r)
     return out
 
 
@@ -1453,7 +2200,9 @@ def ext_asset(query):
 # 缓存目录**，库里一个字节都不碰。抽字体这一路整个包在 try 里：字体是锦上添花，
 # 出什么岔子都只该退化成「没有这个字体」，不能把服务带下去。
 
-FONT_CACHE_DIR = os.path.expanduser("~/Library/Application Support/AMNote/fonts")
+# 跟着 --support-dir 走（默认值跟以前一样是 ~/Library/Application Support/AMNote/
+# fonts）：测试时把支撑目录挪去 scratch，字体缓存不能还留在用户真正那一份里。
+FONT_CACHE_DIR = os.path.join(SUPPORT_DIR, "fonts")
 PMING_TTF = os.path.join(FONT_CACHE_DIR, "PMingLiU.ttf")
 PMING_JSON = os.path.join(FONT_CACHE_DIR, "PMingLiU.json")   # 来源路径＋大小＋mtime
 
@@ -1770,6 +2519,9 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header("Content-Type", ctype)
         self.send_header("Content-Length", str(len(b)))
         self.send_header("Cache-Control", "no-store")
+        # 一律不许嗅探。/__avatar 发的是用户自己丢进来的字节，只按前几个魔数
+        # 认过类型；浏览器要是自作主张把一张「png」当 html 渲染，那就是同源脚本
+        self.send_header("X-Content-Type-Options", "nosniff")
         self._cache_sent = True
         self.end_headers()
         if not self._head_only:
@@ -1907,15 +2659,38 @@ class Handler(SimpleHTTPRequestHandler):
             self._json(json.dumps(fonts_view(), ensure_ascii=False))
         elif route.startswith("/__status"):
             self._json(json.dumps(status(), ensure_ascii=False))
+        elif route.startswith("/__profile"):
+            # 免口令，跟下面 /__avatar 一个道理：页面启动时并行拉它，
+            # 而头像那张是 <img src>，带不了自定义头
+            self._json(json.dumps(profile_view(), ensure_ascii=False))
+        elif route.startswith("/__avatar"):
+            blob, ctype = avatar_bytes()
+            if blob is None:
+                self._deny(404, ctype)
+            else:
+                self._body(blob, ctype)          # _body 自带 Cache-Control: no-store
+        elif route.startswith("/__agent_setup"):
+            self._json(json.dumps(agent_setup_view(), ensure_ascii=False))
         elif route.startswith("/__tree"):
             self._json(json.dumps(tree_view(), ensure_ascii=False))
         elif route.startswith("/__config"):
             self._json(json.dumps(read_config(), ensure_ascii=False))
         elif route.startswith("/__raw"):
-            self._json(json.dumps(read_raw((self._q().get("path") or [""])[0]),
-                                  ensure_ascii=False))
+            q = self._q()
+            self._json(json.dumps(
+                read_raw((q.get("path") or [""])[0],
+                         section=(q.get("section") or [""])[0],
+                         lines=(q.get("lines") or [""])[0]), ensure_ascii=False))
         elif route.startswith("/__search"):
             self._json(json.dumps(search_view(self._q()), ensure_ascii=False))
+        elif route.startswith("/__outline"):
+            self._json(json.dumps(outline_view(self._q()), ensure_ascii=False))
+        elif route.startswith("/__map"):
+            self._json(json.dumps(map_view(self._q()), ensure_ascii=False))
+        elif route.startswith("/__links"):
+            self._json(json.dumps(links_view(self._q()), ensure_ascii=False))
+        elif route.startswith("/__recent"):
+            self._json(json.dumps(recent_view(self._q()), ensure_ascii=False))
         elif route.startswith("/__meta"):
             self._json(json.dumps(meta_view(self._q()), ensure_ascii=False))
         elif route.startswith("/__changes"):
@@ -1934,6 +2709,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_GET(self):
         self._cache_sent = False
+        self._nosniff_sent = False
         self._head_only = False
         self._ctype = ""
         self._lang()
@@ -1944,6 +2720,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_HEAD(self):
         self._cache_sent = False
+        self._nosniff_sent = False
         self._head_only = True
         self._ctype = ""
         self._lang()
@@ -1954,6 +2731,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     def do_POST(self):
         self._cache_sent = False
+        self._nosniff_sent = False
         self._head_only = False
         self._ctype = ""
         self._lang()
@@ -1962,12 +2740,16 @@ class Handler(SimpleHTTPRequestHandler):
         route = self.path.split("?")[0]
         if route not in ("/__config", "/__reveal", "/__external",
                          "/__save", "/__trash", "/__untrash",
-                         "/__state", "/__rescan", "/__extopen"):
+                         "/__state", "/__rescan", "/__extopen",
+                         "/__profile", "/__agent_setup"):
             self.send_error(404, "not found")
             return
         # **所有 POST 都要口令。** 这是写路由和触发类路由的唯一一道门
         if not self._token():
             return
+        # 谁在写：本机的 AI 助手会带这个头（"Claude Code" / "Codex" / …），
+        # 用户自己在门户里点的没有。洗一遍再用——它会原样落进流水
+        _req.agent = header_name(self.headers.get("X-AMN-Agent"))
         try:
             n = int(self.headers.get("Content-Length") or 0)
         except ValueError:
@@ -1977,8 +2759,11 @@ class Handler(SimpleHTTPRequestHandler):
                 self.rfile.read(n)               # body 读干净，不然 keep-alive 会错位
             self._json(json.dumps(rescan(), ensure_ascii=False))
             return
-        # /__save 传的是整篇正文，上限单独给大一点
-        cap = 9_000_000 if route == "/__save" else 1_000_000
+        # /__save 传的是整篇正文，上限单独给大一点。/__profile 也要松一档：
+        # 头像那 1 MB 是 base64 送来的，撑大 4/3 之后正好卡在 1 MB 那道闸上，
+        # 一张合法的头像会被拦成「请求体过大」，报的还不是头像那条话
+        cap = (9_000_000 if route == "/__save"
+               else 2_000_000 if route == "/__profile" else 1_000_000)
         if n <= 0 or n > cap:
             self._json(json.dumps(_bad(T("请求体为空或过大")), ensure_ascii=False))
             return
@@ -1992,7 +2777,9 @@ class Handler(SimpleHTTPRequestHandler):
             out = {"/__config": write_config, "/__reveal": reveal,
                    "/__external": open_external, "/__extopen": ext_open,
                    "/__save": save_route, "/__state": state_set,
-                   "/__trash": trash, "/__untrash": untrash}[route](req)
+                   "/__trash": trash, "/__untrash": untrash,
+                   "/__profile": profile_write,
+                   "/__agent_setup": agent_setup_do}[route](req)
         except Exception as e:                       # 界面上要看得见，不能静默 500
             out = {"ok": False, "错误": f"{type(e).__name__}: {e}"}
         # 补一轮全文同步，索引在几秒内就能跟上这次改动。/__trash 和 /__untrash
@@ -2007,8 +2794,11 @@ class Handler(SimpleHTTPRequestHandler):
 
     def send_header(self, keyword, value):
         # end_headers 按 Content-Type 决定要不要沙箱，先记下来
-        if keyword.lower() == "content-type":
+        low = keyword.lower()
+        if low == "content-type":
             self._ctype = str(value)
+        elif low == "x-content-type-options":
+            self._nosniff_sent = True            # _body 已经发过，别发第二遍
         super().send_header(keyword, value)
 
     def _is_vault_html(self) -> bool:
@@ -2029,7 +2819,8 @@ class Handler(SimpleHTTPRequestHandler):
             self.send_header("Cache-Control", "no-store")
         if self._is_vault_html():
             self.send_header("Content-Security-Policy", "sandbox")
-            self.send_header("X-Content-Type-Options", "nosniff")
+            if not getattr(self, "_nosniff_sent", False):
+                self.send_header("X-Content-Type-Options", "nosniff")
         super().end_headers()
 
 
@@ -2054,6 +2845,12 @@ if __name__ == "__main__":
         i = argv.index("--token-file")
         if i + 1 < len(argv):
             TOKEN_FILE = argv[i + 1]
+    # 个人资料（profile.json / avatar.img）落在哪儿。壳传的就是默认值；
+    # 测试时必须传一个 scratch 目录，别写进用户真正在用的那一份
+    if "--support-dir" in argv:
+        i = argv.index("--support-dir")
+        if i + 1 < len(argv):
+            SUPPORT_DIR = os.path.abspath(os.path.expanduser(argv[i + 1]))
     fulltext.configure(root)
     _bind_vault()
     token_dir = os.path.dirname(os.path.abspath(TOKEN_FILE))

@@ -1,0 +1,15 @@
+#!/bin/sh
+# AM·Note 命令行的包装脚本。真正的实现在同目录的 amnote_cli.py。
+#
+# **要跟符号链接。** 装好之后 ~/.local/bin/amnote 是一条指到 app 里
+# Contents/Resources/amnote 的链接，这时 $0 是那条链接的路径，
+# 直接 dirname $0 会去 ~/.local/bin 里找 amnote_cli.py，找不到。
+self="$0"
+while [ -L "$self" ]; do
+  target=$(readlink "$self")
+  case "$target" in
+    /*) self="$target" ;;
+    *)  self="$(dirname "$self")/$target" ;;
+  esac
+done
+exec /usr/bin/env python3 "$(dirname "$self")/amnote_cli.py" "$@"
