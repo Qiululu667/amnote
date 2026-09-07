@@ -30,7 +30,7 @@ To find one sentence you first have to remember which folder it's in. To fix one
 
 AM·Note doesn't move anything. Pick a folder and you get a window as light as a browser: ⌘K searches that folder, and the tabs show the very same files. When you're done editing, they're still the same files. If your folders are scattered, add a few of them and read them all in one window.
 
-![Start page: folder chips, Continue reading and Recently opened](docs/en/home.png)
+![Start page: greeting, notebook strip, “Where you left off” and Recently opened](docs/en/home.png)
 
 ## How it works
 
@@ -53,12 +53,13 @@ AM·Note doesn't move anything. Pick a folder and you get a window as light as a
 
 - Both .md and .html open in tabs. Web pages in your vault render as they are — no conversion.
 - Vault HTML renders in a sandbox: scripts run and charts draw, but the page can't reach `localStorage`, `sessionStorage`, `cookie` or `indexedDB` (touching them throws a SecurityError), and it can't call the local server. Anything worth keeping goes in a .md — don't let the page remember it for you, because next time it won't.
-- The Start page has "Recently opened" plus a "Continue reading" card, so the note you were last in is right there.
-- Next to "My notes" on the Start page is a small dot that usually reads "Ready · 128 notes", and "Indexing…" while a scan is running. There's no status bar at the bottom of the window any more.
+- The Start page has "Recently opened" plus a big "Where you left off" card — the note you were last in is right there, and "Keep reading" takes you back.
+- The Start page shows no status most of the time; a small dot appears next to the greeting only while it's tidying up ("Indexing…") or when the service isn't running. There's no status bar at the bottom of the window either.
 - Click the ★ on a card to pin it; everything you pin lives behind the "Pinned" chip.
-- The row above the text is the document header: on the left, the outline toggle and this file's path — click the path to copy it, ⌘-click one of the folder segments to open that folder in a new tab. On the right: pin, Reveal in Finder, Share, Open in New Window, then focus, "⋯" and "Edit".
+- The row above the text is the document header: on the left, the outline toggle, the Related toggle and this file's path — click the path to copy it, ⌘-click one of the folder segments to open that folder in a new tab. On the right: pin, Reveal in Finder, Share, Open in New Window, then focus, "⋯" and "Edit".
 - The outline sits on the left: heading levels at a glance, the section you're reading highlights itself, click to jump. ⌥⌘I hides it or brings it back.
-- Focus mode: click ⤢ and the document header and outline slide away, leaving only the text. Nudge the top of the window with the pointer to bring them back; Esc leaves.
+- "Related" sits on the left too: what surrounds this note — the folder it lives in (which unfolds into the whole notebook's file tree, with this note highlighted), other versions of the same note (`_v1`, `v3 final`, a `20260827_` prefix, a same-named .html — they all gather together), and what it links to and what links back. It stays closed until ⌥⌘R calls it up; it shares the left column with the outline, one at a time.
+- Focus mode: click ⤢ and the document header, the outline and Related slide away, leaving only the text. Nudge the top of the window with the pointer to bring them back; Esc leaves.
 
 ![Reading a note: two rows on top, outline on the left](docs/en/reading.png)
 
@@ -85,7 +86,7 @@ AM·Note doesn't move anything. Pick a folder and you get a window as light as a
 
 - Every folder you add is a **notebook**. Add a second one and a notebook bar appears under the greeting on the Start page: `All | ● Work | ● Reading | ☆ Pinned | ＋`. Folder chips, cards, the search scope and where a new note lands all follow it.
 - Each notebook has a color, and its dot travels with it — on cards, on the path chip, on tabs and in ⌘K results — so you always know which one you're in. Purple still means "selected" and nothing else.
-- "All" is the overview: Continue reading, Recently opened and search span every notebook. Pick one notebook to get folder chips back — at that moment the page is the Start page you already know.
+- "All" is the overview: “Where you left off”, Recently opened and search span every notebook. Pick one notebook to get folder chips back — at that moment the page is the Start page you already know.
 - A new quick note (⌥⌘N) lands in whichever notebook the bar has selected, or in the default one while "All" is showing. The toast reads "New note in ● Work", and "Move it" sends it to another notebook.
 - With two or more, paths start with the notebook name, like `Work/Meetings/Weekly.md`. Each notebook keeps its own `.amnote/`. When a folder is missing — an external drive that isn't plugged in — its chip dims and reads "Not found"; nothing is removed for you.
 - **With a single notebook, everything is exactly as it was**: no notebook bar, no color dots, no prefix on paths.
@@ -165,12 +166,15 @@ If you're on an older build, you'll need to download a version with "Check for U
 | ⌘[ / ⌘] | Back / Forward |
 | ⌃Tab | Switch tabs |
 | ⌥⌘I | Show Outline |
+| ⌥⌘R | Show Related |
 | ⌘F | Find on Page |
 | ⌥⌘O | Open in New Window |
 | ⇧⌘R | Reveal in Finder |
 | ⌥⌘C | Copy Path |
 | ⌘, | Settings |
 | Esc | Dismiss overlay / leave focus / stop editing |
+
+Click a note and it opens in the current tab (or switches to it, if it's already open); ⌘-click and it opens in a new tab. The Start page, search results, ⌘K and the Related panel all follow the same rule.
 
 The full list is in the app: Help → Keyboard Shortcuts.
 

@@ -210,6 +210,7 @@ static inline NSDictionary<NSString *, NSString *> *AMNDictEN(void) {
         @"后退": @"Back",
         @"前进": @"Forward",
         @"显示大纲": @"Show Outline",
+        @"显示关联": @"Show Related",
         @"随手记": @"Quick Notes",
         @"最近": @"Recent",
         @"重新载入": @"Reload",
@@ -252,7 +253,7 @@ static inline NSDictionary<NSString *, NSString *> *AMNDictEN(void) {
          "⌘E 进入编辑\n⌘S 存储\n⌘⌫ 移到废纸篓\n⌘W 关闭标签／仅剩起始页时关窗口\n"
          "⇧⌘W 关闭窗口\n⌘P 打印\n"
          "⌃Tab 切换标签\n"
-         "⌘K 快速直达\n⌥⌘K 搜索正文\n⌥⌘I 显示大纲\n"
+         "⌘K 快速直达\n⌥⌘K 搜索正文\n⌥⌘I 显示大纲\n⌥⌘R 显示关联\n"
          "⌘F 在本页查找\n⌘R 重新载入\n"
          "⌃⌘F 进入全屏\nEsc 关浮层 / 退出编辑":
             @"⌘T New Tab (Start page)\n⌘N New Window\n⌘L Search\n"
@@ -262,7 +263,7 @@ static inline NSDictionary<NSString *, NSString *> *AMNDictEN(void) {
              "⌘W Close Tab (closes the window when only the Start page is left)\n"
              "⇧⌘W Close Window\n⌘P Print\n"
              "⌃Tab Switch tabs\n"
-             "⌘K Quick Open\n⌥⌘K Search Text\n⌥⌘I Show Outline\n"
+             "⌘K Quick Open\n⌥⌘K Search Text\n⌥⌘I Show Outline\n⌥⌘R Show Related\n"
              "⌘F Find on Page\n⌘R Reload\n"
              "⌃⌘F Enter Full Screen\nEsc Dismiss overlay / leave editing",
 
@@ -461,6 +462,7 @@ static inline NSDictionary<NSString *, NSString *> *AMNDictHK(void) {
         @"后退": @"返回",
         @"前进": @"前進",
         @"显示大纲": @"顯示大綱",
+        @"显示关联": @"顯示關聯",
         @"随手记": @"隨手記",
         @"最近": @"最近",
         @"重新载入": @"重新載入",
@@ -503,7 +505,7 @@ static inline NSDictionary<NSString *, NSString *> *AMNDictHK(void) {
          "⌘E 进入编辑\n⌘S 存储\n⌘⌫ 移到废纸篓\n⌘W 关闭标签／仅剩起始页时关窗口\n"
          "⇧⌘W 关闭窗口\n⌘P 打印\n"
          "⌃Tab 切换标签\n"
-         "⌘K 快速直达\n⌥⌘K 搜索正文\n⌥⌘I 显示大纲\n"
+         "⌘K 快速直达\n⌥⌘K 搜索正文\n⌥⌘I 显示大纲\n⌥⌘R 显示关联\n"
          "⌘F 在本页查找\n⌘R 重新载入\n"
          "⌃⌘F 进入全屏\nEsc 关浮层 / 退出编辑":
             @"⌘T 新增分頁（開始頁）\n⌘N 新增視窗\n⌘L 搜尋\n"
@@ -512,7 +514,7 @@ static inline NSDictionary<NSString *, NSString *> *AMNDictHK(void) {
              "⌘E 進入編輯\n⌘S 儲存\n⌘⌫ 移到垃圾桶\n⌘W 關閉分頁／只剩開始頁時關閉視窗\n"
              "⇧⌘W 關閉視窗\n⌘P 列印\n"
              "⌃Tab 切換分頁\n"
-             "⌘K 快速直達\n⌥⌘K 搜尋內文\n⌥⌘I 顯示大綱\n"
+             "⌘K 快速直達\n⌥⌘K 搜尋內文\n⌥⌘I 顯示大綱\n⌥⌘R 顯示關聯\n"
              "⌘F 在本頁尋找\n⌘R 重新載入\n"
              "⌃⌘F 進入全螢幕\nEsc 關閉浮層 / 退出編輯",
 

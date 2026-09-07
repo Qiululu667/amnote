@@ -2799,6 +2799,12 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
                                       action:@selector(mToc:) keyEquivalent:@"i"];
     toc.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagOption;
     toc.target = self;
+    // 5.8：关联面板。跟大纲共用左列，一次只显示一个，开关都在门户里，壳只转发。
+    // ⌥⌘R 跟 ⇧⌘R（在访达中显示，2730）、⌘R（重新载入，下面）不撞。
+    NSMenuItem *rel = [view addItemWithTitle:L(@"显示关联")
+                                      action:@selector(mRelated:) keyEquivalent:@"r"];
+    rel.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagOption;
+    rel.target = self;
     [view addItem:NSMenuItem.separatorItem];
     [[view addItemWithTitle:L(@"随手记") action:@selector(mNotes:) keyEquivalent:@""] setTarget:self];
     [[view addItemWithTitle:L(@"最近") action:@selector(mRecent:) keyEquivalent:@""] setTarget:self];
@@ -2886,6 +2892,11 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
         item.state = [self stateFlag:@"toc"] ? NSControlStateValueOn : NSControlStateValueOff;
         return [self stateFlag:@"hasDoc"];
     }
+    // 老门户没有 related 这个键，stateFlag: 返回 NO ＝ 不打勾（照 canTrash 那条的路数）。
+    if (a == @selector(mRelated:)) {
+        item.state = [self stateFlag:@"related"] ? NSControlStateValueOn : NSControlStateValueOff;
+        return [self stateFlag:@"hasDoc"];
+    }
     if (a == @selector(mBack:))     return [self stateFlag:@"canBack"];
     if (a == @selector(mForward:))  return [self stateFlag:@"canForward"];
     if (a == @selector(mCopyPath:)) return [self stateFlag:@"hasDoc"];
@@ -2953,6 +2964,7 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
 }
 - (void)mSettings:(id)s  { [self amn:@"settings" args:nil]; }
 - (void)mToc:(id)s       { [self amn:@"toggleToc" args:nil]; }
+- (void)mRelated:(id)s   { [self amn:@"toggleRelated" args:nil]; }
 - (void)mNotes:(id)s     { [self amn:@"openNotes" args:nil]; }
 - (void)mRecent:(id)s    { [self amn:@"openRecent" args:nil]; }
 /// ⌘K。老门户没有 quickOpen 这个函数，amn: 那三层防御会让它静默不响应，不会报错。
@@ -3052,7 +3064,7 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
            "⌘E 进入编辑\n⌘S 存储\n⌘⌫ 移到废纸篓\n⌘W 关闭标签／仅剩起始页时关窗口\n"
            "⇧⌘W 关闭窗口\n⌘P 打印\n"
            "⌃Tab 切换标签\n"
-           "⌘K 快速直达\n⌥⌘K 搜索正文\n⌥⌘I 显示大纲\n"
+           "⌘K 快速直达\n⌥⌘K 搜索正文\n⌥⌘I 显示大纲\n⌥⌘R 显示关联\n"
            "⌘F 在本页查找\n⌘R 重新载入\n"
            "⌃⌘F 进入全屏\nEsc 关浮层 / 退出编辑");
     [a addButtonWithTitle:L(@"好")];

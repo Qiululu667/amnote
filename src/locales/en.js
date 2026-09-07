@@ -54,12 +54,11 @@ window.AMN_I18N["en"] = {
   "收藏": "Pin",
   "打开 {title}": "Open {title}",
   "写下来的想法，下次还可以接着想。": "An idea you wrote down. Pick it up whenever you like.",
-  "继续阅读": "Continue reading",
+  "上次停在": "Where you left off",
   "接着读": "Keep reading",
   "想找以前写过的内容？按 {kbd} 搜一搜。": "Looking for something you wrote? Press {kbd} to search.",
   "写下第一篇": "Write your first note",
   "在访达中打开这个文件夹": "Open this folder in Finder",
-  "我的笔记": "My notes",
   "今天，想记下什么？": "What's on your mind today?",
   "笔记库已经就位，就差第一篇。": "Your vault is ready. It just needs a first note.",
   "这里还空着": "Nothing here yet",
@@ -69,7 +68,6 @@ window.AMN_I18N["en"] = {
     "one": "See all {n} note",
     "other": "See all {n} notes"
   },
-  "从上次的思路，轻松继续。": "Pick up right where you left off.",
   "最近打开": "Recently opened",
   "这一类还没有": "Nothing of this type yet",
   "换个类型看看，或者写点新的。": "Try another type, or write something new.",
@@ -471,7 +469,6 @@ window.AMN_I18N["en"] = {
   "早上好，{name}": "Good morning, {name}",
   "下午好，{name}": "Good afternoon, {name}",
   "晚上好，{name}": "Good evening, {name}",
-  "上次停在《{title}》，接着来？": "You left off in “{title}”. Pick it back up?",
   "个人": "Profile",
   "个人资料": "Profile",
   "编辑资料…": "Edit Profile…",
@@ -562,5 +559,12 @@ window.AMN_I18N["en"] = {
   "至少要留一个笔记本": "Keep at least one notebook",
   "移除「{name}」？": "Remove “{name}”?",
   "只从 AM·Note 移除，文件不会动。随时可以把这个文件夹再添加回来。": "This only removes it from AM·Note — the files stay put. You can add the folder back any time.",
-  "笔记本##标题": "Notebooks"
+  "笔记本##标题": "Notebooks",
+  "关联": "Related",
+  "所在文件夹": "In this folder",
+  "其他版本": "Other versions",
+  "链接##关联": "Links",
+  "链到": "Links to",
+  "被链": "Linked from",
+  "还有 {n} 项，打开文件夹页": "{n} more — open folder"
 };

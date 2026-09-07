@@ -149,11 +149,10 @@
   --ico-html:#9a91b5; --ico-html-bg:#f3f1f7;
   /* 分段控件的凹槽底 */
   --seg-track:rgba(39,43,49,.03);
-  /* 「继续阅读」右边那叠纸的配色 */
-  --paper1:#ffffff; --paper2:#edf1f4; --paper3:#f7f9fb;
-  --paper-edge:rgba(217,225,233,.27); --paper-shadow:rgba(60,81,106,.04);
-  --paper-b:#98afab; --paper-line:#e7ecf0;
-  --paper-dot:#e3ebe7; --paper-dot-ico:#8aa396;
+  /* 大卡右边那叠纸的配色。5.8 起并进淡紫系，跟贴在纸角的应用图标是一家人 */
+  --paper1:#ffffff; --paper2:#f1ebf7; --paper3:#f7f9fb;
+  --paper-edge:rgba(138,99,180,.14); --paper-shadow:rgba(60,81,106,.04);
+  --paper-b:#cdbbe3; --paper-line:#e7ecf0;
 
   /* 标签条底色，跟工具条/正文的 --win 分开：当前标签才能「浮」在工具条之上。
      必须和 app_shell.m 里 chromeColorForTheme 同步。 */
@@ -237,10 +236,9 @@
   --seg-track:rgba(215,226,250,.05);
   /* 书签栏那排小文件夹和收藏星：浅色那对压在深底上发闷，各提亮一档 */
   --bm-ico:#c9b48f; --pin:#d6c07e;
-  --paper1:#2e333c; --paper2:#262b33; --paper3:#2a2f38;
-  --paper-edge:rgba(215,226,250,.10); --paper-shadow:rgba(0,0,0,.22);
-  --paper-b:#7d968f; --paper-line:#3a414c;
-  --paper-dot:#33413b; --paper-dot-ico:#8fa89b;
+  --paper1:#2e333c; --paper2:#292532; --paper3:#2a2f38;
+  --paper-edge:rgba(198,163,224,.12); --paper-shadow:rgba(0,0,0,.22);
+  --paper-b:#6e5c8c; --paper-line:#3a414c;
   /* 笔记本八色（深）：浅色那八个压在 #1b1e24 上会糊成八坨深灰，整体提亮一档。 */
   --nb-blue:#8ab4e0;   --nb-blue-soft:#2b3a4a;
   --nb-teal:#63b8b4;   --nb-teal-soft:#24403f;
@@ -284,10 +282,9 @@
   --seg-track:rgba(215,226,250,.05);
   /* 书签栏那排小文件夹和收藏星：浅色那对压在深底上发闷，各提亮一档 */
   --bm-ico:#c9b48f; --pin:#d6c07e;
-  --paper1:#2e333c; --paper2:#262b33; --paper3:#2a2f38;
-  --paper-edge:rgba(215,226,250,.10); --paper-shadow:rgba(0,0,0,.22);
-  --paper-b:#7d968f; --paper-line:#3a414c;
-  --paper-dot:#33413b; --paper-dot-ico:#8fa89b;
+  --paper1:#2e333c; --paper2:#292532; --paper3:#2a2f38;
+  --paper-edge:rgba(198,163,224,.12); --paper-shadow:rgba(0,0,0,.22);
+  --paper-b:#6e5c8c; --paper-line:#3a414c;
   /* 笔记本八色（深）：浅色那八个压在 #1b1e24 上会糊成八坨深灰，整体提亮一档。 */
   --nb-blue:#8ab4e0;   --nb-blue-soft:#2b3a4a;
   --nb-teal:#63b8b4;   --nb-teal-soft:#24403f;
@@ -604,14 +601,17 @@ kbd{
 .home-greeting{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:20px}
 .eyebrow{color:var(--t2);font-size:11px;display:flex;align-items:center;gap:7px;margin-bottom:8px}
 .eyebrow svg{width:13px;height:13px}
-/* 眉行右边这枚点＋一句话，就是原来底部状态栏那一格：绿＝就绪，琥珀＝扫描中，灰＝服务没起 */
-.ey-sep{width:1px;height:9px;background:var(--rule-head);flex:none;margin:0 2px}
+/* 服务状态：这枚点＋一句话就是原来底部状态栏那一格。绿＝就绪，琥珀＝扫描中，灰＝服务没起。
+   5.8 起它常驻开始页大标题的行尾，跟「· ● 工作」同一副打扮（.58em / 400 / --t3）；
+   就绪态由下面那条 CSS 藏起来，只有琥珀和灰才现身。占位一直在，所以状态来去不顶动页面。 */
 .scan{display:inline-flex;align-items:center;gap:6px;color:var(--t3)}
 .scan i{width:5px;height:5px;border-radius:50%;background:var(--dot);flex:none;display:block;
   transition:background-color var(--d-base) ease}
 .scan.scan-busy i{background:var(--folder)}
 .scan.scan-off i{background:var(--t4)}
 .home h1{font-weight:570;font-size:29px;letter-spacing:.02em;line-height:1.45;margin:0}
+.home h1 .scan{font-size:.58em;font-weight:400;margin-left:.6em;vertical-align:middle;letter-spacing:0}
+.home h1 .scan:not(.scan-busy):not(.scan-off){display:none}
 .home-sub{color:var(--t3);margin:7px 0 0;font-size:12px}
 /* 次级按钮：白底一层极淡的渐变 ＋ 顶部高光，不描边（§5 悬浮质感） */
 .hbtn{
@@ -650,7 +650,7 @@ kbd{
   transition:transform var(--d-slow) var(--ease-out),box-shadow var(--d-slow) var(--ease-out)}
 .resume:active:not([disabled]){transform:translateY(0) scale(.995);transition-duration:80ms}
 .resume .rs-text{min-width:0;flex:1}
-.resume .overline{font-size:10px;color:var(--ok);display:flex;align-items:center;gap:6px;
+.resume .overline{font-size:10px;color:var(--t3);display:flex;align-items:center;gap:6px;
   margin-bottom:9px;letter-spacing:.03em}
 .resume .overline svg{width:12px;height:12px}
 .resume h2{font-size:20px;font-weight:570;margin:0 0 7px;
@@ -662,7 +662,8 @@ kbd{
 .resume .continue svg{width:13px;height:13px;transition:transform var(--d-base) var(--ease-out)}
 .resume:hover .continue svg{transform:translateX(3px)}
 
-/* 右边那三张叠着的纸，纯 CSS 画的，没有图片。深色下换成一套暗纸。 */
+/* 右边那三张叠着的纸，纯 CSS 画的。右下角那枚是应用图标，像一张贴纸压在纸角上
+   （2.5px 卡片色描边＝贴纸的白边），反着纸叠转 7° 摆正。深色下换成一套暗纸。 */
 .paper-art{width:137px;height:108px;position:relative;margin-right:21px;flex:none;transform:rotate(-7deg)}
 .paper-art::before,.paper-art::after,.paper-front{
   content:'';position:absolute;width:83px;height:106px;top:1px;left:31px;
@@ -675,13 +676,14 @@ kbd{
 .paper-front b{display:block;width:24px;height:4px;background:var(--paper-b);margin-bottom:12px;border-radius:4px}
 .paper-front i{display:block;height:2px;background:var(--paper-line);margin:7px 0;border-radius:2px}
 .paper-front i:last-child{width:65%}
-.paper-dot{
-  position:absolute;width:27px;height:27px;background:var(--paper-dot);
-  border:4px solid var(--card-face);border-radius:50%;bottom:-6px;right:10px;z-index:2;
-  display:flex;align-items:center;justify-content:center;
-  color:var(--paper-dot-ico);transform:rotate(7deg);
+.paper-mark{
+  position:absolute;display:block;width:30px;height:30px;bottom:-6px;right:10px;z-index:2;
+  border:2.5px solid var(--card-face);border-radius:8px;
+  box-shadow:0 2px 6px rgba(58,48,80,.18);
+  transform:rotate(7deg);pointer-events:none;-webkit-user-drag:none;
+  transition:transform var(--d-slow) var(--ease-out);
 }
-.paper-dot svg{width:12px;height:12px}
+.resume:hover .paper-mark{transform:rotate(7deg) translateY(-3px) scale(1.08)}
 
 /* ── 文件夹芯片行 ───────────────────────
    开始页拿它替掉了书签栏（顶层文件夹 ＋ 已收藏），文件夹页拿它列子文件夹。
@@ -1218,6 +1220,82 @@ body.solo .pane.html .htmlframe{top:0;height:100%}
   background:var(--card-face);border:0;border-radius:var(--r-lg);
   box-shadow:var(--el-3);animation:arrive .16s ease-out}
 #outfloat.on{display:flex}
+
+/* ═══ 关联面板（5.8） ═════════════════════
+   回答「这篇周围有什么」：所在文件夹那棵树、同一篇的别的版本、链到与被链。
+   跟大纲共用左列：同宽（--outline-w）、同字号、同留白，一次只露一个。
+   ST.rel 开着时大纲让位，ST.toc 一个字节不改，关掉关联大纲原样回来。
+   默认关着，永不自动弹；关着的时候阅读页跟没有这一段时一模一样。 */
+.relpanel{display:none;flex-direction:column;min-width:0;
+  padding-right:16px;align-self:start;            /* sticky 在 grid 里必须 start，同 .outline */
+  position:sticky;top:62px;z-index:4;
+  max-height:calc(100vh - var(--chrome-h) - var(--status-h) - var(--bnr-h, 0px) - 118px)}
+.doc-layout.rel-on{grid-template-columns:var(--outline-w) minmax(0,1fr);
+  max-width:none;padding-left:var(--ol-inset);padding-right:var(--ol-inset)}
+.doc-layout.rel-on.ol-3{
+  grid-template-columns:var(--outline-w) minmax(0,1fr) var(--outline-w)}
+.doc-layout.rel-on > .relpanel{display:flex}
+/* 条目自己滚，滚动条平时不露、鼠标进栏才浮出来——跟 .ol-list 同一套。 */
+.rel-list{position:relative;flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;
+  scrollbar-width:thin;scrollbar-color:transparent transparent}
+.rel-list::-webkit-scrollbar{width:7px}
+.rel-list::-webkit-scrollbar-track{background:transparent}
+.rel-list::-webkit-scrollbar-thumb{background:transparent;border-radius:4px;
+  border:2px solid transparent;background-clip:padding-box}
+.relpanel:hover .rel-list{scrollbar-color:var(--rule-head) transparent}
+.relpanel:hover .rel-list::-webkit-scrollbar-thumb{background:var(--rule-head);background-clip:padding-box}
+.rel-sec + .rel-sec{margin-top:18px}
+.rel-h{font-size:10px;color:var(--t3);letter-spacing:.03em;padding:0 8px 5px 10px}
+/* 「链到 ／ 被链」是段里的小节，比段头再轻一档，跟前一组之间留一口气。 */
+.rel-sh{color:var(--t4);padding-top:7px}
+.rel-h + .rel-sh{padding-top:0}
+.rel-i{display:flex;align-items:center;gap:6px;width:100%;text-align:left;
+  height:26px;padding:0 8px 0 10px;border-radius:6px;
+  font-size:12px;color:var(--t2);
+  transition:background-color .14s ease,color .14s ease}
+.rel-i:hover{background:var(--hover);color:var(--t1)}
+/* 当前这一篇：强调色字 ＋ 一层淡底，是「你在这儿」而不是「点我」。 */
+.rel-i.on{background:var(--accent-soft);color:var(--accent)}
+.rel-i i{width:12px;height:12px;flex:none;color:var(--t3);
+  display:flex;align-items:center;justify-content:center}
+.rel-i i svg{width:12px;height:12px}
+.rel-i.on i{color:var(--accent)}
+.rel-i .nd{width:7px;height:7px}
+/* 名字分两段：头部会被省略号咬掉，尾巴（最后 7 个字符）永远露着。
+   这个面板存在的理由就是分辨 v1 ／ v2 ／ 终版，尾部截断恰恰把版本号吃掉。
+   纯 flex 做的中间省略，不用 JS 量宽度：头 flex:0 1 auto 可收缩，尾 flex:none 不收缩。 */
+.rel-nm{display:flex;flex:1 1 auto;min-width:0;align-items:baseline}
+.rel-nm .hd{flex:0 1 auto;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rel-nm .tl{flex:none;white-space:nowrap}
+.rel-n,.rel-when{flex:none;font-size:10px;color:var(--t4);margin-left:4px}
+.rel-fdr{flex:0 1 auto;min-width:0;max-width:45%;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:10px;color:var(--t4)}
+.rel-more{font-size:11px;color:var(--t3)}
+/* 窄窗（正文栏 < 980）：不挤正文，贴着窗格左缘覆一层。.pane 自己是滚动容器，
+   绝对定位会跟着正文滚走，所以这一档钉在视口上量。Esc 或再按一次开关收掉。
+   这一档 relHost() 一定把面板挂在 .pane 底下（不进 .doc-layout）：带 transform 的
+   祖先会接管 position:fixed 的包含块（CSS Position §6.2），而 pageEnter() 每开一篇
+   都给 .doc-layout 挂 190ms 的 translateY——挂在里面就会每换一篇跳半屏。 */
+.pane.rel-float > .relpanel{
+  display:flex;position:fixed;left:0;
+  top:calc(var(--chrome-h) + var(--bnr-h, 0px) + var(--doc-toolbar-h));
+  bottom:var(--status-h);width:var(--outline-w);max-height:none;z-index:9;
+  /* stretch 一个字都不能少：常驻档从 .outline 抄来的 align-self:start 会让
+     上下都钉死的绝对定位盒子缩成内容高（CSS Align §4.1），面板于是只有半屏。 */
+  align-self:stretch;
+  background:var(--win);box-shadow:var(--el-3);padding:12px 6px 12px 10px}
+/* html 窗格：.doc-layout 整个 display:none，面板只能做 .pane 级的绝对定位兄弟。
+   iframe 那条 top/height 的算法（5.6.1）一个字不动，这里只补 left 和宽。 */
+.pane.html.rel-on > .relpanel{display:flex;position:absolute;left:0;
+  top:var(--doc-toolbar-h);bottom:0;width:var(--outline-w);max-height:none;z-index:5;
+  align-self:stretch;                              /* 同上：不写就缩成内容高 */
+  background:var(--win);padding:12px 6px 12px 10px}
+.pane.html.rel-on .htmlframe{left:var(--outline-w);width:calc(100% - var(--outline-w))}
+/* 专注模式：跟大纲一样只淡出，不能 display:none——网格列宽得留着，正文不跳。 */
+body.focus-mode .relpanel{opacity:0;pointer-events:none}
+/* 顶栏那颗按钮。[hidden] 得自己写一条，理由同 .dt-ol。 */
+.doc-toolbar .dt-rel[hidden]{display:none}
+.doc-toolbar .dt-rel.on{background:var(--accent-soft);color:var(--accent)}
 
 /* ═══ Markdown 正文 ═══════════════════════
    默认 17 / 1.8 / 690。中文标题 letter-spacing 为 0，层级靠字重和留白。
@@ -1864,7 +1942,7 @@ body.onb.shell #onbDrag{display:block}
 body.bnr-on #app{padding-top:calc(var(--chrome-h) + var(--bnr-h))}
 body.bnr-on #chrome{top:var(--bnr-h)}
 
-/* 底部状态栏 5.4 起取消：服务状态并进开始页眉行那枚小圆点（.scan），
+/* 底部状态栏 5.4 起取消：服务状态并进开始页大标题行尾那枚小圆点（.scan），
    「双击正文即可编辑」这类提示并进首次提示卡，字数本来就在文档 meta 行里。 */
 
 /* ═══ 轻提示 ═══════════════════════════════
@@ -1912,7 +1990,7 @@ body.solo #chrome{display:none!important}
    ⌘P 走壳的 NSPrintOperation，打的是整个 WebView，所以界面得在这里收干净。 */
 @media print{
   html,body{height:auto;overflow:visible;background:#fff;color:#000}
-  #side,.split,.tabbar,.outline,#outfloat,.editstatus,
+  #side,.split,.tabbar,.outline,#outfloat,.relpanel,.editstatus,
   #chrome,#toast,
   .doc-toolbar,.formatbar,.doc-end,.editor-hint,
   #banners,#ctx,#fmt,#wlpick,#tabpick,#cmdkWrap,#qlwrap,#cfgWrap,#slash,#typeWrap,
@@ -1924,7 +2002,8 @@ body.solo #chrome{display:none!important}
   .pane.on{display:block}
   .doc-layout{max-width:none;padding:0}
   /* 开着大纲打印：栏藏了，网格列也得收，不然正文被挤在中间那一栏 */
-  .doc-layout.ol-on,.doc-layout.ol-on.ol-3{grid-template-columns:minmax(0,1fr);padding-left:0;padding-right:0}
+  .doc-layout.ol-on,.doc-layout.ol-on.ol-3,
+  .doc-layout.rel-on,.doc-layout.rel-on.ol-3{grid-template-columns:minmax(0,1fr);padding-left:0;padding-right:0}
   .document{max-width:none}
   .md{max-width:none}
   /* 苹方-港的 100/200 印在纸上会断线，打印时把正文兜到 300，粗体跟着抬同样一档。 */
@@ -2458,7 +2537,8 @@ const DEF_ST={sbw:224, side:true, toc:true, bookmarks:false, recents:[],
   cfgTab:'reading',     /* 设置弹层上次停在哪一段 */
   cfgAdv:false,         /* 「高级」那段的折叠区展没展开 */
   nb:'',                /* 5.7 当前笔记本的名字。'' ＝「全部」，单库时恒为 '' */
-  nbMark:''};           /* 5.7 存储里那些路径的形态：'' ＝无前缀，'multi' ＝带笔记本名前缀 */
+  nbMark:'',            /* 5.7 存储里那些路径的形态：'' ＝无前缀，'multi' ＝带笔记本名前缀 */
+  rel:false};           /* 5.8 阅读页左列画的是关联面板还是大纲。默认关着，永不自动弹 */
 /* 整个键不存在＝这台机器第一次打开门户。只认「没有 tp-state」这一种情况：
    老用户哪怕把每个值都改回默认，键也还在，提示卡不会突然冒出来。 */
 const FRESH_PROFILE = (()=>{ try{ return localStorage.getItem('tp-state')===null }catch(e){ return false } })();
@@ -3083,7 +3163,7 @@ function applyPref(){
   // 源码框固定等宽 13 / 1.9，不跟正文字号走——源码看的是行，不是阅读节奏。
   document.documentElement.style.setProperty('--docw', PREF.w+'px');
   growAllEd();                                   // 字号／版心变了，源码框的高度得重算
-  syncToc();                                     // 版心变了，三栏还摆不摆得下也变了
+  syncRel();                                     // 版心变了，三栏还摆不摆得下也变了（里头接着跑 syncToc）
   if (PREF.theme==='auto') document.documentElement.removeAttribute('data-theme');
   else document.documentElement.setAttribute('data-theme', PREF.theme);
   // 全屏内容视图把网页铺进原生标题栏后，两层必须用同一套明暗外观。
@@ -3114,7 +3194,9 @@ function syncPrefControls(){
   const mh=$('#cfgMingHint'); if(mh) mh.hidden = !mingMissing();
   const tc=$('#cfgToc');
   if(tc){
-    const on=ST.toc!==false;
+    /* 显示的是「左边此刻是不是大纲」，所以关联开着时它就该是关的——
+       不然开关说着谎，用户点第一下屏幕上什么都不会变。 */
+    const on=ST.toc!==false && !REL_ON;
     tc.classList.toggle('on', on);
     tc.setAttribute('aria-checked', on?'true':'false');
   }
@@ -3686,7 +3768,7 @@ async function loadEntry(t){
     paintPage(t);
   }
   if(t.id===curTab){
-    buildToc(); syncProg(); syncBar(); syncChrome();
+    buildToc(); syncRel(); syncProg(); syncBar(); syncChrome();
   }
   if(k==='md'){ const p=paneOf(t); if(p) pageEnter(p.querySelector('.doc-layout')); }
 }
@@ -3900,19 +3982,23 @@ function cardText(i){
   return s.slice(0,140);
 }
 /* 眉行、大标题、副标，右边一颗「＋ 新建随手记」。
-   opts.scan＝眉行右边挂一枚服务状态点（原底部状态栏那一格，只有开始页要）。 */
+   眉行和副句都是给了才画：开始页 5.8 起两样都不要，只剩一句问候（§1）；
+   收藏页和文件夹页照旧传眉行。
+   opts.scan＝大标题行尾挂一枚服务状态点（原底部状态栏那一格，只有开始页要）。 */
 function greetingHtml(ico, eyebrow, title, sub, opts){
+  /* 首次渲染就按当前状态带上类，免得就绪的库先闪一下「扫描中」再消失；
+     之后状态变了由 syncScanChip() 就地改类和文字，这里不再重画。 */
   const scan = (opts&&opts.scan)
-    ? `<span class="ey-sep"></span><span class="scan" data-scan><i></i><span class="tx">${esc(scanChipText())}</span></span>`
+    ? `<span class="scan${SRV_STATE==='scan'?' scan-busy':(SRV_STATE==='off'?' scan-off':'')}" data-scan><i></i><span class="tx">${esc(scanChipText())}</span></span>`
     : '';
   /* 聚焦某个笔记本时大标题后面淡淡带一笔「· ● 工作」（§4.1）。「全部」不带。 */
   const here = (opts&&opts.here)
     ? `<span class="here">· ${nbDot(opts.here)}${esc(opts.here)}</span>` : '';
   return `<div class="home-greeting">
     <div>
-      <div class="eyebrow">${ico} ${esc(eyebrow)}${scan}</div>
-      <h1>${esc(title)}${here}</h1>
-      <p class="home-sub">${esc(sub)}</p>
+      ${eyebrow?`<div class="eyebrow">${ico} ${esc(eyebrow)}</div>`:''}
+      <h1>${esc(title)}${here}${scan}</h1>
+      ${sub?`<p class="home-sub">${esc(sub)}</p>`:''}
     </div>
     <button type="button" class="hbtn key hero-new" data-act="newnote">${icon('plus',16)}<span class="lbl">${esc(TR('新建随手记'))}</span></button>
   </div>`;
@@ -4094,14 +4180,14 @@ function resumeHtml(i){
   const mark=agentMark(i);
   return `<button type="button" class="resume" data-open="${esc(i.路径)}" data-kind="md">
     <span class="rs-text">
-      <span class="overline">${icon('clock',12)} ${esc(TR('继续阅读'))}</span>
+      <span class="overline">${icon('clock',12)} ${esc(TR('上次停在'))}</span>
       <h2>${esc(cleanTitle(i))}</h2>
       <p class="excerpt">${esc(ex)}</p>
       <span class="resume-bottom"><span>${whereHtml(i.路径)} · ${mark?mark+' · ':''}${esc(fmtWhen(i.修改时间))}</span><span class="continue">${esc(TR('接着读'))} ${icon('arrow',13)}</span></span>
     </span>
     <span class="paper-art" aria-hidden="true">
       <span class="paper-front"><b></b><i></i><i></i><i></i><i></i><i></i></span>
-      <span class="paper-dot">${icon('leaf',12)}</span>
+      <img class="paper-mark" src="/icon-192.png" width="30" height="30" alt="">
     </span>
   </button>`;
 }
@@ -4114,8 +4200,8 @@ function paintStart(box){
     const btns=`<button type="button" class="hbtn key" data-act="newnote">${icon('edit',15)}<span class="lbl">${esc(TR('写下第一篇'))}</span></button>
       <button type="button" class="hbtn" data-act="revealvault">${icon('folder',15)}<span class="lbl">${esc(TR('在访达中打开这个文件夹'))}</span></button>`;
     box.innerHTML=`<div class="home">
-      ${greetingHtml(icon('leaf',13),TR('我的笔记'),
-        greetOn()?greetTitle():TR('今天，想记下什么？'),TR('笔记库已经就位，就差第一篇。'),{scan:true, here:NB.cur})}
+      ${greetingHtml('','',
+        greetOn()?greetTitle():TR('今天，想记下什么？'),TR('笔记库已经就位，就差第一篇。'),{scan:true})}
       ${nbStripHtml(NB.cur)}
       ${emptyHtml(TR('这里还空着'),esc(TR('把 Markdown 或网页放进笔记库，它们会自动出现在这里。'))+'<br>'+esc(TR('文件留在原地，不上传，不改格式。')),{big:true, buttons:btns})}
       </div>`;
@@ -4132,14 +4218,13 @@ function paintStart(box){
   const more=(all.length>shown.length && (!NB.multi || cur))
     ? `<button type="button" class="see-all" data-folder="${esc(rootOfPage)}">${icon('folder',14)}<span>${esc(TR('看全部 {n} 篇',{n:all.length}))}</span></button>`
     : '';
-  /* 问候开着时大标题让给「早上好，某某」，副句接着说下去：上次读到哪儿，
-     没读过就问一句今天想写什么。问候关掉＝原来那两句，一个字不动。 */
-  const sub = !greetOn() ? TR('从上次的思路，轻松继续。')
-    : (last ? TR('上次停在《{title}》，接着来？',{title:cleanTitle(last)})
-            : TR('今天，想记下什么？'));
+  /* 5.8：副句不再复述大卡。问候开着又有大卡，那一句就是多余的——上次停在哪儿，
+     底下那张卡自己写着。没有大卡才问一句今天想写什么；问候关着的话这句已经当了
+     大标题，副句同样不画。 */
+  const sub = (greetOn() && !last) ? TR('今天，想记下什么？') : '';
   box.innerHTML=`<div class="home">
-    ${greetingHtml(icon('leaf',13),TR('我的笔记'),
-      greetOn()?greetTitle():TR('今天，想记下什么？'),sub,{scan:true, here:cur})}
+    ${greetingHtml('','',
+      greetOn()?greetTitle():TR('今天，想记下什么？'),sub,{scan:true})}
     ${nbStripHtml(cur)}
     ${(NB.multi && !cur) ? '' : startChipsHtml()}
     ${last?resumeHtml(last):''}
@@ -4622,7 +4707,7 @@ function showTab(id){
   $$('#panes .md').forEach(m=>m.removeAttribute('id'));
   const md=paneOf(t) && paneOf(t).querySelector('.md');
   if(md) md.id='doc';
-  drawTabs(); buildToc(); syncProg(); syncBar(); syncChrome();
+  drawTabs(); buildToc(); syncRel(); syncProg(); syncBar(); syncChrome();
   pushState();
 }
 
@@ -4676,6 +4761,7 @@ async function closeTab(id, opt){
   if(!(opt && opt.forget)) rememberClosed(t);
   const p=paneOf(t); if(p) p.remove();
   if(t.blobs) t.blobs.forEach(u=>{ try{ URL.revokeObjectURL(u); }catch(e){} });
+  REL_OPEN.delete(t.id);                     // 关联面板的展开态跟着这个标签一起走
   TABS.splice(i,1);
   if(!TABS.length){
     curTab=null;
@@ -4722,6 +4808,7 @@ function wireDocBar(p, t){
     if(t.id!==curTab) showTab(t.id);
     if(a==='path') pathChipClick(e, b, t);
     else if(a==='outline') AMN.toggleToc();
+    else if(a==='related') AMN.toggleRelated();
     else if(a==='pin'){ togglePin(t.path); drawDocBar(t); }
     else if(a==='reveal') revealPath(t.path);
     else if(a==='share') shareDoc(t);
@@ -4906,7 +4993,12 @@ function drawDocBar(t){
       + `<path d="M4 6.5h16"/><path d="M8 12h12"/><path d="M12 17.5h8"/></svg>`
       + `<span class="tip">${esc(withKbd(TR('大纲'),'⌥⌘I',true))}</span></button>`
     : '';
-  bar.innerHTML=olBtn + pathChipHtml(t) + `<div class="dt-fill"></div>` + right;
+  /* 关联那颗紧挨着大纲（大纲不在时它就是第一枚）。露不露同样交给 syncRel：
+     solo 弹出窗和库外文档没有可关联的东西，那两种情况下它一直是 hidden。 */
+  const relBtn=`<button type="button" class="dt-ico dt-rel has-tip" data-dt="related"`
+    + ` aria-label="${esc(TR('关联'))}" hidden>${icon('sidebar',16)}`
+    + `<span class="tip">${esc(withKbd(TR('关联'),'⌥⌘R',true))}</span></button>`;
+  bar.innerHTML=olBtn + relBtn + pathChipHtml(t) + `<div class="dt-fill"></div>` + right;
   const chip=bar.querySelector('.pathchip');
   fitPathChip(chip);
   requestAnimationFrame(()=>fitPathChip(chip));
@@ -4915,7 +5007,7 @@ function drawDocBar(t){
     : (src ? TR('直接改 Markdown，随时切回排版。')
            : TR('直接在正文里输入。选中一段文字，可以加粗、加链接；⌘ Z 撤销。'));
   paintSaveState(t);
-  if(t.id===curTab) syncToc();
+  if(t.id===curTab) syncRel();                  // 里头会接着跑 syncToc()
 }
 
 /* 保存状态 pill。状态源全是现成的：
@@ -5180,6 +5272,9 @@ function newPane(t){
   p.innerHTML='<div class="doc-toolbar"></div>'
     + '<div class="doc-layout">'
     +   `<nav class="outline" aria-label="${esc(TR('大纲'))}"></nav>`
+    /* 关联面板跟大纲并排站在网格首列上，一次只露一个。html 窗格里 .doc-layout
+       整个 display:none，那时 syncRel 会把这一枚挪到 .pane 底下去（relHost）。 */
+    +   `<aside class="relpanel" aria-label="${esc(TR('关联'))}"></aside>`
     +   '<div class="document">'
     +   '<div class="doc-meta"></div>'
     +   fmtBarHtml()
@@ -5192,6 +5287,7 @@ function newPane(t){
     + '<div class="pagebox" hidden></div>';
   wireDocBar(p, t);
   wireOutline(p, t);
+  wireRel(p, t);
   p.addEventListener('scroll', ()=>{ if(t.id===curTab) syncProg(); }, {passive:true});
   const box0=p.querySelector('.pagebox');
   box0.addEventListener('click', e=>{
@@ -5554,7 +5650,7 @@ async function loadMd(t){
   }
   applyPref();
   drawDocMeta(t);
-  if(t.id===curTab){ buildToc(); syncProg(); syncBar(); }
+  if(t.id===curTab){ buildToc(); syncRel(); syncProg(); syncBar(); }
 }
 
 /* ── 库外文档（只读）────────────────────
@@ -5618,7 +5714,7 @@ async function loadExt(t){
   }
   applyPref();
   drawDocMeta(t);
-  if(t.id===curTab){ buildToc(); syncProg(); syncBar(); }
+  if(t.id===curTab){ buildToc(); syncRel(); syncProg(); syncBar(); }
 }
 
 /* ── 文档历史折叠 ───────────────────────
@@ -5729,12 +5825,14 @@ function buildToc(){
 function syncToc(){
   const t=active(), p=t&&paneOf(t);
   const ready=olReady(), wide=olWide();
-  OL_ON = ready && ST.toc!==false && wide;
+  /* 5.8：左列一次只站一个。关联开着时大纲让位，ST.toc 一个字节不改——
+     关掉关联（或者按大纲那颗按钮）它就照原样回来。 */
+  OL_ON = ready && ST.toc!==false && wide && !REL_ON;
   if(p){
     const lay=p.querySelector('.doc-layout');
     if(lay){
       lay.classList.toggle('ol-on', OL_ON);
-      lay.classList.toggle('ol-3', OL_ON && olWider());
+      lay.classList.toggle('ol-3', (OL_ON || (REL_ON && wide)) && olWider());
     }
     const b=p.querySelector('[data-dt="outline"]');
     if(b){
@@ -5812,6 +5910,409 @@ function placeOlFloat(){
   const x=r?r.left:16, y=r?r.bottom+6:80;
   f.style.left=Math.max(8, Math.min(x, innerWidth-f.offsetWidth-8))+'px';
   f.style.top =Math.max(8, Math.min(y, innerHeight-f.offsetHeight-8))+'px';
+}
+
+/* ── 关联面板（5.8）─────────────────────
+   左列的另一副面孔：所在文件夹的那棵树、同一篇的别的版本、链到与被链。
+   数据除了链接全在页面手里（items ＋ TREE），所以树和版本都是当场算的，
+   只有链接要问一次服务端（GET /__links），按路径缓存到会话结束。 */
+let REL_ON=false;                  // 面板此刻是不是真画着，state().related 报的就是它
+let relGen=0;                      // items 换了一版就 +1，面板的重绘签名靠它
+/* 展开着的文件夹，键 = 标签 id。不进 ST：换一篇就该按新的祖先链重来，
+   而且 pagebox 那类整体重写的地方也碰不到它（陷阱 8）。 */
+const REL_OPEN=new Map();
+/* 链接：路径 → 服务端那份 JSON ／ null（没有、拿不到、老服务端 404）。 */
+const REL_LINKS=new Map();
+const REL_PEND=new Set();          // 正在路上的路径，同一条同时只发一发（防请求风暴）
+/* 「手上这份可能过期了」。一篇的被链会因为**别的篇**被改而变（A 加了个 [[B]]，
+   B 的修改时间纹丝不动），光盯自己的修改时间盯不住，所以重扫只要发现树变了
+   就把整表标一遍——数据留着不删，下次画到那一篇时后台重新问一发，
+   先照旧显示旧的（stale-while-revalidate），回来不一样才换。 */
+const REL_STALE=new Set();
+/* 路径 → 链接内容的版本号，只在内容**真的**变了时 +1，进 relSig。
+   一模一样的回复不动它 ＝ 签名不变 ＝ 不重画 ＝ 不闪。 */
+const REL_LVER=new Map();
+/* 通用名：归一化后落进这一组的，只在同一文件夹里认「同一篇」——
+   两个文件夹各自的 README 不是彼此的版本（explore/server.md §4）。 */
+const REL_GENERIC=new Set(['readme','index','先读我','索引','无标题','untitled']);
+
+const relStem = p => String(p||'').split('/').pop().replace(/\.(md|html|htm)$/i,'');
+const relDirOf = p => { const s=String(p||''), i=s.lastIndexOf('/'); return i<0?'':s.slice(0,i); };
+const relCmp = (a,b) => String(a).localeCompare(String(b), undefined, {numeric:true, sensitivity:'base'});
+
+/* 文件名主干 → 版本无关的归一化主干：同一篇的不同版本归一化之后应当相等。
+   纯函数，只认字符串。紧跟着的自检块盖住契约 §5 的全部样例。
+   v／rev／copy／final／draft 这几个英文标记左右都要护栏（左边「开头或非字母数字」、
+   右边「后面不是字母」），不然 chekhov2 会被当成版本号，design review 会被咬成
+   design iew、copyright 变成 right、finalists 变成 ists——归一化结果是「其他版本」
+   的配对键，咬错了就会把 copyright.md 和 right.md 列成彼此的版本。 */
+function versionStem(name){
+  let s=String(name||'').replace(/\.(md|html|htm)$/i,'').toLowerCase();
+  s=s.replace(/(^|[^a-z0-9])v\d+(?:\.\d+)*(?![a-z])/g, '$1');   // v1 ／ v2.1
+  s=s.replace(/版本\s*\d+/g, '').replace(/第?\d+版/g, '');
+  s=s.replace(/(^|[^a-z0-9])rev\.?\s*\d*(?![a-z])/g, '$1');
+  s=s.replace(/\d{4}[-._]\d{1,2}[-._]\d{1,2}/g, '').replace(/\d{8}/g, '');
+  s=s.replace(/\d{1,2}月\d{1,2}日/g, '');
+  s=s.replace(/副本/g, '').replace(/(^|[^a-z0-9])copy\s*\d*(?![a-z])/g, '$1');
+  s=s.replace(/[(（]\s*\d+\s*[)）]/g, '');
+  s=s.replace(/终版|最终|定稿|草稿|修订版?|汇报版|合集版|精简版|完整版|会议纪要版/g, '');
+  s=s.replace(/(^|[^a-z])(?:final|draft)(?![a-z])/g, '$1');     // 中文照旧，英文两个词单列
+  s=s.replace(/^[\s_\-·.—()（）【】\[\]]+/, '').replace(/[\s_\-·.—()（）【】\[\]]+$/, '');
+  return s.replace(/\s+/g, ' ');
+}
+/* 自检：地址栏带 selftest 才跑，平时一个断言都不执行。 */
+if(/selftest/.test(location.search)){
+  [['光合平台视频发布自动化·可行性评估_v1','光合平台视频发布自动化·可行性评估'],
+   ['光合平台视频发布自动化·可行性评估 v3 终版','光合平台视频发布自动化·可行性评估'],
+   ['20260827_光合平台视频发布自动化·可行性评估','光合平台视频发布自动化·可行性评估'],
+   ['光合平台视频发布自动化·可行性评估','光合平台视频发布自动化·可行性评估'],
+   ['季度汇报 (2)','季度汇报'],
+   ['Weekly sync - copy 2','weekly sync'],
+   ['设计稿_v2.1_final','设计稿'],
+   ['周会','周会'],
+   ['v2',''],
+   ['README','readme'],
+   /* 反例：这些普通词一个字都不该被咬掉（右护栏就是为它们加的）。 */
+   ['Design review','design review'],
+   ['Q3 revenue','q3 revenue'],
+   ['revision history','revision history'],
+   ['copyright','copyright'],
+   ['copywriting','copywriting'],
+   ['finalists','finalists']].forEach(([inp, want])=>{
+    const got=versionStem(inp);
+    console.assert(got===want, 'versionStem('+inp+') = '+JSON.stringify(got)+'，应当是 '+JSON.stringify(want));
+  });
+}
+
+/* 这个标签有没有「周围」可看：页面标签（开始／搜索／文件夹／已收藏）、库外只读
+   文档、solo 弹出窗都没有。按钮露不露、⌥⌘R 管不管用，都看这一条。 */
+function relReady(t){
+  t=t||active();
+  if(!t || t.ext || document.body.classList.contains('solo')) return false;
+  const k=kindOfTab(t);
+  return k==='md' || k==='html';
+}
+/* 展开着的那些文件夹。换一篇（或者第一次开）就按新的祖先链重算：
+   祖先全展开、兄弟看得见，别的照旧折着。 */
+function relOpenSet(t){
+  let e=REL_OPEN.get(t.id);
+  if(!e || e.path!==t.path){
+    const set=new Set();
+    const book=NB.of(t.path||'');
+    const segs=NB.strip(t.path||'').split('/').filter(Boolean);
+    segs.pop();                                   // 最后一段是文件名
+    let acc=book;
+    set.add(acc);                                 // 根（多本＝笔记本名，单库＝''）
+    segs.forEach(s=>{ acc = acc ? acc+'/'+s : s; set.add(acc); });
+    e={path:t.path, set};
+    REL_OPEN.set(t.id, e);
+  }
+  return e.set;
+}
+/* items 里属于这一本的全部文档 → 一棵按路径分段的树。
+   随手记在 items 里只有一份（setTree 只喂 TREE.文档），照路径分段就行。 */
+function relTree(book){
+  const root={name:'', path:book, dirs:new Map(), files:[], n:0};
+  const d=bookDepth();
+  items.forEach(i=>{
+    const p=String(i.路径||'');
+    if(NB.of(p)!==book) return;
+    const k=kindOf(i); if(k!=='md' && k!=='html') return;
+    const segs=p.split('/').slice(d).filter(Boolean);
+    if(!segs.length) return;
+    let node=root, acc=book;
+    for(let n=0;n<segs.length-1;n++){
+      acc = acc ? acc+'/'+segs[n] : segs[n];
+      let kid=node.dirs.get(segs[n]);
+      if(!kid){ kid={name:segs[n], path:acc, dirs:new Map(), files:[], n:0}; node.dirs.set(segs[n], kid); }
+      node=kid;
+    }
+    node.files.push(i);
+  });
+  (function count(nd){
+    let n=nd.files.length;
+    nd.dirs.forEach(k=>{ n+=count(k); });
+    return (nd.n=n);
+  })(root);
+  return root;
+}
+const REL_CAP=200;                                 // 一个文件夹最多画这么多行
+/* 顶层文件夹的显示名：用户在配置里给「01、会议」这类起过别名时，
+   芯片和文件夹页显示的是别名，树里也跟着显示，别两处两个名字。 */
+function relDirLabel(name, path, book){
+  if(String(path||'').split('/').length !== bookDepth()+1) return name;
+  const d=((TREE&&TREE.目录)||[]).find(x=>x.名称===name && (!NB.multi || x.本===book));
+  return (d && d.显示名) || name;
+}
+/* 长名字要「中间省略」：尾巴永远露着，被咬掉的是中间那一段。
+   248px 的栏里 _v1 ／ _v2 ／ v3 终版 三行否则全显示成「光合平台视频发布自动化·可…」，
+   恰恰把区分版本的后缀吃掉——这面板存在的理由就是看版本。
+   纯函数，只把名字拆成头尾两段，宽度全交给 CSS 那两条 flex 规则算，不量像素。 */
+const REL_TAIL=7;          // 尾巴留几个字符：_v1、v3 终版、估_v2.1、(2) 都在 7 个以内
+function relNameHtml(name){
+  const cs=Array.from(String(name||''));           // 按字符数，别按 UTF-16 码元
+  if(cs.length<=12) return `<span class="hd">${esc(cs.join(''))}</span>`;
+  return `<span class="hd">${esc(cs.slice(0, cs.length-REL_TAIL).join(''))}</span>`
+       + `<span class="tl">${esc(cs.slice(cs.length-REL_TAIL).join(''))}</span>`;
+}
+function relRow(cls, attr, indent, ico, name, tail){
+  return `<button type="button" class="rel-i ${cls}"${attr} title="${esc(name)}"`
+       + ` style="padding-left:${indent}px">`
+       + ico + `<span class="rel-nm">${relNameHtml(name)}</span>` + (tail||'') + `</button>`;
+}
+/* 一层一层往下画，只钻展开着的那几个文件夹。每层缩进 12px。 */
+function relTreeRows(node, depth, cur, open, book){
+  const pad=10+depth*12;
+  const dirs=[...node.dirs.values()].sort((a,b)=>relCmp(a.name,b.name));
+  const files=node.files.slice().sort((a,b)=>relCmp(relStem(a.路径), relStem(b.路径)));
+  const total=dirs.length+files.length;
+  let left=REL_CAP, out='';
+  for(let n=0;n<dirs.length && left>0;n++,left--){
+    const kid=dirs[n], on=open.has(kid.path);
+    /* aria-expanded：箭头是画给眼睛看的，读屏得靠这一位才知道展没展开。 */
+    out += relRow('rel-d', ` data-rd="${esc(kid.path)}" aria-expanded="${on}"`, pad,
+                  `<i>${icon(on?'chevron-down':'chevron-right',12)}</i>`,
+                  relDirLabel(kid.name, kid.path, book),
+                  kid.n?`<span class="rel-n num">${kid.n}</span>`:'');
+    if(on) out += relTreeRows(kid, depth+1, cur, open, book);
+  }
+  for(let n=0;n<files.length && left>0;n++,left--){
+    const i=files[n], here=i.路径===cur;
+    out += relRow('rel-f'+(here?' on':''), ` data-rf="${esc(i.路径)}"`, pad,
+                  `<i>${icon(kindOf(i)==='html'?'globe':'doc',12)}</i>`,
+                  relStem(i.路径), '');
+  }
+  if(total>REL_CAP){
+    /* 这一行是提示不是文件名，尾巴不用留，整句从尾部截断就行。 */
+    out += `<button type="button" class="rel-i rel-more" data-rmore="${esc(node.path)}"`
+         + ` style="padding-left:${pad}px"><span class="rel-nm"><span class="hd">`
+         + esc(TR('还有 {n} 项，打开文件夹页',{n:total-REL_CAP})) + `</span></span></button>`;
+  }
+  return out;
+}
+/* ① 所在文件夹。多本时最上面一行是笔记本（色点 ＋ 名字），单库不画根行。 */
+function relFolderHtml(t){
+  const book=NB.of(t.path||'');
+  const open=relOpenSet(t);
+  const root=relTree(book);
+  let rows='';
+  if(NB.multi && book){
+    const on=open.has(book);
+    rows += relRow('rel-d rel-root', ` data-rd="${esc(book)}" aria-expanded="${on}"`, 10,
+                   `<i>${icon(on?'chevron-down':'chevron-right',12)}</i>`+nbDot(book),
+                   book, root.n?`<span class="rel-n num">${root.n}</span>`:'');
+    if(on) rows += relTreeRows(root, 1, t.path, open, book);
+  }else{
+    rows += relTreeRows(root, 0, t.path, open, book);
+  }
+  if(!rows) return '';
+  return `<div class="rel-sec"><div class="rel-h">${esc(TR('所在文件夹'))}</div>${rows}</div>`;
+}
+/* ② 其他版本：文件名主干归一化后相等，限同一笔记本，md 和 html 都算，排除自己。
+   归一化只剩一个字＝没什么可比的；通用名（README 这类）只在同一文件夹里认。 */
+/* 路径 → 归一化主干的缓存。整张 items 现算一遍是面板重画里最贵的一段
+   （5000 篇实测 8.1ms，每条 ~12 次正则），而它只跟文件名有关、跟展开态无关：
+   展开／收起一个文件夹重画时白算一遍太亏。items 换了一版（relGen++）才作废。 */
+const REL_STEM=new Map();
+let relStemGen=-1;
+function relVerStem(path){
+  if(relStemGen!==relGen){ REL_STEM.clear(); relStemGen=relGen; }
+  let v=REL_STEM.get(path);
+  if(v===undefined){ v=versionStem(relStem(path)); REL_STEM.set(path, v); }
+  return v;
+}
+function relVersions(t){
+  const me=String(t.path||''), key=relVerStem(me);
+  if(key.length<2) return [];
+  const book=NB.of(me), dir=relDirOf(me), generic=REL_GENERIC.has(key);
+  return items.filter(i=>{
+    const p=String(i.路径||'');
+    if(p===me || NB.of(p)!==book) return false;
+    const k=kindOf(i); if(k!=='md' && k!=='html') return false;
+    if(relVerStem(p)!==key) return false;
+    return !generic || relDirOf(p)===dir;
+  }).sort((a,b)=>(b.修改时间||0)-(a.修改时间||0)).slice(0,12);
+}
+function relVersionsHtml(t){
+  const list=relVersions(t);
+  if(!list.length) return '';
+  const dir=relDirOf(String(t.path||''));
+  /* 家族限同一笔记本，所以「在哪儿」只说目录——本名在这一段里重复了没意义。 */
+  const rows=withNbCtx(NB.of(String(t.path||'')), ()=>list.map(i=>{
+    const other=relDirOf(i.路径)!==dir ? folderText(i.路径) : '';
+    return relRow('rel-f', ` data-rf="${esc(i.路径)}"`, 10,
+                  `<i>${icon(kindOf(i)==='html'?'globe':'doc',12)}</i>`, relStem(i.路径),
+                  (other?`<span class="rel-fdr">${esc(other)}</span>`:'')
+                  + `<span class="rel-when">${esc(fmtWhen(i.修改时间))}</span>`);
+  }).join(''));
+  return `<div class="rel-sec"><div class="rel-h">${esc(TR('其他版本'))}</div>${rows}</div>`;
+}
+/* ③ 链接。一篇问一次 /__links，按路径缓存；{ok:false}、网络出错、
+   老服务端 404 一律当「没有这一段」，静默不画。
+   缓存被标过期之后不作废、只在下次画到那一篇时后台重新问一发（下面那三个函数）。 */
+/* 两份回复算不算「一样」：只认上屏用得着的那几个字段，服务端多给的一律不看。 */
+const relLinksKey = j => !j ? '' : JSON.stringify([
+  (j.出链||[]).map(l=>[l.目标, l.文本, l.存在===false?0:1, l.类型||'']),
+  (j.反链||[]).map(l=>[l.源, l.文本])]);
+/* 一发回来了。返回「要不要重画」：
+   ① 重新校验失败（{ok:false}／网络错）不覆盖旧的——多显示一会儿旧的，
+      好过整段凭空消失；头一回就失败的那档照旧落 null，静默不画。
+   ② 一个字没变：只把过期标记摘掉，版本号不动 ⇒ 签名不变 ⇒ 不重画、不闪。
+   ③ 真的变了：落表、版本号 +1，交给调用方 syncRel()。 */
+function relLinksTake(p, v){
+  const had=REL_LINKS.has(p), old=had?REL_LINKS.get(p):null;
+  REL_STALE.delete(p);
+  if(had && old && v===null) return false;
+  if(had && relLinksKey(old)===relLinksKey(v)) return false;
+  REL_LINKS.set(p, v);
+  REL_LVER.set(p, (REL_LVER.get(p)||0)+1);
+  return true;
+}
+function relLinksFor(t){
+  const p=String(t&&t.path||''); if(!p) return null;
+  const had=REL_LINKS.has(p), old=had?REL_LINKS.get(p):null;
+  if(had && !REL_STALE.has(p)) return old;
+  /* 没服务端、或者这条路径已经有一发在路上：手上有什么先用什么。 */
+  if(!IS_HTTP || REL_PEND.has(p)) return old;
+  REL_PEND.add(p);
+  fetch('/__links?path='+encodeURIComponent(p), {cache:'no-store'})
+    .then(r => r.ok ? r.json() : null)
+    .then(j => relLinksTake(p, (j && j.ok) ? j : null))
+    .catch(()=> relLinksTake(p, null))
+    .then(hit => {
+      REL_PEND.delete(p);
+      const cur=active();
+      if(hit && REL_ON && cur && cur.path===p) syncRel();   // 变了才补画这一段
+    });
+  return old;                       // 头一回是 null；重新校验期间照旧交出旧的
+}
+const relByPath = rel => items.find(i=>i.路径===rel) || null;
+/* 题名链的目标是裸名：在同一本里按文件名主干或者标题（都小写）找。 */
+function relByName(name, book){
+  const q=String(name||'').trim().toLowerCase();
+  if(!q) return null;
+  return items.find(i=>{
+    if(NB.of(i.路径)!==book) return false;
+    return relStem(i.路径).toLowerCase()===q || String(i.标题||'').trim().toLowerCase()===q;
+  }) || null;
+}
+function relLinksHtml(t){
+  const j=relLinksFor(t);
+  if(!j) return '';
+  const me=String(t.path||''), book=NB.of(me);
+  const pick=(arr, get)=>{
+    const seen=new Set(), out=[];
+    (arr||[]).forEach(l=>{
+      const it=get(l);
+      if(!it || it.路径===me || seen.has(it.路径)) return;
+      seen.add(it.路径); out.push(it);
+    });
+    return out;
+  };
+  const outs=pick(j.出链, l => l.存在===false ? null
+    : (l.类型==='路径' ? relByPath(l.目标) : relByName(l.目标, book)));
+  const backs=pick(j.反链, l => relByPath(l.源));
+  if(!outs.length && !backs.length) return '';
+  /* 行文字用文件名主干，跟树和「其他版本」一个口径——同一份文件不该在一块面板里
+     以两个名字出现（cleanTitle 会把 v1／v2 洗掉，两行看着一模一样）。 */
+  const rows=list=>list.map(i=>relRow('rel-f', ` data-rf="${esc(i.路径)}"`, 10,
+      `<i>${icon(kindOf(i)==='html'?'globe':'doc',12)}</i>`, relStem(i.路径), '')).join('');
+  return `<div class="rel-sec"><div class="rel-h">${esc(TR('链接##关联'))}</div>`
+    + (outs.length ? `<div class="rel-h rel-sh">${esc(TR('链到'))}</div>`+rows(outs) : '')
+    + (backs.length ? `<div class="rel-h rel-sh">${esc(TR('被链'))}</div>`+rows(backs) : '')
+    + `</div>`;
+}
+/* 只在开着的时候填，签名没变就一个字节都不动（改动时会闪，滚动位置也会跳）。 */
+function relSig(t){
+  /* 链接那一段算两笔：有没有拿到（有 → 这一段才出现）＋ 内容的版本号
+     （后台重新校验回来，只有内容真的变了才会 +1）。 */
+  return [t.id, t.path, relGen, REL_LINKS.has(t.path)?1:0, REL_LVER.get(t.path)||0,
+          [...relOpenSet(t)].sort().join('>')].join('~');
+}
+function paintRel(t, el){
+  const sig=relSig(t), key=t.id+'~'+t.path;
+  if(el.dataset.sig===sig) return;
+  /* 「同一篇重画」和「换了一篇」要分开：前者（展开一个文件夹、外部改了任何一份
+     文件触发重扫、链接到货）保留滚动位置，不然用户往下翻着翻着，一次自动保存就
+     把视野拽回当前这一篇；后者才把新的当前项滚进视野。 */
+  const list0=el.querySelector('.rel-list');
+  /* list0 为空 ＝ 刚开面板（关掉时 syncRel 把内容清空了），那一下算「换了一篇」。 */
+  const keep=list0?list0.scrollTop:0, same=!!list0 && el.dataset.key===key;
+  el.dataset.sig=sig; el.dataset.key=key;
+  el.innerHTML=`<div class="rel-list">`
+    + relFolderHtml(t) + relVersionsHtml(t) + relLinksHtml(t)
+    + `</div>`;
+  const list=el.querySelector('.rel-list');
+  if(same && list){ list.scrollTop=keep; return; }
+  const now=el.querySelector('.rel-f.on');
+  if(now) now.scrollIntoView({block:'nearest'});
+}
+/* 面板该在谁底下：md 窗格的宽档搭在 .doc-layout 的网格首列上；html 窗格里
+   .doc-layout 是 display:none，窄窗覆盖档又是 position:fixed（DOM 上挂哪儿不影响
+   布局）—— 这两档都挪到 .pane 底下做绝对／固定定位的兄弟。
+   窄档必须挪出去：带 transform 的祖先会接管 fixed 的包含块（CSS Position §6.2），
+   而 pageEnter() 每开一篇都给 .doc-layout 挂 190ms 的 translateY，挂在里面的话
+   每换一篇面板就往下掉半屏再弹回来。 */
+function relHost(p, t){
+  const el=p.querySelector('.relpanel'); if(!el) return null;
+  const lay=p.querySelector('.doc-layout');
+  const want = (kindOfTab(t)==='html' || !olWide()) ? p : lay;
+  if(want && el.parentNode!==want){
+    if(want===p) p.appendChild(el);
+    else lay.insertBefore(el, lay.querySelector('.document'));
+  }
+  return el;
+}
+/* 该不该露、露成哪一档、顶栏那颗按钮什么样。最后接着跑 syncToc()——
+   两栏是同一列，大纲得知道自己此刻要不要让位。 */
+function syncRel(){
+  const t=active(), p=t&&paneOf(t);
+  const ready=relReady(t);
+  REL_ON = ready && ST.rel===true;
+  if(p){
+    const el=relHost(p, t);
+    const lay=p.querySelector('.doc-layout');
+    const wide=olWide();
+    if(lay) lay.classList.toggle('rel-on', REL_ON && wide);
+    p.classList.toggle('rel-on', REL_ON && wide);
+    p.classList.toggle('rel-float', REL_ON && !wide);
+    if(el){
+      if(REL_ON) paintRel(t, el);
+      else if(el.dataset.sig){ el.dataset.sig=''; el.innerHTML=''; }
+    }
+    const b=p.querySelector('[data-dt="related"]');
+    if(b){ b.hidden=!ready; b.classList.toggle('on', REL_ON); }
+  }
+  if(REL_ON) closeOlFloat();            // 窄窗里两层不叠着出现
+  syncToc();
+}
+/* 点条目：文件＝当前标签打开（已开着的切过去），⌘／Ctrl＝新标签；
+   文件夹＝展开收起，⌘ 单击＝新标签开那一页（跟路径芯片一个规矩）。 */
+function wireRel(p, t){
+  const el=p.querySelector('.relpanel'); if(!el) return;
+  el.addEventListener('pointerdown', e=>{ if(e.target.closest('.rel-i')) e.preventDefault(); });
+  el.addEventListener('click', e=>{
+    const b=e.target.closest('.rel-i'); if(!b) return;
+    if(t.id!==curTab) showTab(t.id);
+    const meta=e.metaKey||e.ctrlKey;
+    const openFolder=(f, nt)=>navigate(makeEntry('folder',
+        {folder:f, title:f?f.split('/').pop():TR('库根'), path:f?f+'/':'/'}), {newTab:!!nt});
+    if(b.dataset.rf!=null){
+      const it=relByPath(b.dataset.rf);
+      if(it) openDoc(it, {newTab:meta});
+      return;
+    }
+    /* 「还有 N 项」跟文件行同一个规矩：单击当前标签，⌘ 单击新标签。 */
+    if(b.dataset.rmore!=null){ openFolder(b.dataset.rmore, meta); return; }
+    if(b.dataset.rd!=null){
+      const f=b.dataset.rd;
+      if(meta){ openFolder(f, true); return; }
+      const set=relOpenSet(t);
+      set.has(f) ? set.delete(f) : set.add(f);
+      syncRel();
+      return;
+    }
+  });
 }
 
 /* ── 列表栏（⌃⌘S）5.4.1 下线 ─────────────
@@ -7358,6 +7859,8 @@ function setTree(t){
     });
     if(TRASHED.size) docs=docs.filter(d=>!TRASHED.has(d.路径));
   }
+  /* 换表之前留一份「路径 → 修改时间」，下面作废关联面板的链接缓存要用。 */
+  const prevMtime=new Map(items.map(i=>[i.路径, i.修改时间||0]));
   items=docs.map(d=>({
     路径:d.路径, 标题:d.标题||'', 类型:d.类型||'md',
     修改时间:d.改于||0, 日期:ymd(d.改于), 预览:d.预览||'',
@@ -7376,6 +7879,24 @@ function setTree(t){
     const k=kindOfTab(t);
     if(isPageKind(k)) paintPage(t);
   });
+  /* 链接段按路径缓存（契约 §3.2）。可它会过期，而且不只是因为自己被改：
+     A 加了个 [[B]] 存下，B 的**被链**就多了一条，B 自己的修改时间却纹丝不动。
+     所以只要这一版树跟上一版有任何出入（篇数不同、有路径进出、任何一篇的修改
+     时间变了），就把整表标一遍「可能过期」——数据留着不删（删了签名要 1→0→1
+     翻一趟，链接段白闪一下），下次画到那一篇时后台重新问一发，一样就什么都不做。
+     已经不在了的路径没有下一次，直接扔掉。 */
+  if(REL_LINKS.size){
+    const nowM=new Map(items.map(i=>[i.路径, i.修改时间||0]));
+    let moved = nowM.size!==prevMtime.size;
+    if(!moved) for(const [p, m] of nowM){ if(prevMtime.get(p)!==m){ moved=true; break; } }
+    if(moved) REL_LINKS.forEach((_, p)=>{
+      if(nowM.has(p)) REL_STALE.add(p);
+      else { REL_LINKS.delete(p); REL_STALE.delete(p); }
+    });
+  }
+  /* 树换了一版：关联面板画的正是这张表，开着就得跟着重算。 */
+  relGen++;
+  if(REL_ON) syncRel();
 }
 
 async function loadTree(){
@@ -7984,6 +8505,9 @@ const CK_ACTS=[
    kw:['new window','window','窗口','視窗','视窗'], go(){ AMN.newWindow(); }},
   {id:'edit', title:K('进入编辑'), kbd:'⌘E',
    kw:['edit','write','编辑','編輯'], go(){ AMN.enterEdit(); }},
+  {id:'related', title:K('关联'), kbd:'⌥⌘R',
+   kw:['related','tree','files','links','关联','關聯','文件树','版本','链接'],
+   go(){ AMN.toggleRelated(); }},
   {id:'type', title:K('阅读与外观'), kbd:'',
    kw:['appearance','typography','theme','font','外观','外觀','字体','字體','主题','主題','排版'],
    go(){ openType(); }},
@@ -8056,7 +8580,7 @@ function ckItems(q){
 }
 /* 动作行前面那颗图标，只是长相，不进 CK_ACTS。 */
 const CK_ICON={tab:'plus', new:'new-note', win:'newwin',
-  edit:'pencil', type:'sliders', finder:'folder', home:'home'};
+  edit:'pencil', type:'sliders', finder:'folder', home:'home', related:'sidebar'};
 /* 全库搜索：跟原来地址栏回车一字不差——setKw ＋ 一张搜索结果页。 */
 function runSearch(q, newTab, scope){
   q=String(q||'').trim(); if(!q) return;
@@ -9281,7 +9805,10 @@ function wireCfg(tab){
       setPref(k, +b.dataset.v);
     });
     const tc=$('#cfgToc');
-    if(tc) tc.onclick=()=>{ ST.toc = !(ST.toc!==false); saveST(); syncToc(); syncPrefControls(); };
+    /* 大纲开回来就等于「关联让位」——不然左列还站着关联，这颗开关看着像坏的。
+       翻的是显示端那个值（`大纲此刻在不在`），所以关联开着时点一下必定把大纲请回来。 */
+    if(tc) tc.onclick=()=>{ ST.toc = !(ST.toc!==false && !REL_ON); if(ST.toc) ST.rel=false;
+      saveST(); syncRel(); syncPrefControls(); };
     const cq=$('#cfgChips');
     if(cq) cq.onclick=()=>setChipsOpen(!chipsOpen());
     const rb=$('#rstPref');
@@ -9648,6 +10175,10 @@ async function syncStatus(){
          对不上就等于把收藏静默删光。交给下一次 setTree()。 */
       if(wasMulti!==NB.multi) prepItems();
       syncHomeDot(); drawTabs(); repaintPages();
+      /* 关联面板画的根行、色点、路径分段都跟着这一版笔记本表走：多本翻面时
+         bookDepth() 从 0 变 1，树整棵都得重算；改了颜色／别名也要补一发。
+         不补的话得等下一次 relGen++（＝下一次重扫）才对得上。 */
+      if(REL_ON){ relGen++; syncRel(); }
       if(cfgOn() && ST.cfgTab==='library') renderCfg();
     }
     const scanning = busy || s.状态==='扫描中';
@@ -9726,12 +10257,12 @@ addEventListener('pointerdown', e=>{
   if(typeOn() && !e.target.closest('#typeWrap') && !e.target.closest('[data-dt="more"]')) closeType();
   if(userPopOn() && !e.target.closest('#userPop') && !e.target.closest('#userChip')) closeUserPop();
 }, true);
-addEventListener('resize', ()=>{ layoutTabs(); growAllEd(); syncToc(); refitPaths(); placeType();
+addEventListener('resize', ()=>{ layoutTabs(); growAllEd(); syncRel(); refitPaths(); placeType();
   placeUserPop();
   if(tabPickOn()) openTabPick(); });
 if(window.ResizeObserver){
   const pane=$('#docpane');
-  if(pane) new ResizeObserver(()=>{ layoutTabs(); growAllEd(); syncToc(); refitPaths(); }).observe(pane);
+  if(pane) new ResizeObserver(()=>{ layoutTabs(); growAllEd(); syncRel(); refitPaths(); }).observe(pane);
   const strip=$('#tabstrip');
   if(strip) new ResizeObserver(()=>layoutTabs()).observe(strip);
 }
@@ -9765,8 +10296,23 @@ window.AMN = {
   toggleLists(){ toggleLists(); },
   /* 栏宽够就是收放左栏，不够就弹浮层——两种情况下这一颗（和 ⌥⌘I）都叫「大纲」。 */
   toggleToc(){
+    /* 5.8：关联占着左列时，这一下的意思是「把大纲换回来」——先让关联退场。
+       宽窗直接把大纲亮出来（收着的话顺手打开）；窄窗接着走下面的浮层那条。 */
+    if(ST.rel){
+      ST.rel=false;
+      const wide=olWide();
+      if(wide) ST.toc=true;
+      saveST(); syncRel();
+      if(wide) return;
+    }
     if(olReady() && !olWide()){ olFloatOn() ? closeOlFloat() : openOlFloat(); syncToc(); return; }
     ST.toc=!ST.toc; saveST(); syncToc();
+  },
+  /* 5.8：阅读页左列换成「关联」（所在文件夹 ／ 其他版本 ／ 链接）。
+     页面标签、库外文档、solo 窗里没有可关联的东西，静默不动。 */
+  toggleRelated(){
+    if(!relReady()) return;
+    ST.rel=!ST.rel; saveST(); syncRel();
   },
   toggleBookmarks(){ toggleBookmarks(); },
   back(){ goHist(-1); },
@@ -9813,6 +10359,10 @@ window.AMN = {
     if(quickOn()){ closeQuick(); return; }
     if(qlOn){ closeQL(); return; }
     if(cfgOn()){ closeCfg(); return; }
+    /* 窄窗里关联是覆在正文上的一层，Esc 先收它。宽窗停靠着的那一档不收——
+       它跟大纲一样是常驻栏，不该被 Esc 关掉。专注模式下它 opacity:0 看不见，
+       那一下 Esc 该留给「退出专注」——看不见的一层不该抢走 Esc（同下面头像浮层）。 */
+    if(REL_ON && !olWide() && !FOCUS){ AMN.toggleRelated(); return; }
     if(FOCUS){ setFocus(false); return; }
     /* 头像浮层排在这几层后面。它会被 ⌘K 面板／快看／设置整个盖住，专注模式下
        还跟着 .rightgrp 一起淡出——看不见的一层不该抢走 Esc。上面那几处也都在
@@ -9848,7 +10398,9 @@ window.AMN = {
       /* 列表栏 5.4.1 下线，这两位恒假；键留着，壳还在读。 */
       lists:false, sidebar:false, toc:OL_ON||olFloatOn(),
       /* 第 15 个键（5.7）：此刻聚焦的笔记本名，「全部」和单库是空串。 */
-      notebook:NB.cur, notebookCount:NB.list.length
+      notebook:NB.cur, notebookCount:NB.list.length,
+      /* 第 16 个键（5.8）：关联面板此刻露没露，壳菜单「显示关联」靠它打勾。 */
+      related:REL_ON
     });
   }
 };
@@ -9890,6 +10442,9 @@ addEventListener('keydown', e=>{
   if(e.metaKey && e.altKey && e.key.toLowerCase()==='c'){
     e.preventDefault(); const t=active(); if(t && t.path) clipPath(t.path); return; }
   if(e.metaKey && e.altKey && e.key.toLowerCase()==='i'){ e.preventDefault(); AMN.toggleToc(); return; }
+  /* ⌥⌘R 关联（5.8）。壳里也有这一项，所以必须排在下面 `if(SHELL) return` 之前；
+     按住 Option 时 e.key 可能是死键或 ®，认 e.code。 */
+  if(e.metaKey && e.altKey && e.code==='KeyR'){ e.preventDefault(); AMN.toggleRelated(); return; }
   if(e.metaKey && e.key.toLowerCase()==='l'){ e.preventDefault(); focusOmnibox(); return; }
   if(e.metaKey && e.key==='['){ e.preventDefault(); goHist(-1); return; }
   if(e.metaKey && e.key===']'){ e.preventDefault(); goHist(1); return; }
@@ -10188,7 +10743,7 @@ if(EMBED){
 paintIcons(document);
 applyST();
 applyPref();
-syncToc();
+syncRel();
 onbBoot();
 /* 上一轮在壳里换了语言：菜单已经重建过，但 AppKit 自带的那几项要下次启动才跟上。
    记号只消费一次，说完就抹掉。 */
