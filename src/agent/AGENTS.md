@@ -1,14 +1,17 @@
-<!-- 由 AM·Note 生成。这个文件夹是一个笔记库。 -->
+<!-- 由 AM·Note 生成。这个文件夹是 AM·Note 的一个笔记本。 -->
 
-# 这个文件夹是 AM·Note 的笔记库
+# 这个文件夹是 AM·Note 的一个笔记本
 
 Notes vault managed by AM·Note. Use the `amnote` CLI below instead of grepping
 these files: it goes through the full-text index and keeps backups, a change
 log and conflict detection.
 
-命令行工具：`{{AMNOTE_BIN}}`。路径一律是库相对路径（`工作手记/报销.md`）。
+命令行工具：`{{AMNOTE_BIN}}`。**全部笔记本见 `{{AMNOTE_BIN}} notebooks`**：
+只有这一本时路径就是库相对路径（`工作手记/报销.md`）；有好几本时所有路径
+以笔记本名开头（`工作/工作手记/报销.md`），下面的例子照着补前缀。
 
 ```sh
+{{AMNOTE_BIN}} notebooks                     # 有哪些笔记本、哪本是默认
 {{AMNOTE_BIN}} map                          # 有哪些目录、每篇讲什么
 {{AMNOTE_BIN}} search "报销 流程" -n 10      # 全文搜索，空格分开＝AND
 {{AMNOTE_BIN}} outline 工作手记/报销.md      # 这份有哪些小节
@@ -25,6 +28,9 @@ log and conflict detection.
 - `save` 是整篇覆写，而且**先 `read` 过才写得了**：`read` 记下你看到的那一版，
   `save` 拿它做冲突检测。没读过就写退出码 1（要么 `--based <改于>`，
   要么 `--force`）。退出码 3 ＝ 这份在别处被改过，先停下问用户，别直接 `--force`。
+- 有好几个笔记本时：`-n 名字` 只看一本（`search` / `recent` 上写
+  `--notebook 名字`，那两条的 `-n` 是「要几条」）；`new` 不给 `-n` 就落到
+  默认那本，不是落到这一本。
 - `.amnote/` 是 AM·Note 自己的目录（索引、备份、配置），不看也不动。
 - `库地图.md` 是导出的地图，会被覆盖重写，别在里面手写东西。
 - 退出码：0 成功 · 1 用法错 · 2 AM·Note 没在运行 · 3 冲突 · 4 服务端拒绝。

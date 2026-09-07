@@ -48,8 +48,13 @@ static inline NSString *AMNMapLanguageTag(NSString *tag) {
     return @"en";
 }
 
+/// 隔离实例（壳的 `-AMNSupportDir`，见 app_shell.m 设计约束 10）里换的语言：
+/// 只在内存里，不写用户 defaults。nil ＝ 没换过，照常读偏好。
+static NSString *gAMNLangOverride = nil;
+
 /// 用户偏好原值。没写过（或写坏了）＝ auto。
 static inline NSString *AMNLanguagePref(void) {
+    if (gAMNLangOverride) return gAMNLangOverride;
     NSString *v = AMNNormalizeLanguagePref(
         [NSUserDefaults.standardUserDefaults stringForKey:kAMNLangKey]);
     return v ?: @"auto";
@@ -108,8 +113,8 @@ static inline NSDictionary<NSString *, NSString *> *AMNDictEN(void) {
         @"找不到程序文件，请重新编译或从发布包安装":
             @"Program files are missing — rebuild, or install from a release package",
         @"建不出笔记库目录": @"Couldn't create the vault folder",
-        @"请用菜单「库 → 选择文件夹…」选一个可写的文件夹。":
-            @"Use Vault → Choose Folder… and pick a folder you can write to.",
+        @"请用菜单「库 → 添加笔记本…」选一个可写的文件夹。":
+            @"Use Vault → Add Notebook… and pick a folder you can write to.",
         @"端口号不对": @"Bad port number",
         @"服务报回来的端口是 %ld。": @"The service reported port %ld.",
         @"未知错误": @"Unknown error",
@@ -129,6 +134,14 @@ static inline NSDictionary<NSString *, NSString *> *AMNDictEN(void) {
         @"换一个文件夹。AM·Note 只索引你选的这一个，文件都留在原地。":
             @"Pick a different folder. AM·Note indexes only the one you choose, "
              "and your files stay where they are.",
+        // ── 5.7 多笔记本 ──
+        @"添加": @"Add",
+        @"挑一个或几个文件夹当笔记本。文件留在原地，不会上传到网上。":
+            @"Choose one or more folders to add as notebooks. Your files stay where "
+             "they are and are never uploaded.",
+        @"重新指一下这个笔记本的文件夹。文件留在原地，只是换个位置。":
+            @"Point this notebook at its folder again. Your files stay where they are — "
+             "only the location changes.",
         @"这个位置不对": @"That location won't work",
         @"建不出这个文件夹": @"Couldn't create that folder",
 
@@ -207,7 +220,7 @@ static inline NSDictionary<NSString *, NSString *> *AMNDictEN(void) {
 
         // ── 主菜单 · 库 ──
         @"库": @"Vault",
-        @"选择文件夹…": @"Choose Folder…",
+        @"添加笔记本…": @"Add Notebook…",
         @"在浏览器里打开门户": @"Open Portal in Browser",
         @"打开工具目录": @"Open Tools Folder",
 
@@ -355,8 +368,8 @@ static inline NSDictionary<NSString *, NSString *> *AMNDictHK(void) {
         @"找不到程序文件，请重新编译或从发布包安装":
             @"找不到程式檔案，請重新編譯或從發佈套件安裝",
         @"建不出笔记库目录": @"無法建立筆記庫資料夾",
-        @"请用菜单「库 → 选择文件夹…」选一个可写的文件夹。":
-            @"請用選單「筆記庫 → 選擇資料夾…」選一個可寫入的資料夾。",
+        @"请用菜单「库 → 添加笔记本…」选一个可写的文件夹。":
+            @"請用選單「筆記庫 → 加入筆記本…」選一個可寫入的資料夾。",
         @"端口号不对": @"連接埠不正確",
         @"服务报回来的端口是 %ld。": @"服務報回來的連接埠是 %ld。",
         @"未知错误": @"未知錯誤",
@@ -374,6 +387,12 @@ static inline NSDictionary<NSString *, NSString *> *AMNDictHK(void) {
             @"AM·Note 會為你選的資料夾建立索引。檔案留在原處，不會上載到網上。",
         @"换一个文件夹。AM·Note 只索引你选的这一个，文件都留在原地。":
             @"換一個資料夾。AM·Note 只為你選的這一個建立索引，檔案都留在原處。",
+        // ── 5.7 多筆記本 ──
+        @"添加": @"加入",
+        @"挑一个或几个文件夹当笔记本。文件留在原地，不会上传到网上。":
+            @"挑一個或幾個資料夾當筆記本。檔案留在原處，不會上載到網上。",
+        @"重新指一下这个笔记本的文件夹。文件留在原地，只是换个位置。":
+            @"重新指一下這個筆記本的資料夾。檔案留在原處，只是換個位置。",
         @"这个位置不对": @"這個位置不正確",
         @"建不出这个文件夹": @"無法建立這個資料夾",
 
@@ -452,7 +471,7 @@ static inline NSDictionary<NSString *, NSString *> *AMNDictHK(void) {
 
         // ── 主菜单 · 库 ──
         @"库": @"筆記庫",
-        @"选择文件夹…": @"選擇資料夾…",
+        @"添加笔记本…": @"加入筆記本…",
         @"在浏览器里打开门户": @"在瀏覽器中打開門戶",
         @"打开工具目录": @"打開工具資料夾",
 

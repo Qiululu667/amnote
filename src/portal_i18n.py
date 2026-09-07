@@ -71,9 +71,39 @@ class Msg(str):
 #   bad_path  路径不合法 / 越界 / 这个位置不给动
 #   bad_type  类型、格式、参数不对
 #   io        读写失败（底下是一条 OSError）
+#
+# 5.7（多笔记本）另加六个，都只出现在跟笔记本有关的路由上：
+#   no_notebook  路径的第一段不是任何一个笔记本的名字 / 没有这个 id / nb= 写错了
+#   offline      这一本的文件夹现在不在（外置盘、iCloud 没就绪）
+#   nested       两个笔记本套着了，或者这个文件夹已经登记过
+#   last         最后一本不给移除
+#   bad_name     笔记本的名字不合法或者撞名
+#   outside      /__locate 那条：这个绝对路径不在任何一本里（页面转库外只读）
 
 CODES = {
     "同名文件已经有了": "exists",
+
+    # 笔记本（5.7）
+    "还没有添加任何笔记本": "no_notebook",
+    "路径要从笔记本的名字开始，比如「{n}/…」": "no_notebook",
+    "没有这个笔记本": "no_notebook",
+    "没有叫「{n}」这个名字的笔记本": "no_notebook",
+    "这份不在任何一个笔记本里": "outside",
+    "笔记本「{n}」现在找不到，它的文件夹可能被挪走了": "offline",
+    "这个文件夹已经是笔记本「{n}」了": "nested",
+    "这个文件夹已经在「{n}」里面了": "nested",
+    "「{n}」就在这个文件夹里面": "nested",
+    "至少要留一个笔记本": "last",
+    "笔记本得有个名字": "bad_name",
+    "名字里不能有斜杠": "bad_name",
+    "名字不能用「.」或「_」开头": "bad_name",
+    "名字最多 {n} 个字": "bad_name",
+    "已经有一个笔记本叫「{n}」了": "bad_name",
+    "要一个文件夹的路径": "not_dir",
+    "找不到这个文件夹：{p}": "not_dir",
+    "这是 AM·Note 自己的文件夹，不能当笔记本": "not_dir",
+    "不认识这个颜色": "bad_type",
+
     "同名文件刚被建走了，换个标题": "exists",
     "原来那个位置又有文件了，先挪开": "exists",
     "那个位置已经有一份文件了，先挪开": "exists",
@@ -315,6 +345,31 @@ MESSAGES = {
         "since 要写成天数（7）或日期（2026-09-01）":
             "since has to be a number of days (7) or a date (2026-09-01)",
 
+        # 笔记本（5.7）
+        "还没有添加任何笔记本": "No notebook has been added yet",
+        "路径要从笔记本的名字开始，比如「{n}/…」":
+            "Paths have to start with a notebook name, like 「{n}/…」",
+        "没有这个笔记本": "No such notebook",
+        "没有叫「{n}」这个名字的笔记本": "There's no notebook called 「{n}」",
+        "这份不在任何一个笔记本里": "That file isn't inside any notebook",
+        "笔记本「{n}」现在找不到，它的文件夹可能被挪走了":
+            "Notebook 「{n}」 can't be found — its folder may have been moved",
+        "这个文件夹已经是笔记本「{n}」了":
+            "That folder is already the notebook 「{n}」",
+        "这个文件夹已经在「{n}」里面了": "That folder is already inside 「{n}」",
+        "「{n}」就在这个文件夹里面": "「{n}」 is inside that folder",
+        "至少要留一个笔记本": "At least one notebook has to stay",
+        "笔记本得有个名字": "A notebook needs a name",
+        "名字里不能有斜杠": "A name can't contain slashes",
+        "名字不能用「.」或「_」开头": "A name can't start with 「.」 or 「_」",
+        "名字最多 {n} 个字": "A name can be at most {n} characters",
+        "已经有一个笔记本叫「{n}」了": "There's already a notebook called 「{n}」",
+        "要一个文件夹的路径": "A folder path is required",
+        "找不到这个文件夹：{p}": "That folder doesn't exist: {p}",
+        "这是 AM·Note 自己的文件夹，不能当笔记本":
+            "That's AM·Note's own folder — it can't be a notebook",
+        "不认识这个颜色": "That isn't one of the notebook colors",
+
         # 接入向导（5.6）
         "不认识这个动作": "That isn't something AM·Note can set up",
         "缺一份模板：{p}": "A template file is missing: {p}",
@@ -446,6 +501,30 @@ MESSAGES = {
         "行号超出这份的范围": "行號超出這份的範圍",
         "since 要写成天数（7）或日期（2026-09-01）":
             "since 要寫成日數（7）或日期（2026-09-01）",
+
+        # 筆記本（5.7）
+        "还没有添加任何笔记本": "還未加入任何筆記本",
+        "路径要从笔记本的名字开始，比如「{n}/…」":
+            "路徑要由筆記本的名稱開始，例如「{n}/…」",
+        "没有这个笔记本": "沒有這個筆記本",
+        "没有叫「{n}」这个名字的笔记本": "沒有筆記本叫「{n}」",
+        "这份不在任何一个笔记本里": "這一份不在任何一個筆記本裡面",
+        "笔记本「{n}」现在找不到，它的文件夹可能被挪走了":
+            "找不到筆記本「{n}」，它的資料夾可能被移走了",
+        "这个文件夹已经是笔记本「{n}」了": "這個資料夾已經是筆記本「{n}」",
+        "这个文件夹已经在「{n}」里面了": "這個資料夾已經在「{n}」裡面",
+        "「{n}」就在这个文件夹里面": "「{n}」就在這個資料夾裡面",
+        "至少要留一个笔记本": "最少要留一個筆記本",
+        "笔记本得有个名字": "筆記本要有名稱",
+        "名字里不能有斜杠": "名稱裡不能有斜線",
+        "名字不能用「.」或「_」开头": "名稱不能用「.」或「_」開頭",
+        "名字最多 {n} 个字": "名稱最多 {n} 個字",
+        "已经有一个笔记本叫「{n}」了": "已經有一個筆記本叫「{n}」",
+        "要一个文件夹的路径": "需要一個資料夾的路徑",
+        "找不到这个文件夹：{p}": "找不到這個資料夾：{p}",
+        "这是 AM·Note 自己的文件夹，不能当笔记本":
+            "這是 AM·Note 自己的資料夾，不能當筆記本",
+        "不认识这个颜色": "AM·Note 不認得這個顏色",
 
         # 接入嚮導（5.6）
         "不认识这个动作": "AM·Note 不認得這個動作",

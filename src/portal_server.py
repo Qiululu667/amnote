@@ -113,12 +113,14 @@ import os
 import re
 import secrets
 import shlex
+import signal
 import shutil
 import struct
 import subprocess
 import sys
 import threading
 import time
+import unicodedata
 import urllib.parse
 from collections import OrderedDict, deque
 from datetime import datetime
@@ -135,11 +137,10 @@ import fulltext
 # 三语词典。界面文字在网页那边翻，不走这里。每个请求开头 set_lang 一次。
 from portal_i18n import LANGS, T, gloss, set_lang
 
-ROOT = None
-REAL_ROOT = None
-CONFIG_PATH = None
-BACKUP_DIR = None
 TEMPLATE_HTML = os.path.join(HERE, "template.html")
+# 静态服务里「这条路不给发」的落点。translate_path 挡下来的请求返回它，
+# 基类打不开就自然回 404——不用在那儿另写一条应答。
+NOWHERE = os.path.join(HERE, "__amn_no_such_file__")
 
 # /portal 不在这张表里：v21 起出页要替换 token，走 Handler._portal_page
 ALIAS = {
@@ -151,24 +152,200 @@ ALIAS = {
 }
 
 
-def _bind_vault():
-    """configure 之后把本模块的库根、配置、备份目录跟 fulltext 对齐。"""
-    global ROOT, REAL_ROOT, CONFIG_PATH, BACKUP_DIR
-    ROOT = fulltext.ROOT
-    REAL_ROOT = os.path.realpath(ROOT)
-    CONFIG_PATH = fulltext.CONFIG_PATH
-    BACKUP_DIR = fulltext.BACKUP_DIR
+# ── 笔记本：一个进程挂几个文件夹（5.7）──────────────────────
+#
+# 一个笔记本＝用户添加的一个文件夹。合起来仍叫笔记库。列表由服务端持有
+# （notebooks.json 在 support dir 里），页面、CLI、壳都从服务端读。
+#
+# **模式 ＝ 列表长度。** 只有一本时对外路径不带前缀、界面不显示笔记本条，
+# 跟 5.6 逐字节一样；两本起所有对外路径变成「笔记本名/库内相对路径」。
+# 名字就是前缀（P7：人和 Agent 都看得懂），内部另有一个 8 位 id，
+# **永不出现在路径里**，只在 notebooks.json 和 /__notebooks 的动作参数里用。
+#
+# HTTP 层拆一次就够：resolve(对外路径) → (笔记本, rel) 并把这条线程绑到那一本，
+# 底下的业务函数只见 rel 和「当前笔记本」，_view_full / _edit_ok / _trash_ok
+# 三处判据一个字没改。发出去的路径统一走 out(笔记本, rel)。
+
+# 八色盘的键名（值在设计稿 tokens.css 里）。加入时分配「用得最少、其次靠前」
+# 的一色；八本以上允许重复——颜色是提示，名字才是身份。
+NB_COLORS = ("blue", "teal", "green", "gold", "orange", "rose", "plum", "slate")
+NB_NAME_MAX = 40                      # 名字硬上限（软上限 8 个汉字由页面提示）
+NB_VERSION = 1                        # notebooks.json 的版本号
+
+# --notebooks-file 给了才落盘。没给就是**临时列表**：/__notebooks 的增删只在
+# 内存里生效（响应带 持久:false）。现有开发脚本（--root ＋ --support-dir）
+# 因此永远不会把测试库写进用户真正在用的那一份。
+NOTEBOOKS_FILE = ""
+_nb_lock = threading.RLock()
+_nb_default = ""                      # 「默认」指针（新建落到哪本），空＝主笔记本
 
 
-def cfg():
+def V():
+    """这一趟请求绑着的笔记本。没绑过就是主笔记本。"""
+    return fulltext.V()
+
+
+def nb_all():
+    return fulltext.vaults()
+
+
+def nb_main():
+    """主笔记本＝列表第一条。/__status 的 库根 / 随手记目录 报的是它。"""
+    return fulltext.main_vault()
+
+
+def nb_multi() -> bool:
+    return len(fulltext.vaults()) >= 2
+
+
+def nb_mode() -> str:
+    return "多" if nb_multi() else "单"
+
+
+def nb_default():
+    """「全部」模式下新建落到哪本。缺省是主笔记本。"""
+    return fulltext.get_vault(_nb_default) or nb_main()
+
+
+def bind(v):
+    """把这条线程绑到某一本上（传 None ＝ 回到主笔记本）。"""
+    fulltext.set_current(v.vid if v is not None else None)
+    return v
+
+
+def _nfc(x) -> str:
+    """名字一律按 NFC 比。macOS 从文件系统拿到的文件夹名可能是 NFD，
+    页面送回来的是键盘打出来的 NFC，逐字节比会认不出是同一个名字。"""
+    return unicodedata.normalize("NFC", str(x if x is not None else ""))
+
+
+def _fold(x) -> str:
+    """名字比较用：NFC ＋ casefold（大小写不敏感唯一）。"""
+    return _nfc(x).casefold()
+
+
+def nb_by_name(name):
+    """按名字找一本（NFC ＋ 大小写不敏感）。找不到返回 None。"""
+    key = _fold(name)
+    if not key:
+        return None
+    for v in fulltext.vaults():
+        if _fold(v.name) == key:
+            return v
+    return None
+
+
+def nb_arg(name, dflt=None):
+    """带外的 `nb=名字` → (笔记本, 错误)。给 `/__config`、`/__agent_setup`、
+    `/__archive` 这几条「不在路径里，另给一个名字」的路由用。
+
+    空的用缺省本（不给就是主笔记本）；**名字写错了不回落**——静默落到主笔记本
+    的话，「给读书笔记那本改配置」会不声不响改在工作那本上，界面上还报成功。
+    路径里的第一段走 `resolve()`，那边同样不回落，两条路一个口径。
+    """
+    raw = _nfc(name if name is not None else "").strip()
+    if not raw:
+        v = dflt or nb_main()
+        return v, ("" if v is not None else T("还没有添加任何笔记本"))
+    v = nb_by_name(raw)
+    if v is None:
+        return None, T("没有叫「{n}」这个名字的笔记本", n=raw)
+    return v, ""
+
+
+def out(v, rel: str) -> str:
+    """发出去的路径。**只在多笔记本模式下加前缀**，单本时一个字不动。"""
+    if not rel or v is None or not nb_multi():
+        return rel
+    return v.name + "/" + rel
+
+
+def out_row(v, row, key="路径"):
+    """一条带路径的记录：拷一份、路径加前缀、多本时补一个「本」。
+
+    拷贝是必须的——树和流水那几张表是缓存出来的，就地改会把前缀写进缓存，
+    下一次再加一遍。
+    """
+    r = dict(row)
+    if key in r:
+        r[key] = out(v, r[key])
+    if nb_multi():
+        r["本"] = v.name
+    return r
+
+
+def resolve(path):
+    """对外路径 → (笔记本, 库内相对路径, 错误)。**顺手把这条线程绑过去。**
+
+    多本：第一段必须是某个笔记本的名字，否则 `no_notebook`。**不回落到默认本**
+    ——「默认本里恰好有个文件夹跟另一本同名」那种歧义比一条错误提示贵得多。
+    单本：整串就是 rel，一个字不处理（零变化，见契约 §6.3）。
+    """
+    p = str(path if path is not None else "")
+    if not nb_multi():
+        v = nb_main()
+        bind(v)
+        if v is None:
+            return None, "", T("还没有添加任何笔记本")
+        if not v.online:
+            return None, "", T("笔记本「{n}」现在找不到，它的文件夹可能被挪走了", n=v.name)
+        return v, p, ""
+    seg, _, rest = p.partition("/")
+    v = nb_by_name(seg)
+    if v is None:
+        return None, "", T("路径要从笔记本的名字开始，比如「{n}/…」",
+                           n=(nb_main().name if nb_main() else ""))
+    if not v.online:
+        return None, "", T("笔记本「{n}」现在找不到，它的文件夹可能被挪走了", n=v.name)
+    bind(v)
+    return v, rest, ""
+
+
+def resolve_dir(sub: str):
+    """`dir=` 参数（可能带笔记本前缀）→ (笔记本 或 None, 目录)。
+
+    多本时第一段是笔记本名就限定到那一本（`dir=工作/会议` 隐含 `nb=工作`）；
+    不是的话当成「全体里的这个目录」，扇出时各本各筛各的。
+    """
+    sub = (sub or "").strip().strip("/")
+    if not sub or not nb_multi():
+        return None, sub
+    seg, _, rest = sub.partition("/")
+    v = nb_by_name(seg)
+    if v is None:
+        return None, sub
+    return v, rest
+
+
+def nb_pick(query, key="nb"):
+    """`nb=名字`（逗号可多）→ 要哪几本。不给＝全体。名字不认识的忽略。"""
+    raw = (query.get(key) or [""])[0].replace("，", ",")
+    want = [t.strip() for t in raw.split(",") if t.strip()]
+    if not want:
+        return nb_online()
+    got = []
+    for name in want:
+        v = nb_by_name(name)
+        if v is not None and v.online and v not in got:
+            got.append(v)
+    return got
+
+
+def nb_online():
+    """在线的那些。离线本不参与扇出——它的索引可能还在，但库不在了。"""
+    return [v for v in fulltext.vaults() if v.online]
+
+
+def cfg(v=None):
     """每次现读，改完 config.json 不用重启服务。"""
-    c, _ = fulltext.load_config(CONFIG_PATH)
+    v = v or V()
+    c, _ = fulltext.load_config(v.config_path)
     return c
 
 
-def note_dir():
+def note_dir(v=None):
     """随手记相对库根的目录。从配置读，空了回退默认值。"""
-    d = cfg().get("随手记目录")
+    d = cfg(v).get("随手记目录")
     if isinstance(d, str) and d.strip():
         return d.strip()
     return "随手记"
@@ -294,19 +471,20 @@ def cur_agent() -> str:
 
 
 _lock = threading.Lock()
-_cache = {"fp": None, "at": 0.0}
+_cache = {}                           # {vid: {"fp":…, "at":…, "耗时":…}}
 _state = {"port": 0, "started": time.time()}
 
 
-def fingerprint():
-    """全库指纹：md/html ＋ 附件的文件数和最新 mtime。任一变了就说明库里有动静。
+def fingerprint(v=None):
+    """一本的指纹：md/html ＋ 附件的文件数和最新 mtime。任一变了就说明有动静。
     附件也算，不然新拖进来一份 pdf 要等到手动重扫才进索引。"""
+    v = v or V()
     n = 0
     newest = 0.0
-    c = cfg()
+    c = cfg(v)
     skip = tuple(c["跳过目录关键词"]) + tuple(c["噪声目录"])
     exts = (".md", ".html", ".htm") + tuple(fulltext.ATT_EXT)
-    for dp, dn, fns in os.walk(ROOT):
+    for dp, dn, fns in os.walk(v.root):
         dn[:] = [d for d in dn
                  if d != ".amnote" and not any(t in d for t in skip)]
         for fn in fns:
@@ -325,13 +503,53 @@ def fingerprint():
     return {"文件数": n, "最新改动": round(newest, 1)}
 
 
-def cached_fingerprint(max_age=2.0):
+def vault_fingerprint(v):
+    """一本的指纹，**自适应缓存**：上一趟 walk 花了多久，就多留久一点
+    （`max(2, 8×耗时)`）。一本三秒的大库乘上笔记本数，再按每 3 秒问一次的
+    频率去 walk，机器会一直有一颗核在转。"""
+    now = time.time()
     with _lock:
-        now = time.time()
-        if _cache["fp"] is None or now - _cache["at"] > max_age:
-            _cache["fp"] = fingerprint()
-            _cache["at"] = now
-        return _cache["fp"]
+        c = _cache.get(v.vid)
+        if c and now - c["at"] <= max(2.0, 8 * c["耗时"]):
+            return c["fp"]
+    t0 = time.time()
+    with fulltext.use(v):
+        fp = fingerprint(v)
+    with _lock:
+        _cache[v.vid] = {"fp": fp, "at": time.time(), "耗时": time.time() - t0}
+    return fp
+
+
+def cached_fingerprint():
+    """/__pulse 的响应。**形状一个字都不能变**（前端把整串当指纹比对）：
+    多本时文件数相加、最新改动取最大，离线的不算。
+
+    离线本的复活也搭在这条路上探（每 3 秒一次，比每个请求都 isdir 便宜）。
+    """
+    recheck_offline()
+    n, newest = 0, 0.0
+    for v in nb_all():
+        if not v.online:
+            continue
+        fp = vault_fingerprint(v)
+        n += fp["文件数"]
+        newest = max(newest, fp["最新改动"])
+    return {"文件数": n, "最新改动": round(newest, 1)}
+
+
+def recheck_offline():
+    """外置盘拔了 ／ iCloud 还没就绪的那些，探一眼。
+
+    回来了就挂上并补一轮扫描；本来在线的文件夹被挪走了就标成离线——
+    指向它的请求从此回 `offline`，而不是在库根之外的地方乱找。
+    """
+    for v in nb_all():
+        alive = os.path.isdir(v.root)
+        if v.online != alive:
+            v.online = alive
+            if alive:
+                fulltext._ensure_dirs(v)
+                kick_sync(v)
 
 
 # ── 标题与预览 ────────────────────────────────────
@@ -396,8 +614,9 @@ def _view_full(rel: str):
     写文件那条路走 _edit_ok，只认 md，附件一律不给写。"""
     if not rel or rel.startswith("/") or "\x00" in rel:
         return None, T("路径不合法")
-    full = os.path.realpath(os.path.join(ROOT, rel))
-    if not (full == REAL_ROOT or full.startswith(REAL_ROOT + os.sep)):
+    v = V()
+    full = os.path.realpath(os.path.join(v.root, rel))
+    if not (full == v.real_root or full.startswith(v.real_root + os.sep)):
         return None, T("路径越出库根")
     if not os.path.isfile(full):
         return None, T("文件不在了")
@@ -411,20 +630,28 @@ def _view_full(rel: str):
 def reveal(req: dict):
     """在访达里选中这份文件。只是打开一个窗口，不动文件。
 
-    路径为空＝库根本身（设置页「在访达中显示」那颗按钮）。_view_full 只认库内
-    的文件，库根是目录、相对路径又是空串，两条它都不放行，所以空路径在这里
-    单独处理：直接 open 库根这个目录。越界、格式、存在性那几道对文件的检查
-    一个都没松——空路径压根不经过它们，走的是写死的 REAL_ROOT。"""
-    rel = (req.get("路径") or "").strip()
-    if not rel:
-        if not os.path.isdir(REAL_ROOT):
+    路径为空＝主笔记本的根（设置页「在访达中显示」那颗按钮）；多本时一个
+    笔记本的名字（「工作」或「工作/」）＝那一本的根。_view_full 只认库内的
+    文件，库根是目录、相对路径又是空串，两条它都不放行，所以这两种在这里
+    单独处理：直接 open 那一本的根。越界、格式、存在性那几道对文件的检查
+    一个都没松——它们压根不经过那些，走的是那一本自己的 real_root。"""
+    raw = (req.get("路径") or "").strip()
+    # 空串＝主笔记本的根；多本时「工作」「工作/」＝那一本的根（设置里每行那颗
+    # 「在访达里显示」按的就是这条）
+    v = nb_main() if not raw else nb_by_name(raw.rstrip("/")) if nb_multi() else None
+    if v is not None:
+        bind(v)
+        if not os.path.isdir(v.real_root):
             return _bad(T("库根不在了"))
         try:
-            subprocess.run(["open", REAL_ROOT], timeout=10,
+            subprocess.run(["open", v.real_root], timeout=10,
                            stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         except Exception as e:
             return _bad(T("打不开访达：{e}", e=e))
-        return {"ok": True, "路径": REAL_ROOT}
+        return {"ok": True, "路径": v.real_root}
+    v, rel, err = resolve(raw)
+    if err:
+        return _bad(err)
     full, err = _view_full(rel)
     if err:
         return _bad(err)
@@ -444,7 +671,10 @@ def open_external(req: dict):
     处理程序都是 com.google.chrome（20260825 实测），效果一样，以后换浏览器
     也不用改代码。
     """
-    full, err = _view_full((req.get("路径") or "").strip())
+    v, rel, err = resolve((req.get("路径") or "").strip())
+    if err:
+        return _bad(err)
+    full, err = _view_full(rel)
     if err:
         return _bad(err)
     try:
@@ -474,6 +704,9 @@ def read_raw(rel: str, section: str = "", lines: str = ""):
     两个都给时 lines 说了算。门户自己只传 path，走的还是「整份原样给」那条。
     「字节」照旧是整份文件的大小，不是这一段的——前端拿它认「这份能不能编辑」。
     """
+    v, rel, err = resolve(rel)
+    if err:
+        return _bad(err)
     full, err = _view_full(rel)
     if err:
         return _bad(err)
@@ -487,7 +720,7 @@ def read_raw(rel: str, section: str = "", lines: str = ""):
     cut, err = fulltext.text_slice(text, section=section, lines=lines)
     if err:
         return _bad(T(SLICE_ERR[err]))
-    return {"ok": True, "路径": rel, "正文": cut["正文"],
+    return {"ok": True, "路径": out(v, rel), "正文": cut["正文"],
             "字节": os.path.getsize(full),
             "行起": cut["行起"], "行止": cut["行止"], "行数": cut["行数"],
             "改于": datetime.fromtimestamp(
@@ -533,10 +766,11 @@ def _edit_ok(rel: str):
     for seg in rel.split("/"):
         if not seg or _seg_blocked(seg):
             return None, T("这个位置不给写")
-    full = os.path.realpath(os.path.join(ROOT, rel))
-    if not full.startswith(REAL_ROOT + os.sep):
+    v = V()
+    full = os.path.realpath(os.path.join(v.root, rel))
+    if not full.startswith(v.real_root + os.sep):
         return None, T("路径越出库根")
-    for seg in os.path.relpath(full, REAL_ROOT).split(os.sep):
+    for seg in os.path.relpath(full, v.real_root).split(os.sep):
         if _seg_blocked(seg):
             return None, T("这个位置不给写")
     return full, ""
@@ -558,15 +792,16 @@ def _last_backup(flat: str):
 
     文件名里的时间戳是 %Y%m%d-%H%M%S-%f，字典序就是时间序，排完取最后一个。
     """
+    bak_dir = V().backup_dir
     try:
-        olds = sorted(fn for fn in os.listdir(BACKUP_DIR)
+        olds = sorted(fn for fn in os.listdir(bak_dir)
                       if fn.startswith(flat + "__") and fn.endswith(".bak"))
     except OSError:
         return None, 0.0
     if not olds:
         return None, 0.0
     try:
-        return olds[-1], os.path.getmtime(os.path.join(BACKUP_DIR, olds[-1]))
+        return olds[-1], os.path.getmtime(os.path.join(bak_dir, olds[-1]))
     except OSError:
         return olds[-1], 0.0
 
@@ -585,7 +820,8 @@ def _backup(rel: str, old: str, force: bool = False) -> str:
       · force —— 这份在编辑期间被别处改过，这次是强存，会盖掉那次改动；
       · 一版留档都还没有 —— 第一版最要紧，丢了就没有回头路。
     """
-    os.makedirs(BACKUP_DIR, exist_ok=True)
+    bak_dir = V().backup_dir
+    os.makedirs(bak_dir, exist_ok=True)
     # 压平规则跟 fulltext.archive_text 共用一份：两边写的是同一个目录、同一套
     # 前缀，各写各的话哪天改了一边，同一份文件的历史版就散成两串了
     flat = fulltext._flat(rel)
@@ -596,15 +832,15 @@ def _backup(rel: str, old: str, force: bool = False) -> str:
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")[:-3]
     name = f"{flat}__{stamp}.bak"
     try:
-        with open(os.path.join(BACKUP_DIR, name), "w", encoding="utf-8") as f:
+        with open(os.path.join(bak_dir, name), "w", encoding="utf-8") as f:
             f.write(old)
     except OSError:
         return ""                                # 备份写不了不该拦住正常保存
-    olds = sorted(fn for fn in os.listdir(BACKUP_DIR)
+    olds = sorted(fn for fn in os.listdir(bak_dir)
                   if fn.startswith(flat + "__") and fn.endswith(".bak"))
     for fn in olds[:-BACKUP_KEEP]:
         try:
-            os.remove(os.path.join(BACKUP_DIR, fn))
+            os.remove(os.path.join(bak_dir, fn))
         except OSError:
             pass
     return name
@@ -798,11 +1034,11 @@ def save_md(req: dict):
         rel, _ = _rename_md(rel, new_rel)
         full, err2 = _edit_ok(rel)
         if err2 or not full:
-            full = os.path.realpath(os.path.join(ROOT, rel))
+            full = os.path.realpath(os.path.join(V().root, rel))
 
     return {"ok": True, "结果": str(T("已保存")), "路径": rel,
             "字节": {"写前": len(old.encode()), "写后": len(body.encode())},
-            "备份": os.path.relpath(BACKUP_DIR, ROOT).replace(os.sep, "/"),
+            "备份": os.path.relpath(V().backup_dir, V().root).replace(os.sep, "/"),
             "留档": bak,                          # 空串＝这一次按节流跳过了
             "改于": _mtime_str(full)}             # 落盘后的 mtime，见函数上方那段
 
@@ -814,15 +1050,24 @@ def save_route(req: dict):
     下游三个函数各自还会再校验一次——这一道是给「一眼看清写入范围」用的，
     别为了不重复就把它删了。
     """
-    rel = (req.get("路径") or "").strip()
+    v, rel, err = resolve((req.get("路径") or "").strip())
+    if err:
+        return _bad(err)
     _, err = _edit_ok(rel)
     if err:
         return _bad(err)
+    # 拆完前缀再往下走：三个函数只见库内相对路径，跟单库时一模一样
+    req = dict(req, 路径=rel)
+    new_rel = (req.get("新路径") or "").strip()
+    if new_rel and nb_multi():
+        pre = v.name + "/"
+        req["新路径"] = new_rel[len(pre):] if new_rel.startswith(pre) else new_rel
     if req.get("图片"):
         return save_img(req)
-    if req.get("新建"):
-        return new_md(req)
-    return save_md(req)
+    r = new_md(req) if req.get("新建") else save_md(req)
+    if isinstance(r, dict) and r.get("路径"):
+        r["路径"] = out(v, r["路径"])             # 改名可能换了末段，按结果加前缀
+    return r
 
 
 # ── 删除：移进废纸篓，几秒内可撤销 ──────────────────────────────
@@ -844,8 +1089,10 @@ TRASH_EXT = (".md", ".html", ".htm")
 TRASH_KEEP = 50                       # 撤销表最多记这么多份，超了挤掉最旧的
 TRASH_TTL = 24 * 3600                 # 记了这么久还没撤，就不该再从这条路撤了
 
-# 相对路径 → {废纸篓: 绝对路径, 原位: 绝对路径, 路径: 相对路径, 时间: 时间戳}。
-# 键和「路径」都是**盘上逐字的**那一份（见 _disk_name）。只在内存里，
+# (笔记本 id, 相对路径) → {废纸篓: 绝对路径, 原位: 绝对路径, 路径: 相对路径,
+# 时间: 时间戳}。**键带着笔记本 id**：两本里各有一份「会议/周会.md」时，
+# 只按相对路径记的话，在 A 本里删一份、在 B 本里点撤销，会把 A 本那份挪到
+# B 本的位置上去。键和「路径」都是**盘上逐字的**那一份（见 _disk_name）。只在内存里，
 # 重启即清：撤销是「刚点错那几秒」的事，隔了一次重启该走访达，不是这条路由。
 #
 # **「原位」记的是搬走那一刻的真实落点，撤销时按它挪回去，不拿相对路径现算。**
@@ -899,10 +1146,11 @@ def _trash_ok(rel: str, on_disk: bool = True):
     for seg in rel.split("/"):
         if not seg or _seg_blocked(seg):
             return None, T("这个位置不给删")
-    full = os.path.realpath(os.path.join(ROOT, rel))
-    if not full.startswith(REAL_ROOT + os.sep):
+    v = V()
+    full = os.path.realpath(os.path.join(v.root, rel))
+    if not full.startswith(v.real_root + os.sep):
         return None, T("路径越出库根")
-    for seg in os.path.relpath(full, REAL_ROOT).split(os.sep):
+    for seg in os.path.relpath(full, v.real_root).split(os.sep):
         if _seg_blocked(seg):
             return None, T("这个位置不给删")
     if on_disk:
@@ -954,20 +1202,23 @@ def _prune_trashed(now: float):
             _trashed.pop(k, None)
 
 
-def _find_trashed(rel: str):
-    """按相对路径找那条撤销记录，返回 (键, 记录)。**调用方必须已经拿着 _lock。**
+def _find_trashed(vid: str, rel: str):
+    """按 (笔记本, 相对路径) 找那条撤销记录，返回 (键, 记录)。
+    **调用方必须已经拿着 _lock。**
 
     表是按盘上逐字的路径记的，而前端撤销时送回来的是它当初请求用的那一份；
     大小写不敏感的盘上这两个可能差着几个字母，所以先逐字找，再不分大小写找一遍。
+    笔记本那一维永远逐字比——id 是我们自己发的十六进制。
     """
-    rec = _trashed.get(rel)
+    key = (vid, rel)
+    rec = _trashed.get(key)
     if rec is not None:
-        return rel, rec
+        return key, rec
     low = rel.lower()
     for k in _trashed:
-        if k.lower() == low:
+        if k[0] == vid and k[1].lower() == low:
             return k, _trashed[k]
-    return rel, None
+    return key, None
 
 
 def trash(req: dict):
@@ -978,7 +1229,9 @@ def trash(req: dict):
     顺带把 db 里的原文留进 backups/。自己再补一行的话，同一次删除会在流水上
     留下两行（一行门户、一行外部）——v22 就是那样，v23 合成一行。
     """
-    rel = (req.get("路径") or "").strip()
+    v, rel, err = resolve((req.get("路径") or "").strip())
+    if err:
+        return _bad(err)
     full, err = _trash_ok(rel)
     if err:
         return _bad(err)
@@ -999,12 +1252,13 @@ def trash(req: dict):
         fulltext.take_portal_move(real_rel)       # 没挪成，把刚记的那笔收回来
         return _bad(T("挪不进废纸篓：{e}", e=e))
     now = time.time()
+    key = (v.vid, real_rel)
     with _lock:
-        _trashed[real_rel] = {"废纸篓": dest, "原位": full,
-                              "路径": real_rel, "时间": now}
-        _trashed.move_to_end(real_rel)           # 同一份删两回，记最新那次
+        _trashed[key] = {"废纸篓": dest, "原位": full,
+                         "路径": real_rel, "时间": now}
+        _trashed.move_to_end(key)                # 同一份删两回，记最新那次
         _prune_trashed(now)
-    return {"ok": True, "路径": real_rel, "废纸篓": dest}
+    return {"ok": True, "路径": out(v, real_rel), "废纸篓": dest}
 
 
 def untrash(req: dict):
@@ -1017,14 +1271,16 @@ def untrash(req: dict):
     **这里不能用 note_portal_write。** 那张表按「记账时刻离 mtime 多近」认领，
     而挪回来不动 mtime——一份上周写的笔记，撤销时 mtime 还是上周，一条都对不上。
     """
-    rel = (req.get("路径") or "").strip()
+    v, rel, err = resolve((req.get("路径") or "").strip())
+    if err:
+        return _bad(err)
     # 盘上已经没有这份了（就在废纸篓里躺着），大小写校正这一步做不了也不用做
     _, err = _trash_ok(rel, on_disk=False)
     if err:
         return _bad(err)
     with _lock:
         _prune_trashed(time.time())
-        key, rec = _find_trashed(rel)
+        key, rec = _find_trashed(v.vid, rel)
     if not rec:
         return _bad(T("这份撤不回来了，去废纸篓里找"))
     src, full = rec["废纸篓"], rec["原位"]
@@ -1046,7 +1302,7 @@ def untrash(req: dict):
         return _bad(T("挪不回去：{e}", e=e))
     with _lock:
         _trashed.pop(key, None)
-    return {"ok": True, "路径": real_rel}
+    return {"ok": True, "路径": out(v, real_rel)}
 
 
 # ── 配置 ──────────────────────────────────────────
@@ -1058,29 +1314,38 @@ EDITABLE = ("跳过目录关键词", "噪声目录", "噪声文件", "通用标�
             "端口范围", "随手记目录")
 
 
-def read_config():
-    c, problems = fulltext.load_config(CONFIG_PATH)
+def read_config(v=None):
+    """一本的配置。`nb=名字` 选哪一本，缺省是主笔记本（**端口范围只认主本**，
+    多本时另外几本填了也不作数——端口是进程的事，不是笔记本的事）。"""
+    v = v or V()
+    path = v.config_path
+    c, problems = fulltext.load_config(path)
     raw = {}
-    if os.path.exists(CONFIG_PATH):
+    if os.path.exists(path):
         try:
-            with open(CONFIG_PATH, encoding="utf-8") as f:
+            with open(path, encoding="utf-8") as f:
                 raw = json.load(f)
         except (OSError, ValueError):
             raw = {}
     return {"配置": c, "默认值": fulltext.DEFAULTS, "可编辑": list(EDITABLE),
-            "问题": problems, "文件存在": os.path.exists(CONFIG_PATH),
-            "状态": status(),
-            "说明": {k: v for k, v in raw.items() if k.startswith("_")}}
+            "问题": problems, "文件存在": os.path.exists(path),
+            "状态": status(), "笔记本": v.name,
+            "说明": {k: val for k, val in raw.items() if k.startswith("_")}}
 
 
 def write_config(req: dict):
     """只认 EDITABLE 那几个键，其余一律忽略（不报错——本机可能还留着旧配置）。"""
     if not isinstance(req, dict):
         return _bad(T("配置得是一个对象"))
+    v, err = nb_arg(req.get("nb") or req.get("笔记本"))
+    if err:
+        return _bad(err)
+    bind(v)
+    config_path = v.config_path
     out = {}
-    if os.path.exists(CONFIG_PATH):
+    if os.path.exists(config_path):
         try:
-            with open(CONFIG_PATH, encoding="utf-8") as f:
+            with open(config_path, encoding="utf-8") as f:
                 out = json.load(f)
         except (OSError, ValueError):
             out = {}
@@ -1090,10 +1355,10 @@ def write_config(req: dict):
     for k in EDITABLE:
         if k not in req:
             continue
-        v = req[k]
-        if not isinstance(v, type(fulltext.DEFAULTS[k])):
+        val = req[k]                              # 别叫 v，那是上面那一本
+        if not isinstance(val, type(fulltext.DEFAULTS[k])):
             return _bad(T("「{k}」类型不对", k=k, g=gloss(k)))
-        out[k] = v
+        out[k] = val
 
     pr = out.get("端口范围") or fulltext.DEFAULTS["端口范围"]
     if not (isinstance(pr, list) and len(pr) == 2
@@ -1102,13 +1367,13 @@ def write_config(req: dict):
         return _bad(T("端口范围要填两个 1-65535 的整数，前小后大"))
 
     try:
-        os.makedirs(os.path.dirname(CONFIG_PATH) or ".", exist_ok=True)
-        with open(CONFIG_PATH, "w", encoding="utf-8") as fp:
+        os.makedirs(os.path.dirname(config_path) or ".", exist_ok=True)
+        with open(config_path, "w", encoding="utf-8") as fp:
             json.dump(out, fp, ensure_ascii=False, indent=2)
     except OSError as e:
         return _bad(T("写失败：{e}", e=e))
-    _, problems = fulltext.load_config(CONFIG_PATH)
-    return {"ok": True, "问题": problems}
+    _, problems = fulltext.load_config(config_path)
+    return {"ok": True, "问题": problems, "笔记本": v.name}
 
 
 # ── 个人资料：名字、问候开关、头像 ─────────────────────────────
@@ -1339,19 +1604,428 @@ def status():
 
     5.6 又加两个：「名字」（＝个人资料里的名字，没设就是这台 Mac 的账户名，
     命令行 `amnote status` 用它打招呼）和「接口版本」——调用方靠它知道
-    /__map、/__outline、/__profile 这些新路由在不在，不用一条条去试。"""
-    try:
-        s = fulltext.index_status()
-        idx = {"收录": s.get("收录", 0), "状态": s.get("状态", "")}
-        last = s.get("上次同步", "")
-    except Exception:
-        idx, last = {"收录": 0, "状态": "异常"}, ""
+    /__map、/__outline、/__profile 这些新路由在不在，不用一条条去试。
+
+    5.7 再加两个：「模式」（单／多）和「笔记本」那张表（接口版本跟着升 3）。
+    **老字段一个没动**：「库根」「随手记目录」「索引」报的仍是主笔记本，
+    CLI 的 _same_dir 和壳的 adoptExisting 照旧认得出来；「状态」取全体最忙的
+    一档，页面那颗小转轮不用管是哪一本在转。"""
+    main = nb_main()
+    with fulltext.use(main):
+        try:
+            s = fulltext.index_status()
+            idx = {"收录": s.get("收录", 0), "状态": s.get("状态", "")}
+            last = s.get("上次同步", "")
+        except Exception:
+            idx, last = {"收录": 0, "状态": "异常"}, ""
+        nd = note_dir(main)
+    # 顶层「状态」取全体最忙的一档：有一本在扫就是「扫描中」，
+    # 页面那颗小转轮不用去管是哪一本在转
+    busy = any(v.state["运行中"] for v in nb_all())
     return {"ok": True,
-            "状态": "扫描中" if idx["状态"] == "同步中" else "就绪",
-            "端口": _state["port"], "库根": ROOT,
+            "状态": "扫描中" if (busy or idx["状态"] == "同步中") else "就绪",
+            "端口": _state["port"], "库根": main.root,
             "上次扫描": last, "索引": idx, "门禁": True,
-            "随手记目录": note_dir(),
-            "名字": display_name(), "接口版本": 2}
+            "随手记目录": nd,
+            "名字": display_name(), "接口版本": 3,
+            "模式": nb_mode(), "笔记本": nb_entries()}
+
+
+_nb_count = {}                        # {vid: {"key": _db_key(), "值": 收录}}
+
+
+def _nb_doc_count(v):
+    """那一本索引里的文档数，**按 (vid, db 指纹) 缓存**。
+
+    /__status 页面每 3 秒问一次，一本就是开一次 sqlite 再 COUNT(*)；N 本乘上
+    这个频率，光报个篇数就在不停开库。键用 `_db_key()`（连 -wal 一起看，
+    树缓存用的是同一把），db 没动过就直接给上一次数出来的。
+    """
+    with fulltext.use(v):
+        key = _db_key()
+        c = _nb_count.get(v.vid)
+        if c and c["key"] == key:
+            return c["值"]
+        try:
+            n = fulltext.index_status().get("收录", 0)
+        except Exception:
+            return 0
+    _nb_count[v.vid] = {"key": key, "值": n}
+    return n
+
+
+def nb_entries():
+    """`笔记本[]`：/__status 和 /__notebooks 共用一份。
+
+    `状态` 三档：离线（文件夹不在）／扫描中／就绪。`收录` 是那一本索引里的
+    文档数——不是全体，页面按本显示篇数。
+    """
+    dflt = nb_default()
+    rows = []
+    for v in nb_all():
+        n, nd = 0, "随手记"
+        if v.online:
+            n = _nb_doc_count(v)
+            with fulltext.use(v):
+                nd = note_dir(v)
+        rows.append({"id": v.vid, "名字": v.name, "路径": v.root,
+                     "颜色": v.color,
+                     "状态": ("离线" if not v.online else
+                              "扫描中" if v.state["运行中"] else "就绪"),
+                     "收录": n, "随手记目录": nd, "默认": v is dflt})
+    return rows
+
+
+# ── /__notebooks：添加 ／ 移除 ／ 改名 ／ 颜色 ／ 默认 ／ 重新定位 ──
+#
+# **文件一个字节都不动**（P6）：添加＝登记一个位置，移除＝注销，重新定位＝
+# 把同一本指到新位置。索引、废纸篓、历史都留在各自的 .amnote/ 里，
+# 移除之后再添加回来，上一次的索引还在。
+#
+# 落盘只在给了 --notebooks-file 时发生（响应里的 `持久`）。没给就是临时列表：
+# 开发脚本 `--root X --support-dir Y` 怎么改都不会碰到用户那份 notebooks.json。
+
+
+def notebooks_view():
+    """GET /__notebooks。页面、CLI、壳都从这儿读列表。"""
+    dflt = nb_default()
+    return {"ok": True, "笔记本": nb_entries(), "模式": nb_mode(),
+            "默认": (dflt.vid if dflt else ""), "持久": bool(NOTEBOOKS_FILE)}
+
+
+def _now_str():
+    return datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _nb_name_ok(name, exclude=None):
+    """用户给的名字校验一遍。返回 (干净名字, 错误)。
+
+    名字就是路径前缀，所以规矩比昵称严：去首尾空白、不含斜杠（正反都算）和
+    NUL、不以 `.` `_` 开头（那两种在库里是「工具的地盘」）、不超过 40 字、
+    大小写不敏感唯一。
+    """
+    n = _nfc(name).strip()
+    if not n:
+        return "", T("笔记本得有个名字")
+    if "/" in n or "\\" in n or "\x00" in n:
+        return "", T("名字里不能有斜杠")
+    if n.startswith((".", "_")):
+        return "", T("名字不能用「.」或「_」开头")
+    if len(n) > NB_NAME_MAX:
+        return "", T("名字最多 {n} 个字", n=NB_NAME_MAX)
+    hit = nb_by_name(n)
+    if hit is not None and hit is not exclude:
+        return "", T("已经有一个笔记本叫「{n}」了", n=hit.name)
+    return n, ""
+
+
+def _nb_free_name(root):
+    """新添一本时的默认名。
+
+    先用文件夹名；撞上已有笔记本就用「父目录名 空格 文件夹名」——
+    两个都叫「笔记」的文件夹，用「iCloud 笔记」区分比「笔记 (2)」认得出来。
+    再撞才退回加 (2) (3)。
+    """
+    base = _nb_clean(os.path.basename(root.rstrip(os.sep))) or _nb_clean(root)
+    if not base:
+        base = "笔记本"
+    if nb_by_name(base) is None:
+        return base[:NB_NAME_MAX]
+    parent = _nb_clean(os.path.basename(os.path.dirname(root.rstrip(os.sep))))
+    if parent:
+        two = ("%s %s" % (parent, base))[:NB_NAME_MAX]
+        if nb_by_name(two) is None:
+            return two
+    for i in range(2, 100):
+        cand = ("%s (%d)" % (base, i))[:NB_NAME_MAX]
+        if nb_by_name(cand) is None:
+            return cand
+    return base[:NB_NAME_MAX - 8] + " " + fulltext.secrets_token()[:4]
+
+
+def _nb_clean(x):
+    """文件夹名 → 能当前缀用的名字：去斜杠，去开头的 `.` `_`。
+
+    名字就是路径前缀，而静态服务对**每一段**都过 `_seg_blocked`——一个叫
+    `.笔记` 的文件夹要是原样当了名字，那一本的图片就一张都发不出来。
+    """
+    n = _nfc(x).strip().replace("/", " ").replace("\\", " ").lstrip("._").strip()
+    return n[:NB_NAME_MAX]
+
+
+def _nb_pick_color():
+    """分配一色：用得最少的，一样少的按色盘顺序取前面那个。
+    八本以上必然重复——颜色是提示，名字才是身份。"""
+    used = {}
+    for v in nb_all():
+        used[v.color] = used.get(v.color, 0) + 1
+    return min(NB_COLORS, key=lambda c: (used.get(c, 0), NB_COLORS.index(c)))
+
+
+def _nb_conflict(real, exclude=None):
+    """这个位置跟已经挂上的那些冲不冲突。返回一句理由，没冲突返回空串。
+
+    嵌套一律拒（在里面、包着都算）：两本套着的话同一份文件会有两个对外路径，
+    索引、流水、废纸篓全要认两遍；同一个 realpath 登记两回更糟——两本共用一份
+    `fulltext.db` 却各拿一把锁。support dir 也拒，那是 AM·Note 自己的地盘。
+
+    **不看文件夹在不在**：启动时离线的那些要留在列表里（存在与否由
+    `_nb_check_root` 另外判），所以这条只比位置。
+    """
+    sup = os.path.realpath(SUPPORT_DIR)
+    if real == sup or real.startswith(sup + os.sep):
+        return T("这是 AM·Note 自己的文件夹，不能当笔记本")
+    for v in nb_all():
+        if v is exclude:
+            continue
+        other = v.real_root
+        if real == other:
+            return T("这个文件夹已经是笔记本「{n}」了", n=v.name)
+        if real.startswith(other + os.sep):
+            return T("这个文件夹已经在「{n}」里面了", n=v.name)
+        if other.startswith(real + os.sep):
+            return T("「{n}」就在这个文件夹里面", n=v.name)
+    return ""
+
+
+def _nb_check_root(path, exclude=None):
+    """一个候选文件夹能不能当笔记本。返回 (绝对路径, 错误)。"""
+    raw = _nfc(path).strip()
+    if not raw:
+        return "", T("要一个文件夹的路径")
+    full = os.path.abspath(os.path.expanduser(raw))
+    if not os.path.isdir(full):
+        return "", T("找不到这个文件夹：{p}", p=full)
+    why = _nb_conflict(os.path.realpath(full), exclude=exclude)
+    if why:
+        return "", why
+    try:
+        os.listdir(full)                          # 打一次坐实 TCC 授权
+    except OSError as e:
+        return "", T("读不了：{e}", e=e)
+    return full, ""
+
+
+def _nb_forget(vid):
+    """一本被移除／换了位置之后，把按 vid 记着的缓存和撤销表清干净。"""
+    with _lock:
+        for cache in (_cache, _tree_cache, _marks_cache, _map_cache, _nb_count):
+            cache.pop(vid, None)
+        for k in [k for k in _trashed if k[0] == vid]:
+            _trashed.pop(k, None)
+
+
+def _nb_result(before, extra=None):
+    """一条动作的响应。`变化` 给页面做本地存储的迁移：
+    模式从「单」翻到「多」时所有老路径要补上 `主名/` 前缀，翻回去要剥掉。"""
+    r = notebooks_view()
+    ch = {"从": before, "到": nb_mode(),
+          "主名": nb_main().name if nb_main() else ""}
+    if extra:
+        ch.update(extra)
+    r["变化"] = ch
+    nb_save()
+    return r
+
+
+def notebooks_do(req):
+    """POST /__notebooks。要口令（所有 POST 都要）。"""
+    global _nb_default
+    act = _nfc(req.get("动作")).strip()
+    with _nb_lock:
+        before = nb_mode()
+        if act == "添加":
+            paths = req.get("路径") or []
+            if isinstance(paths, str):
+                paths = [paths]
+            if not isinstance(paths, list) or not paths:
+                return _bad(T("要一个文件夹的路径"))
+            fresh = []
+            for p in paths[:20]:
+                full, err = _nb_check_root(p)
+                if err:
+                    return _bad(err)              # 一条不合法整批不动，好懂
+                v = fulltext.register(full, name=_nb_free_name(full),
+                                      color=_nb_pick_color(), added=_now_str())
+                fresh.append(v)
+            for v in fresh:
+                # 立刻标「扫描中」：页面添加完马上问 /__status，线程可能还没起来
+                v.state["运行中"] = True
+                kick_sync(v)
+            return _nb_result(before, {"新增": [v.name for v in fresh]})
+
+        if act in ("移除", "改名", "颜色", "默认", "重新定位"):
+            v = fulltext.get_vault(_nfc(req.get("id")).strip())
+            if v is None:
+                return _bad(T("没有这个笔记本"))
+        else:
+            return _bad(T("不认识这个动作"))
+
+        if act == "移除":
+            if len(nb_all()) <= 1:
+                return _bad(T("至少要留一个笔记本"))
+            fulltext.unregister(v.vid)
+            _nb_forget(v.vid)
+            if _nb_default == v.vid:
+                _nb_default = ""                  # 退回主笔记本
+            return _nb_result(before, {"移除": v.name})
+
+        if act == "改名":
+            name, err = _nb_name_ok(req.get("名字"), exclude=v)
+            if err:
+                return _bad(err)
+            old = v.name
+            v.name = name
+            with _lock:
+                _map_cache.pop(v.vid, None)       # 地图正文里印着名字
+            return _nb_result(before, {"旧名": old, "新名": name})
+
+        if act == "颜色":
+            color = _nfc(req.get("颜色")).strip()
+            if color not in NB_COLORS:
+                return _bad(T("不认识这个颜色"))
+            v.color = color
+            return _nb_result(before)
+
+        if act == "默认":
+            _nb_default = v.vid
+            return _nb_result(before)
+
+        full, err = _nb_check_root(req.get("路径"), exclude=v)   # 重新定位
+        if err:
+            return _bad(err)
+        v.point_at(full, name=v.name)
+        v.online = True
+        fulltext._ensure_dirs(v)
+        _nb_forget(v.vid)
+        v.state["运行中"] = True
+        kick_sync(v)
+        return _nb_result(before, {"重新定位": v.name})
+
+
+# ── notebooks.json：只在给了 --notebooks-file 时读写 ──────────
+
+def nb_save():
+    """原子写（tmp ＋ replace），0600。没开持久化就什么都不做。"""
+    if not NOTEBOOKS_FILE:
+        return False
+    dflt = nb_default()
+    data = {"版本": NB_VERSION,
+            "笔记本": [{"id": v.vid, "名字": v.name, "路径": v.root,
+                        "颜色": v.color, "加入": v.added} for v in nb_all()],
+            "默认": dflt.vid if dflt else ""}
+    tmp = NOTEBOOKS_FILE + ".tmp"
+    try:
+        os.makedirs(os.path.dirname(NOTEBOOKS_FILE) or ".", exist_ok=True)
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, ensure_ascii=False, indent=2)
+        os.chmod(tmp, 0o600)                      # 文件已存在时 O_CREAT 的 mode 不算数
+        os.replace(tmp, NOTEBOOKS_FILE)
+    except OSError as e:
+        print(f"笔记本列表写不了（{NOTEBOOKS_FILE}）：{e}", file=sys.stderr, flush=True)
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        return False
+    return True
+
+
+def nb_load_file(path):
+    """读 notebooks.json，返回 (条目列表, 默认 id)。
+
+    文件不在＝还没有列表（首启／老用户升级），不是错。**读坏了不当没看见**：
+    改名成 notebooks.json.bad-<时间戳> 留证，再按「不在」处理——
+    直接覆盖会把用户添过的几本悄悄弄丢。
+    """
+    try:
+        with open(path, encoding="utf-8") as f:
+            raw = json.load(f)
+    except FileNotFoundError:
+        return [], ""
+    except (OSError, ValueError) as e:
+        raw, why = None, e
+    else:
+        why = "不是一个对象"
+    if not isinstance(raw, dict):
+        bad = path + ".bad-" + datetime.now().strftime("%Y%m%d-%H%M%S")
+        try:
+            os.replace(path, bad)
+        except OSError:
+            pass
+        print(f"笔记本列表读不了（{why}），旧文件改名成 {bad}，这次当没有列表。",
+              file=sys.stderr, flush=True)
+        return [], ""
+    rows = []
+    for e in (raw.get("笔记本") or []):
+        if isinstance(e, dict) and str(e.get("路径") or "").strip():
+            rows.append(e)
+    return rows, str(raw.get("默认") or "")
+
+
+def boot_vaults(roots):
+    """按启动参数把笔记本列表建起来。返回主笔记本。
+
+    · 给了 --notebooks-file：读它，跟命令行 --root **取并集**（新根加进去并
+      写回，名字取文件夹名）。根不在了也留着，标成离线。
+    · 没给：只用 --root ／ AMNOTE_VAULT，列表只在内存里。**行为跟 5.6 一样**，
+      包括「文件夹不在就 stderr 说一句然后退出」。
+
+    加载的每一条都过一遍 `_nb_conflict`：`/__notebooks` 的添加拦得住嵌套和重复，
+    但手改过的 notebooks.json（或者两个 `--root` 写成父子目录）绕得过去，
+    而两条同 realpath 的记录共用一份 `fulltext.db` 却各拿一把锁，扫描会互相盖。
+    挂不上的那一条丢掉并在 stderr 记一行——**不退出**，剩下的本还能用。
+    """
+    global _nb_default
+    entries, dflt = (nb_load_file(NOTEBOOKS_FILE) if NOTEBOOKS_FILE else ([], ""))
+    if not entries and not roots:
+        if NOTEBOOKS_FILE:
+            print(f"笔记本列表是空的（{NOTEBOOKS_FILE}），命令行也没给 --root。"
+                  "先用 --root 指一个文件夹。", file=sys.stderr)
+            sys.exit(1)
+        fulltext.configure(None)                  # 老路：认 AMNOTE_VAULT，没有就退出
+        v = fulltext.main_vault()
+        v.color, v.added = NB_COLORS[0], _now_str()
+        return v
+    for e in entries:
+        p = os.path.abspath(os.path.expanduser(_nfc(e.get("路径")).strip()))
+        why = _nb_conflict(os.path.realpath(p))
+        if why:
+            print(f"列表里这一本挂不上（{why}），这次跳过：{p}",
+                  file=sys.stderr, flush=True)
+            continue
+        v = fulltext.register(p, vid=str(e.get("id") or "") or None,
+                              color=_nfc(e.get("颜色")).strip(),
+                              added=str(e.get("加入") or ""))
+        name, err = _nb_name_ok(e.get("名字"), exclude=v)
+        v.name = name if not err else _nb_free_name(p)
+        if v.color not in NB_COLORS:
+            v.color = _nb_pick_color()
+    for r in roots:                               # 并集：已经登记过的位置跳过
+        p = os.path.abspath(os.path.expanduser(_nfc(r).strip()))
+        if not os.path.isdir(p):
+            if not NOTEBOOKS_FILE:                # 老口径：给的根不在就直接退出
+                print(f"找不到这个文件夹：{p}", file=sys.stderr)
+                sys.exit(1)
+            print(f"这个笔记本的文件夹现在找不到，先留在列表里：{p}",
+                  file=sys.stderr, flush=True)
+        real = os.path.realpath(p)
+        if any(v.real_root == real for v in nb_all()):
+            continue                              # 同一个位置已经在列表里，不用喊
+        why = _nb_conflict(real)
+        if why:
+            print(f"--root 这一个挂不上（{why}），这次跳过：{p}",
+                  file=sys.stderr, flush=True)
+            continue
+        v = fulltext.register(p, name=_nb_free_name(p), color=_nb_pick_color(),
+                              added=_now_str())
+    if not nb_all():
+        print("没有可用的笔记本。请用 --root 指定一个文件夹。", file=sys.stderr)
+        sys.exit(1)
+    _nb_default = dflt if fulltext.get_vault(dflt) else ""
+    nb_save()                                     # 新根写回；没开持久化是空转
+    return nb_main()
 
 
 # ── Agent 接口层 ──────────────────────────────────────────
@@ -1376,13 +2050,26 @@ def note_portal_write(rel):
     fulltext.note_portal_write(rel, agent=cur_agent())
 
 
-def kick_sync():
-    """后台补一轮全文同步（抽正文、记流水、留档）。fulltext.sync 自带锁，
-    重复叫只会登记一次待重跑，不会叠着跑。"""
-    threading.Thread(target=fulltext.sync, daemon=True).start()
+def kick_sync(v=None):
+    """后台补一轮全文同步（抽正文、记流水、留档）。不给笔记本就全体各起一条线程
+    ——各本一把锁、一份状态，互相不用等。fulltext.sync 自带锁，重复叫只会
+    登记一次待重跑，不会叠着跑。"""
+    for one in ([v] if v is not None else nb_online()):
+        threading.Thread(target=_sync_vault, args=(one,), daemon=True).start()
 
 
-_tree_cache = {"key": None, "data": None}
+def _sync_vault(v):
+    try:
+        with fulltext.use(v):
+            fulltext.sync()
+    finally:
+        # 添加一本时先手动把「扫描中」点亮了（线程可能还没排上），这里落下来。
+        # 锁还被别人拿着就说明真有一趟在跑，别把它的状态抹了
+        if not v.sync_lock.locked():
+            v.state["运行中"] = False
+
+
+_tree_cache = {}                      # {vid: {"key":…, "data":…}}
 
 # ── 「这一篇最近被哪个 Agent 动过」──────────────────────────
 #
@@ -1396,7 +2083,7 @@ _tree_cache = {"key": None, "data": None}
 JOURNAL_TAIL = 2000
 JOURNAL_TAIL_BYTES = 512 * 1024        # 只把流水的最后这么多字节读进来
 AGENT_MARK_TTL = 7 * 86400
-_marks_cache = {"key": None, "data": None}
+_marks_cache = {}                     # {vid: {"key":…, "data":…}}
 
 
 def _journal_key():
@@ -1405,7 +2092,7 @@ def _journal_key():
     永远留在缓存里，标记过了期也退不下去。"""
     hour = int(time.time() // 3600)
     try:
-        st = os.stat(fulltext.JOURNAL)
+        st = os.stat(V().journal)
         return (round(st.st_mtime, 2), st.st_size, hour)
     except OSError:
         return (None, hour)
@@ -1413,15 +2100,17 @@ def _journal_key():
 
 def agent_marks():
     """{路径: Agent 名字}。跟着流水文件的指纹（＋钟点）缓存，随 tree 一起失效。"""
+    vid = V().vid
     key = _journal_key()
     with _lock:
-        if _marks_cache["key"] == key and _marks_cache["data"] is not None:
-            return _marks_cache["data"]
+        c = _marks_cache.get(vid)
+        if c and c["key"] == key and c["data"] is not None:
+            return c["data"]
     # 只读尾部：流水能到几 MB，而这里要的信息全在末尾。seek 之后第一行多半是
     # 半条，丢掉；剩下的再按行数收进 deque
     tail = deque(maxlen=JOURNAL_TAIL)
     try:
-        with open(fulltext.JOURNAL, "rb") as f:
+        with open(V().journal, "rb") as f:
             f.seek(0, os.SEEK_END)
             size = f.tell()
             back = min(size, JOURNAL_TAIL_BYTES)
@@ -1459,8 +2148,7 @@ def agent_marks():
         if 0 <= now - at <= AGENT_MARK_TTL:
             out[p] = who
     with _lock:
-        _marks_cache["key"] = key
-        _marks_cache["data"] = out
+        _marks_cache[vid] = {"key": key, "data": out}
     return out
 
 
@@ -1470,8 +2158,9 @@ def _db_key():
     **要连 -wal 一起看**：库是 WAL 模式，写入先落 fulltext.db-wal，
     主库文件的 mtime 要等 checkpoint 才动。只盯 .db 会一直返回过期的树。
     """
+    db_path = V().db_path
     out = []
-    for p in (fulltext.DB_PATH, fulltext.DB_PATH + "-wal"):
+    for p in (db_path, db_path + "-wal"):
         try:
             st = os.stat(p)
             out.append((round(st.st_mtime, 2), st.st_size))
@@ -1482,6 +2171,35 @@ def _db_key():
 
 def tree_view():
     """目录树 ＋ 全部 md/html ＋ 随手记。边栏、列表、最近改动都吃这一份。
+
+    多本时是各本的树合起来的一份：`文档`／`随手记` 的路径带笔记本名前缀、
+    每条多一个 `本`；`目录` 是各本的顶层目录各列各的（两本都有「会议」时
+    是两条，靠 `本` 分开）；`根文档`／`总数` 求和。**单本时一个字不变。**
+    """
+    if not nb_multi():
+        return tree_one(nb_main())
+    docs, dirs, notes = [], [], []
+    n_root = 0
+    synced = ""
+    for v in nb_online():
+        with fulltext.use(v):                     # 出去自动还原，别把线程留在最后一本上
+            one = tree_one(v)
+        if not one.get("ok"):
+            continue
+        docs += [out_row(v, d) for d in one["文档"]]
+        dirs += [dict(d, 本=v.name) for d in one["目录"]]
+        notes += [out_row(v, d) for d in one["随手记"]]
+        n_root += one.get("根文档", 0)
+        synced = max(synced, one.get("生成时间") or "")
+    docs.sort(key=lambda x: -x["改于"])
+    notes.sort(key=lambda x: -x["改于"])
+    return {"ok": True, "目录": dirs, "文档": docs, "附件": [], "随手记": notes,
+            "根文档": n_root, "总数": len(docs), "生成时间": synced,
+            "笔记本": nb_entries()}
+
+
+def tree_one(v):
+    """一本的树。路径都是库内相对路径，不带前缀——加前缀是 tree_view 的事。
 
     **数据源是 fulltext.db 的「文档」表**。v20 前是 scan_tags.py 生成的
     产出清单.json，那条路要求文件先打标签才进得来，1187 份没打标签的挂在
@@ -1499,10 +2217,14 @@ def tree_view():
     （见 agent_marks）。没有这回事就没有这个键。**流水的指纹也进缓存键**——
     署名只落在流水里，光盯 db 的话卡片上那行 ✦ 会等到下一次索引变动才出现。
     """
+    bind(v)
+    if not v.online:
+        return _bad(T("笔记本「{n}」现在找不到，它的文件夹可能被挪走了", n=v.name))
     key = (_db_key(), _journal_key())
     with _lock:
-        if _tree_cache["key"] == key and _tree_cache["data"]:
-            return _tree_cache["data"]
+        c = _tree_cache.get(v.vid)
+        if c and c["key"] == key and c["data"]:
+            return c["data"]
 
     try:
         con = fulltext.connect()
@@ -1548,8 +2270,8 @@ def tree_view():
 
     # 随手记单独给一份带预览的。就那几十份，现读现剥，不值得进索引那条路
     notes = []
-    nd_rel = note_dir()
-    nd = os.path.join(ROOT, nd_rel.replace("/", os.sep))
+    nd_rel = note_dir(v)
+    nd = os.path.join(v.root, nd_rel.replace("/", os.sep))
     try:
         fns = sorted(os.listdir(nd))
     except OSError:
@@ -1578,12 +2300,11 @@ def tree_view():
            "根文档": sum(1 for r in docs if "/" not in r["路径"]),
            "总数": len(docs), "生成时间": (synced or "")[:16]}
     with _lock:
-        _tree_cache["key"] = key
-        _tree_cache["data"] = out
+        _tree_cache[v.vid] = {"key": key, "data": out}
     return out
 
 
-def rescan():
+def rescan(req=None):
     """重扫：同步跑一轮，跑完返回和 /__tree 一模一样的对象。
 
     **是增量的，不是全库重建。** fulltext.sync 只碰 (mtime, 大小) 变过的文件，
@@ -1598,12 +2319,24 @@ def rescan():
     同步跑不后台跑——前端点了「重扫」就是要等结果，后台跑会让界面看着旧列表
     以为没生效。fulltext.sync 自带锁，撞上正在跑的那趟会直接返回，
     这时给出的树是上一轮的，下一次 pulse 会再来一遍。
+
+    多本：body 里带 `nb` 就只扫那一本，不带就逐本扫一遍，返回合并的树。
     """
+    one = nb_by_name((req or {}).get("nb") or "")
+    which = [one] if one is not None else nb_online()
     try:
-        fulltext.sync()
+        for v in which:
+            with fulltext.use(v):
+                fulltext.sync()
     except Exception as e:
         return {"ok": False, "错误": f"{type(e).__name__}: {e}"}
     return tree_view()
+
+
+#: 一次搜索最多从每本里捞这么多行。翻页是「各本先取 offset+n 条再归并再切片」，
+#: 而 offset 上限原来是 100000——`offset=100000` 会让**每一本**都把十万行连片段
+#: 一起读回来再扔掉。翻到两千条开外没有实际用途，就在这儿封顶（offset 同此上限）。
+SEARCH_FETCH_MAX = 2000
 
 
 def search_view(query):
@@ -1621,7 +2354,11 @@ def search_view(query):
         type=md,pdf      只要这几类
         since=7 ／ 2026-09-01   最近 N 天 ／ 这天之后改过的
         sort=mtime       按改动时间排，不按相关度
-        offset=20        翻页
+        offset=20        翻页（上限 SEARCH_FETCH_MAX，再往后不给翻）
+
+    5.7 多本时扇出再归并：`nb=名字`（逗号可多）限定范围，不给就全体；
+    `dir=工作/会议` 这种带前缀的目录隐含了 `nb`。**各本先取 offset+n 条再合并
+    排序再切片**——各本只取 n 条的话，翻到第二页会漏掉排在别本后面的那些。
     """
     q = (query.get("q") or [""])[0]
 
@@ -1632,22 +2369,48 @@ def search_view(query):
             return dflt
 
     n = _num("n", 200, 1, 500)
-    off = _num("offset", 0, 0, 100000)
+    off = _num("offset", 0, 0, SEARCH_FETCH_MAX)
     # 逗号可能是中文的——手打参数时常见，不值得为这个回一条错
     raw_types = (query.get("type") or [""])[0].replace("，", ",")
     types = [t.strip() for t in raw_types.split(",") if t.strip()]
-    try:
-        r = fulltext.search(q, limit=n, offset=off,
-                            subdir=(query.get("dir") or [""])[0].strip(),
-                            types=types,
-                            since=(query.get("since") or [""])[0].strip(),
-                            sort=(query.get("sort") or [""])[0].strip())
-    except ValueError:                           # since= 读不懂，见 fulltext.since_ts
-        return _bad(T("since 要写成天数（7）或日期（2026-09-01）"))
+    kw = dict(types=types,
+              since=(query.get("since") or [""])[0].strip(),
+              sort=(query.get("sort") or [""])[0].strip())
+    only, sub = resolve_dir((query.get("dir") or [""])[0])
+    which = [only] if only is not None else nb_pick(query)
+    if only is not None and not only.online:
+        return _bad(T("笔记本「{n}」现在找不到，它的文件夹可能被挪走了", n=only.name))
+    hits, total, st = [], 0, None
+    for v in which:
+        with fulltext.use(v):
+            try:
+                r = fulltext.search(q, limit=min(off + n, SEARCH_FETCH_MAX),
+                                    offset=0, subdir=sub, **kw)
+            except ValueError:                   # since= 读不懂，见 since_ts
+                return _bad(T("since 要写成天数（7）或日期（2026-09-01）"))
+        total += r.get("总命中", 0)
+        st = st or r.get("状态")
+        hits += [out_row(v, h) for h in r.get("结果", [])]
+    if len(which) > 1:
+        # 档次已经算进分数里了（第一档 +10），同分按改动时间新的在前
+        hits.sort(key=lambda h: (h.get("档", 2), -h.get("分数", 0),
+                                 _neg_time(h.get("改于"))))
+    hits = hits[off:off + n]
     by = {d["路径"]: d["标题"] for d in (tree_view().get("文档") or [])}
-    for h in r.get("结果", []):
+    for h in hits:
         h["标题"] = by.get(h["路径"]) or clean_title(os.path.basename(h["路径"]))
-    return r
+    return {"ok": True, "状态": st or {}, "结果": hits,
+            "总命中": total, "偏移": off}
+
+
+def _neg_time(s):
+    """按「改于」／「时间」（"%Y-%m-%d %H:%M:%S"）倒序排的键：新的在前，空的垫底。
+
+    时间戳都是同一个格式、同样长，逐字取负就是倒序；空串单独抬到最后一档，
+    不然一条读不出时间的记录会顶到列表最前面。
+    """
+    s = s or ""
+    return (0 if s else 1, tuple(-ord(c) for c in s))
 
 
 def outline_view(query):
@@ -1657,7 +2420,9 @@ def outline_view(query):
     **从磁盘读最新的那一份**，不读索引：刚写完还没同步的那几秒里，
     大纲得是刚写下去的样子。
     """
-    rel = (query.get("path") or [""])[0]
+    v, rel, err = resolve((query.get("path") or [""])[0])
+    if err:
+        return _bad(err)
     full, err = _view_full(rel)
     if err:
         return _bad(err)
@@ -1679,7 +2444,7 @@ def outline_view(query):
         # html 没有可靠的大纲（h1/h2 常常只是排版），标题走既有那套抽取
         heads = []
         head = fulltext._extract_html(full)[0]
-    return {"ok": True, "路径": rel,
+    return {"ok": True, "路径": out(v, rel),
             "标题": title_of(rel, head, kind, tuple(cfg().get("通用标题") or ())),
             "大纲": heads, "行数": len(_lines_of(text)), "字数": len(text),
             "改于": _mtime_str(full)}
@@ -1692,11 +2457,15 @@ def links_view(query):
     （文件名主干或标题对上）的一篇——按名找本来就允许晚点再建，所以
     「不存在」不等于写错了。
     """
-    rel = (query.get("path") or [""])[0]
+    v, rel, err = resolve((query.get("path") or [""])[0])
+    if err:
+        return _bad(err)
     full, err = _view_full(rel)
     if err:
         return _bad(err)
-    docs = tree_view().get("文档") or []
+    # **[[题名]] 只在同一本里解**：两本都有「发布检查表」时，跨本认亲会把
+    # 一条明明写在工作笔记里的链接指到读书笔记那份上去
+    docs = tree_one(v).get("文档") or []
     titles = set()
     stems = set()
     for d in docs:
@@ -1719,7 +2488,8 @@ def links_view(query):
                 "SELECT 类型,目标,文本 FROM 链接 WHERE 源=?", (rel,)):
             live = (os.path.isfile(fulltext._full(tgt)) if kind == "路径"
                     else _named(tgt))
-            outs.append({"目标": tgt, "文本": txt or "",
+            outs.append({"目标": out(v, tgt) if kind == "路径" else tgt,
+                         "文本": txt or "",
                          "存在": bool(live), "类型": kind})
         # 反链只捞两类行，走 链接_目标 那条索引：路径链接直接按 目标 命中，
         # [[题名]] 那批要在 Python 里比名字（大小写、标题 / 文件名两种写法），
@@ -1735,11 +2505,11 @@ def links_view(query):
                 ((tgt or "").strip().lower() in mine)
             if hit and (src, txt) not in seen:
                 seen.add((src, txt))
-                backs.append({"源": src, "文本": txt or ""})
+                backs.append({"源": out(v, src), "文本": txt or ""})
         con.close()
     except Exception as e:
         return _bad(T("fulltext.db 读不了：{e}（跑一次重扫）", e=e))
-    return {"ok": True, "路径": rel, "出链": outs, "反链": backs}
+    return {"ok": True, "路径": out(v, rel), "出链": outs, "反链": backs}
 
 
 def recent_view(query):
@@ -1759,6 +2529,18 @@ def recent_view(query):
     raw_types = (query.get("type") or [""])[0].replace("，", ",")
     kinds = sorted(set(t.strip().lower() for t in raw_types.split(",") if t.strip()))
     floor = time.time() - days * 86400
+    which = nb_pick(query)
+    if len(which) != 1:                          # 多本：各取 n 条再按改于归并
+        rows = []
+        for v in which:
+            with fulltext.use(v):
+                r = recent_view({"days": [str(days)], "n": [str(n)],
+                                 "type": [raw_types], "nb": [v.name]})
+            rows += r.get("文档", [])            # 单本那一路已经过 out_row 了
+        rows.sort(key=lambda d: _neg_time(d.get("改于")))
+        return {"ok": True, "文档": rows[:n]}
+    v = which[0]
+    bind(v)
     # 筛选和条数都下沉到 SQL：原来是把 365 天内每一篇连 4000 字正文都取回来，
     # 再在 Python 里丢掉——`days=365&n=5` 等于白读全库
     sql = ["SELECT 路径,类型,mtime,大小,substr(正文,1,4000) FROM 文档 WHERE mtime>=?"]
@@ -1776,17 +2558,19 @@ def recent_view(query):
         return _bad(T("fulltext.db 读不了：{e}（跑一次重扫）", e=e))
     generic = tuple(cfg().get("通用标题") or ())
     marks = agent_marks()
-    out = []
+    docs = []
     for rel, kind, mt, size, head in rows:
         one = {"路径": rel,
                "标题": title_of(rel, head or "", kind, generic),
                "类型": kind, "改于": fulltext._mtime_text(mt), "大小": size or 0}
         if marks.get(rel):
             one["代理"] = marks[rel]
-        out.append(one)
-        if len(out) >= n:
+        # 单本快路也要过 out_row：`/__recent?nb=工作` 跟不带 nb 的那条扇出必须
+        # 给同一形状的路径，不然页面拿到一条 `会议/周会.md` 当键，点开就是 404
+        docs.append(out_row(v, one))
+        if len(docs) >= n:
             break
-    return {"ok": True, "文档": out}
+    return {"ok": True, "文档": docs}
 
 
 # ── 库地图 ────────────────────────────────────────────────────
@@ -1809,48 +2593,101 @@ MAP_NOTE = fulltext.MAP_NOTE
 
 # 一张图画一遍要扫全库正文的前 4000 字，而设置面板、`amnote map` 和导出
 # 会连着问同一组参数。跟树一个套路：索引没动、参数没变就发上一张
-_map_cache = {"key": None, "data": None}
+_map_cache = {}                       # {vid: {"key":…, "data":…}}
 
 
-def map_payload(sub="", per=MAP_MAX, depth=0, budget=MAP_BUDGET):
-    """/__map 的响应（成功时是 §1.6 那个形状，失败时是 _bad(...)）。"""
-    key = (_db_key(), sub, per, depth, budget)
+def map_payload(v=None, sub="", per=MAP_MAX, depth=0, budget=MAP_BUDGET):
+    """一本的地图（成功时是 §1.6 那个形状，失败时是 _bad(...)）。
+
+    多本时地图正文里的路径也带前缀（`工作/会议/周会.md`）：Agent 照着地图里
+    那一行去 `amnote read` 就该直接读得到，还要自己拼一次前缀就白给了。
+    """
+    v = v or V()
+    bind(v)
+    key = (_db_key(), sub, per, depth, budget, nb_multi())
     with _lock:
-        if _map_cache["key"] == key and _map_cache["data"] is not None:
-            return _map_cache["data"]
+        c = _map_cache.get(v.vid)
+        if c and c["key"] == key and c["data"] is not None:
+            return c["data"]
     try:
         con = fulltext.connect()
         rows = fulltext.map_rows(con)
         con.close()
     except Exception as e:
         return _bad(T("fulltext.db 读不了：{e}（跑一次重扫）", e=e))
-    root_name = os.path.basename(REAL_ROOT.rstrip(os.sep)) or REAL_ROOT
-    out = fulltext.map_text(rows, root_name, sub=sub, per=per,
-                            depth=depth, budget=budget)
+    if nb_multi():
+        root_name = v.name
+        rows = [(out(v, r[0]),) + tuple(r[1:]) for r in rows]
+    else:
+        root_name = os.path.basename(v.real_root.rstrip(os.sep)) or v.real_root
+    data = fulltext.map_text(rows, root_name, sub=sub, per=per,
+                             depth=depth, budget=budget)
     with _lock:
-        _map_cache["key"] = key
-        _map_cache["data"] = out
-    return out
+        _map_cache[v.vid] = {"key": key, "data": data}
+    return data
 
 
 def map_view(query):
-    """GET /__map。参数见 fulltext.map_text；`depth` 给 0 或不给＝不限深度。"""
+    """GET /__map。参数见 fulltext.map_text；`depth` 给 0 或不给＝不限深度。
+
+    多本且没限定哪一本时**一本一节**（各自一个 `# 笔记库地图 · 名字` 开头），
+    预算按本数平分——不然第一本就能把整份额度吃光。
+    """
     def _num(k, dflt, lo, hi):
         try:
             return max(lo, min(int((query.get(k) or [str(dflt)])[0]), hi))
         except ValueError:
             return dflt
 
-    return map_payload(
-        sub=(query.get("dir") or [""])[0],
-        per=_num("max", MAP_MAX, 1, MAP_MAX_CAP),
-        depth=_num("depth", 0, 0, MAP_DEPTH_CAP),
-        budget=_num("budget", MAP_BUDGET, 1000, MAP_BUDGET_CAP))
+    per = _num("max", MAP_MAX, 1, MAP_MAX_CAP)
+    depth = _num("depth", 0, 0, MAP_DEPTH_CAP)
+    budget = _num("budget", MAP_BUDGET, 1000, MAP_BUDGET_CAP)
+    raw_dir = (query.get("dir") or [""])[0]
+    only, sub = resolve_dir(raw_dir)
+    if only is None:
+        picked = nb_pick(query)
+        raw_nb = (query.get("nb") or [""])[0].strip()
+        if raw_nb and not picked:
+            # `nb=` 给了但一个名字都不认识。原来落到 _map_join([]) 上，
+            # 报的是「还没有添加任何笔记本」——话不对，库明明在
+            return _bad(T("没有叫「{n}」这个名字的笔记本", n=raw_nb))
+        if len(picked) == 1:
+            only = picked[0]
+        elif len(picked) < len(nb_online()):
+            # nb= 挑了几本（但不是全体）：几本各一节
+            return _map_join(picked, sub, per, depth, budget)
+    if only is not None:
+        return map_payload(only, sub=sub, per=per, depth=depth, budget=budget)
+    if not nb_multi():
+        return map_payload(nb_main(), sub=sub, per=per, depth=depth, budget=budget)
+    return _map_join(nb_online(), sub, per, depth, budget)
+
+
+def _map_join(which, sub, per, depth, budget):
+    """几本的地图接成一份。节标题就是各本自己那行 `# 笔记库地图 · 名字`。"""
+    if not which:
+        return _bad(T("还没有添加任何笔记本"))
+    share = max(1000, budget // max(1, len(which)))
+    parts, n_docs, n_dirs, cut = [], 0, 0, False
+    for v in which:
+        with fulltext.use(v):
+            d = map_payload(v, sub=sub, per=per, depth=depth, budget=share)
+        if not d.get("ok"):
+            continue
+        parts.append(d["地图"])
+        n_docs += d.get("篇数", 0)
+        n_dirs += d.get("目录数", 0)
+        cut = cut or bool(d.get("截断"))
+    return {"ok": True, "地图": "\n".join(parts), "篇数": n_docs,
+            "目录数": n_dirs, "截断": cut,
+            "生成时间": datetime.now().strftime("%Y-%m-%d %H:%M")}
 
 
 def meta_view(query):
     """一份文件的基本面。Agent 拿它代替自己去 stat ＋ 读文件头。"""
-    rel = (query.get("path") or [""])[0]
+    v, rel, err = resolve((query.get("path") or [""])[0])
+    if err:
+        return _bad(err)
     full, err = _view_full(rel)
     if err:
         return _bad(err)
@@ -1864,15 +2701,15 @@ def meta_view(query):
                 head = f.read(20000)
         except OSError:
             pass
-    out = {"ok": True, "路径": rel, "类型": kind,
-           "标题": title_of(rel, head, kind, tuple(cfg().get("通用标题") or ()))}
+    r = {"ok": True, "路径": out(v, rel), "类型": kind,
+         "标题": title_of(rel, head, kind, tuple(cfg().get("通用标题") or ()))}
     try:
         st = os.stat(full)
-        out["改于"] = datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
-        out["大小"] = st.st_size                  # 字节
+        r["改于"] = datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+        r["大小"] = st.st_size                    # 字节
     except OSError:
-        out["改于"], out["大小"] = "", 0
-    return out
+        r["改于"], r["大小"] = "", 0
+    return r
 
 
 # ── 接入向导：把这个库接给本机的 AI 助手 ─────────────────────
@@ -1891,36 +2728,77 @@ AMNOTE_BIN = os.path.join(HERE, "amnote")        # 命令行包装脚本（dev �
 AGENTS_FILE = "AGENTS.md"
 SKILL_MARK = "amnote-skill"                      # 我们写的那份 SKILL.md 的标记
 SKILL_MARK_LINES = 8                             # 标记在 frontmatter 之后，前几行里找
+SKILL_VER_RE = re.compile(SKILL_MARK + r"\s+v(\d+)")
 
 
 def _cli_link():
     return os.path.join(HOME_DIR, ".local", "bin", "amnote")
 
 
+def _skill_ver(path):
+    """一份 SKILL.md 的版本号：前几行里那句 `<!-- amnote-skill vN -->` 的 N。
+
+    没装、读不了、或者那位置上是别人写的一份（没有标记）一律 0。设置面板拿
+    「已装的」跟「随这一版发的」比一下，落后了就把按钮换成「更新 Skill」——
+    5.7 把 skill 升到 v2（首段改成「先 amnote notebooks」），老用户手上那份 v1
+    会让 Agent 在多笔记本的库里按不带前缀的路径去找文件。
+    """
+    try:
+        with open(path, encoding="utf-8", errors="replace") as f:
+            head = "".join([f.readline() for _ in range(SKILL_MARK_LINES)])
+    except OSError:
+        return 0
+    m = SKILL_VER_RE.search(head)
+    return int(m.group(1)) if m else 0
+
+
 def _skill_file():
     return os.path.join(HOME_DIR, ".claude", "skills", "amnote", "SKILL.md")
 
 
-def _vault_file(name):
-    return os.path.join(ROOT, name)
+def _vault_file(name, v=None):
+    return os.path.join((v or V()).root, name)
 
 
-def agent_setup_view():
-    """GET /__agent_setup：四样东西各自装没装、路径是什么，外加两段能拷走的配置。"""
+def _setup_row(name, v):
+    """库根里那两份文件（AGENTS.md ／ 库地图.md）在某一本里的状态。"""
+    p = _vault_file(name, v)
+    row = {"路径": p, "已存在": os.path.lexists(p)}
+    if nb_multi():
+        row["本"] = v.name
+    return row
+
+
+def agent_setup_view(v=None):
+    """GET /__agent_setup：四样东西各自装没装、路径是什么，外加两段能拷走的配置。
+
+    命令行和 skill 是本机一份；AGENTS.md 和库地图落在库根里，所以**多本时这两项
+    变成按本的数组**（页面按本各列一行）。单本时形状一个字不变。
+
+    `skill` 另带 `版本`（已装那份的 N，没装是 0）和 `最新`（这一版随包发的 N）：
+    页面在 `版本 < 最新` 时把按钮文案换成「更新 Skill」。
+    """
+    v = v or V()
     link = _cli_link()
     try:
         linked = (os.path.islink(link)
                   and os.path.realpath(link) == os.path.realpath(AMNOTE_BIN))
     except OSError:
         linked = False
+    if nb_multi():
+        agents = [_setup_row(AGENTS_FILE, one) for one in nb_all()]
+        maps = [_setup_row(MAP_FILE, one) for one in nb_all()]
+    else:
+        agents = _setup_row(AGENTS_FILE, v)
+        maps = _setup_row(MAP_FILE, v)
     return {"ok": True,
             "命令行": {"路径": AMNOTE_BIN, "链接路径": link, "已链接": bool(linked)},
             "skill": {"路径": _skill_file(),
-                      "已安装": os.path.isfile(_skill_file())},
-            "agents_md": {"路径": _vault_file(AGENTS_FILE),
-                          "已存在": os.path.lexists(_vault_file(AGENTS_FILE))},
-            "地图文件": {"路径": _vault_file(MAP_FILE),
-                         "已存在": os.path.lexists(_vault_file(MAP_FILE))},
+                      "已安装": os.path.isfile(_skill_file()),
+                      "版本": _skill_ver(_skill_file()),
+                      "最新": _skill_ver(os.path.join(AGENT_DIR, "SKILL.md"))},
+            "agents_md": agents,
+            "地图文件": maps,
             "mcp命令": "claude mcp add amnote -- %s mcp" % shlex.quote(AMNOTE_BIN),
             "codex配置": ("[mcp_servers.amnote]\ncommand = %s\n"
                           "args = [\"mcp\"]\n" % json.dumps(AMNOTE_BIN))}
@@ -2009,7 +2887,7 @@ def _setup_agents_md():
 
 def _setup_map():
     """把地图导成库根的一份 md。可以反复覆盖，首行留一句「这是生成的」。"""
-    d = map_payload()
+    d = map_payload(V())
     if not d.get("ok"):
         return d
     dest = _vault_file(MAP_FILE)
@@ -2028,27 +2906,59 @@ def agent_setup_do(req):
           "agents_md": _setup_agents_md, "map_export": _setup_map}.get(act)
     if not fn:
         return _bad(T("不认识这个动作"))
+    # AGENTS.md / 库地图 落在哪一本：`nb` 说了算，不给就是主笔记本
+    v, err = nb_arg(req.get("nb") or req.get("笔记本"))
+    if err:
+        return _bad(err)
+    bind(v)
     r = fn()
     if isinstance(r, dict):                      # _bad(...) 原样上抛
         return r
-    out = agent_setup_view()
-    out["结果"] = str(r)
-    return out
+    payload = agent_setup_view(v)
+    payload["结果"] = str(r)
+    return payload
 
 
 def changes_view(query):
-    """变更流水原样给出去，Agent 查「这几天库里动了什么」用。"""
+    """变更流水原样给出去，Agent 查「这几天库里动了什么」用。
+
+    多本时是几份流水合起来的一份，按 `时间` 倒序，每条多一个 `本`。
+    **`序号` 是各本自己的号，跨本不唯一**——`since=` 也是按本各自应用的，
+    要按序号取增量就一次只问一本（`nb=`）。
+    """
     try:
         since = int((query.get("since") or ["0"])[0])
         n = max(1, min(int((query.get("n") or ["200"])[0]), 1000))
     except ValueError:
         since, n = 0, 200
-    return {"ok": True, "流水": fulltext.journal_read(since, n)}
+    which = nb_pick(query)
+    if len(which) == 1:
+        # 单本快路一样过 out_row（`/__recent` 那条同理）：`?nb=工作` 跟扇出
+        # 那一路必须给同一形状的路径，不然调用方按 `本` 分组时少一半
+        with fulltext.use(which[0]):
+            return {"ok": True,
+                    "流水": [out_row(which[0], e)
+                             for e in fulltext.journal_read(since, n)]}
+    rows = []
+    for v in which:
+        with fulltext.use(v):
+            rows += [out_row(v, e) for e in fulltext.journal_read(since, n)]
+    rows.sort(key=lambda e: _neg_time(e.get("时间")))
+    return {"ok": True, "流水": rows[:n]}
 
 
 def archive_view(query):
-    """读一份留档（门户编辑备份和外部覆写留档同一个目录）。只读。"""
+    """读一份留档（门户编辑备份和外部覆写留档同一个目录）。只读。
+
+    留档在各本自己的 `.amnote/backups/` 里，名字只是把路径压平的一串，
+    不带笔记本。所以多本时要 `nb=名字` 说清是哪一本的——不给就是主笔记本
+    （`/__changes` 每条都带 `本`，调用方照抄那一个就行）。
+    """
     name = (query.get("name") or [""])[0]
+    v, err = nb_arg((query.get("nb") or [""])[0])
+    if err:
+        return _bad(err)
+    bind(v)
     text = fulltext.archive_read(name)
     if text is None:
         return _bad(T("没有这份留档"))
@@ -2077,6 +2987,58 @@ def current_view():
     return {"ok": True, "门户开着": bool(_agent["门户状态"]) and (age or 9e9) < 30,
             "状态": _agent["门户状态"],
             "秒前": round(age, 1) if age is not None else None}
+
+
+# ── /__locate：绝对路径 → 对外路径 ──────────────────────────
+#
+# 访达双击一份 md（或者「打开方式」、拖到 Dock）时，壳投过来的是磁盘上的绝对
+# 路径。页面自己拿 `库根` 做前缀匹配是不够的：库落在 `/private/…`、或者路上有
+# 一段软链接时，两边标准化的口径不一样，前缀对不上，文稿就静默不开。
+# 这条把匹配挪到服务端做一次——两边都 realpath，各本 real_root 取最长前缀，
+# 回一个页面直接能当键用的对外路径。
+# **免口令**：只做字符串换算，不 stat、不读内容，泄不出任何库里的东西。
+
+
+def locate_view(query):
+    """`GET /__locate?abs=/Users/…/工作笔记/会议/周会.md`
+    → `{ok:true, 路径:"工作/会议/周会.md", 本:"工作"}`。
+
+    · 不在任何一本里 → `{ok:false, 代码:"outside"}`（页面照旧走库外只读那条）；
+    · 落在 `.amnote`、点开头的段、`_编辑备份`、`__pycache__` 里 →
+      `{ok:false, 代码:"bad_path"}`——那几处静态和编辑都不给碰，给出一个「路径」
+      只会让页面开一份注定打不开的文稿；
+    · 那一本现在离线 → `{ok:false, 代码:"offline"}`。
+    单笔记本模式下不加前缀（跟 `out()` 一个口径），`本` 照样报主笔记本的名字。
+    """
+    p = (query.get("abs") or [""])[0]
+    if not p or "\x00" in p:
+        return _bad(T("要一个绝对路径"))
+    p = os.path.expanduser(p)
+    if not os.path.isabs(p):
+        return _bad(T("要一个绝对路径"))
+    real = os.path.realpath(p)
+    hit, rel = None, ""
+    for v in nb_all():
+        root = v.real_root
+        if real == root:
+            cand = ""
+        elif real.startswith(root + os.sep):
+            cand = os.path.relpath(real, root)
+        else:
+            continue
+        # 取**最长**前缀：两本不该嵌套（`_nb_conflict` 拦着），但「重新定位」
+        # 换位置的那一瞬间可能重合，取长的那一本总不会认错。
+        if hit is None or len(root) > len(hit.real_root):
+            hit, rel = v, cand
+    if hit is None:
+        return _bad(T("这份不在任何一个笔记本里"))
+    if not hit.online:
+        return _bad(T("笔记本「{n}」现在找不到，它的文件夹可能被挪走了", n=hit.name))
+    if any(_seg_blocked(seg) for seg in (rel.split(os.sep) if rel else [])):
+        return _bad(T("路径不合法"))
+    rel = rel.replace(os.sep, "/")
+    return {"ok": True, "本": hit.name,
+            "路径": out(hit, rel) or (hit.name if nb_multi() else "")}
 
 
 # ── 库外文档（外部文档模式）──────────────────────────────────
@@ -2110,8 +3072,9 @@ def ext_open(req: dict):
         return _bad(T("只能打开 md"))
     if not os.path.isfile(full):
         return _bad(T("这份文件不在了"))
-    if full == REAL_ROOT or full.startswith(REAL_ROOT + os.sep):
-        return _bad(T("这份在库里，按库内文档打开"))
+    for v in nb_all():                           # 任何一本里的都算库内
+        if full == v.real_root or full.startswith(v.real_root + os.sep):
+            return _bad(T("这份在库里，按库内文档打开"))
     try:
         size = os.path.getsize(full)
     except OSError as e:
@@ -2497,7 +3460,52 @@ def pmingliu_file():
 
 class Handler(SimpleHTTPRequestHandler):
     def __init__(self, *a, **kw):
-        super().__init__(*a, directory=ROOT, **kw)
+        main = nb_main()
+        super().__init__(*a, directory=(main.root if main else HERE), **kw)
+
+    def translate_path(self, path):
+        """URL → 盘上的落点。**不走基类那条**（它只会往一个 directory 里拼）。
+
+        多本时第一段是笔记本的名字（`/工作/会议/图.png`），单本时不带前缀。
+        顺手堵了两个一直在的口子：
+          · 每一段过 `_seg_blocked`——`.amnote/`、点开头的段、`_编辑备份`、
+            `__pycache__` 一律不发（`GET /.amnote/fulltext.db` 原来是能读的）；
+          · 落点 realpath 必须还在那一本的根里——库里一条指到家目录的软链接，
+            原来照发不误（`/__raw` 那条早就拦了，静态这条没拦）。
+        **段判两遍**（跟 `_edit_ok` 同一个道理）：请求里写的那几段判一遍，
+        realpath 之后按实际落点再判一遍。只判前者的话，库里一条
+        `工作/会议/公开 → ../.amnote` 的软链接就能把 `fulltext.db` 读出去。
+        挡下来的返回一个不存在的路径，基类打不开自然回 404，不用另写应答。
+        """
+        raw = path.split("?", 1)[0].split("#", 1)[0]
+        try:
+            raw = urllib.parse.unquote(raw, errors="surrogatepass")
+        except (UnicodeDecodeError, TypeError):
+            return NOWHERE
+        segs = []
+        for seg in raw.split("/"):
+            if not seg or seg == ".":
+                continue
+            if seg == ".." or "\x00" in seg or _seg_blocked(seg):
+                return NOWHERE
+            segs.append(seg)
+        v = V()
+        if nb_multi():
+            if not segs:
+                return NOWHERE                    # 多本时根目录列不出东西来
+            v = nb_by_name(segs.pop(0))
+            if v is None or not v.online:
+                return NOWHERE
+        if not segs:
+            return v.real_root
+        full = os.path.realpath(os.path.join(v.root, *segs))
+        if not (full == v.real_root or full.startswith(v.real_root + os.sep)):
+            return NOWHERE
+        if full != v.real_root:
+            for seg in os.path.relpath(full, v.real_root).split(os.sep):
+                if _seg_blocked(seg):
+                    return NOWHERE
+        return full
 
     def log_message(self, *a):
         pass
@@ -2659,6 +3667,8 @@ class Handler(SimpleHTTPRequestHandler):
             self._json(json.dumps(fonts_view(), ensure_ascii=False))
         elif route.startswith("/__status"):
             self._json(json.dumps(status(), ensure_ascii=False))
+        elif route.startswith("/__notebooks"):
+            self._json(json.dumps(notebooks_view(), ensure_ascii=False))
         elif route.startswith("/__profile"):
             # 免口令，跟下面 /__avatar 一个道理：页面启动时并行拉它，
             # 而头像那张是 <img src>，带不了自定义头
@@ -2674,7 +3684,10 @@ class Handler(SimpleHTTPRequestHandler):
         elif route.startswith("/__tree"):
             self._json(json.dumps(tree_view(), ensure_ascii=False))
         elif route.startswith("/__config"):
-            self._json(json.dumps(read_config(), ensure_ascii=False))
+            # `?nb=名字` 选哪一本的配置，不给就是主笔记本；**名字写错不回落**
+            v, err = nb_arg((self._q().get("nb") or [""])[0])
+            self._json(json.dumps(_bad(err) if err else read_config(v),
+                                  ensure_ascii=False))
         elif route.startswith("/__raw"):
             q = self._q()
             self._json(json.dumps(
@@ -2697,6 +3710,9 @@ class Handler(SimpleHTTPRequestHandler):
             self._json(json.dumps(changes_view(self._q()), ensure_ascii=False))
         elif route.startswith("/__archive"):
             self._json(json.dumps(archive_view(self._q()), ensure_ascii=False))
+        elif route.startswith("/__locate"):
+            # 免口令：绝对路径 → 对外路径，纯字符串换算（访达双击那条路）
+            self._json(json.dumps(locate_view(self._q()), ensure_ascii=False))
         elif route.startswith("/__current"):
             self._json(json.dumps(current_view(), ensure_ascii=False))
         elif route in ("/portal", "/portal/"):
@@ -2713,6 +3729,7 @@ class Handler(SimpleHTTPRequestHandler):
         self._head_only = False
         self._ctype = ""
         self._lang()
+        bind(None)                               # 每趟从主笔记本起算（keep-alive 复用线程）
         if not self._gate():
             return
         if not self._route():
@@ -2724,6 +3741,7 @@ class Handler(SimpleHTTPRequestHandler):
         self._head_only = True
         self._ctype = ""
         self._lang()
+        bind(None)
         if not self._gate():
             return
         if not self._route():
@@ -2735,13 +3753,14 @@ class Handler(SimpleHTTPRequestHandler):
         self._head_only = False
         self._ctype = ""
         self._lang()
+        bind(None)
         if not self._gate():
             return
         route = self.path.split("?")[0]
         if route not in ("/__config", "/__reveal", "/__external",
                          "/__save", "/__trash", "/__untrash",
                          "/__state", "/__rescan", "/__extopen",
-                         "/__profile", "/__agent_setup"):
+                         "/__profile", "/__agent_setup", "/__notebooks"):
             self.send_error(404, "not found")
             return
         # **所有 POST 都要口令。** 这是写路由和触发类路由的唯一一道门
@@ -2754,10 +3773,16 @@ class Handler(SimpleHTTPRequestHandler):
             n = int(self.headers.get("Content-Length") or 0)
         except ValueError:
             n = 0
-        if route == "/__rescan":                 # 不吃参数，直接跑
+        if route == "/__rescan":                 # 只认一个可选的 nb
+            body = {}
             if 0 < n <= 1_000_000:
-                self.rfile.read(n)               # body 读干净，不然 keep-alive 会错位
-            self._json(json.dumps(rescan(), ensure_ascii=False))
+                # body 一定要读干净，不然 keep-alive 会把它当下一个请求的报文头
+                try:
+                    body = json.loads(self.rfile.read(n).decode("utf-8"))
+                except (ValueError, UnicodeDecodeError):
+                    body = {}
+            self._json(json.dumps(
+                rescan(body if isinstance(body, dict) else {}), ensure_ascii=False))
             return
         # /__save 传的是整篇正文，上限单独给大一点。/__profile 也要松一档：
         # 头像那 1 MB 是 base64 送来的，撑大 4/3 之后正好卡在 1 MB 那道闸上，
@@ -2773,13 +3798,19 @@ class Handler(SimpleHTTPRequestHandler):
             self._json(json.dumps(_bad(T("请求不是合法 JSON：{e}", e=e)),
                                   ensure_ascii=False))
             return
+        # `?nb=名字` 跟 body 里的 nb 等价：设置面板那两段用查询参数顺手些
+        if isinstance(req, dict) and not req.get("nb"):
+            nbq = (self._q().get("nb") or [""])[0].strip()
+            if nbq:
+                req["nb"] = nbq
         try:
             out = {"/__config": write_config, "/__reveal": reveal,
                    "/__external": open_external, "/__extopen": ext_open,
                    "/__save": save_route, "/__state": state_set,
                    "/__trash": trash, "/__untrash": untrash,
                    "/__profile": profile_write,
-                   "/__agent_setup": agent_setup_do}[route](req)
+                   "/__agent_setup": agent_setup_do,
+                   "/__notebooks": notebooks_do}[route](req)
         except Exception as e:                       # 界面上要看得见，不能静默 500
             out = {"ok": False, "错误": f"{type(e).__name__}: {e}"}
         # 补一轮全文同步，索引在几秒内就能跟上这次改动。/__trash 和 /__untrash
@@ -2789,7 +3820,7 @@ class Handler(SimpleHTTPRequestHandler):
         # 就记了，见那四处注释
         if (route in ("/__save", "/__trash", "/__untrash")
                 and isinstance(out, dict) and out.get("ok")):
-            kick_sync()
+            kick_sync(V())                       # 只补动过的那一本
         self._json(json.dumps(out, ensure_ascii=False))
 
     def send_header(self, keyword, value):
@@ -2858,10 +3889,20 @@ def serve(port_from=None, port_to=None):
     raise SystemExit("没有可用端口")
 
 
+def _on_term(sig, frame):
+    """SIGTERM 抛 SystemExit，让下面的 finally 把口令文件收走。
+
+    壳退出时给的是 SIGTERM，默认处置是当场死——finally 一句都不跑，
+    上一趟的 portal.token 就留在盘上了（连不上任何服务，排查时容易看岔）。
+    """
+    raise SystemExit(0)
+
+
 if __name__ == "__main__":
     # 口令文件默认 ~/Library/Application Support/AMNote/portal.token，
     # 可以用 --token-file 或环境变量 AMN_TOKEN_FILE 挪走。
-    root, argv = fulltext.take_root_arg(sys.argv[1:])
+    # --root 可以写好几个（5.7：一个进程挂几个笔记本）。
+    roots, argv = fulltext.take_root_args(sys.argv[1:])
     if "--token-file" in argv:
         i = argv.index("--token-file")
         if i + 1 < len(argv):
@@ -2872,8 +3913,14 @@ if __name__ == "__main__":
         i = argv.index("--support-dir")
         if i + 1 < len(argv):
             SUPPORT_DIR = os.path.abspath(os.path.expanduser(argv[i + 1]))
-    fulltext.configure(root)
-    _bind_vault()
+    # **给了这个才落盘。** 不给就是临时列表：/__notebooks 的增删只在内存里，
+    # 开发脚本永远碰不到用户那份 notebooks.json
+    if "--notebooks-file" in argv:
+        i = argv.index("--notebooks-file")
+        if i + 1 < len(argv):
+            NOTEBOOKS_FILE = os.path.abspath(os.path.expanduser(argv[i + 1]))
+    boot_vaults(roots)
+    signal.signal(signal.SIGTERM, _on_term)
     token_dir = os.path.dirname(os.path.abspath(TOKEN_FILE))
     if token_dir:
         os.makedirs(token_dir, exist_ok=True)

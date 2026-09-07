@@ -37,8 +37,9 @@ html 那一改要对已经进库的 html 补一次重抽（只重写 正文 列�
 **这个模块自己不开任何 HTTP 路由，也绝不写库里的业务文件。**
 它写的只有所选文件夹 .amnote/ 下的三样：fulltext.db、changes.jsonl、backups/ 里的留档。
 「能改库内产出的写路由只有 /__save 一条」这条规矩不因它而变。
-库根来自 --root 或环境变量 AMNOTE_VAULT，import 之后、用 ROOT 之前必须
-调用一次 configure()。.amnote 不进索引。
+库根来自 --root 或环境变量 AMNOTE_VAULT，import 之后、用 V() 之前必须
+调用一次 configure()（5.7 起挂多个根走 register()，见「笔记本」那一段）。
+.amnote 不进索引。
 
 数据层口径：
     · 收录范围＝跳过规则＋噪声规则，不是全盘。噪声目录里的改动不进流水——
@@ -66,6 +67,7 @@ import json
 import math
 import os
 import re
+import secrets
 import sqlite3
 import subprocess
 import sys
@@ -79,19 +81,211 @@ from html.parser import HTMLParser
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 
-ROOT = None
-CONFIG_PATH = None
-DB_PATH = None
-JOURNAL = None
-READONLY = False                                  # configure(readonly=True) 之后为真
-BACKUP_DIR = None                                 # 跟 portal_server 的编辑备份同一个
 BACKUP_KEEP = 10                                  # 每份文件留几版，跟编辑备份同额
 BACKUP_TOTAL_MB = 500                             # 备份目录总大小上限，超了删最旧的
 
 
-def take_root_arg(argv):
-    """抽出 --root PATH，可写在任意位置。返回 (root 或 None, 剩余参数)。"""
-    root = None
+# ── 笔记本：一个进程挂几个根（5.7）────────────────────────────
+#
+# 原来这里是五个路径全局（ROOT / CONFIG_PATH / DB_PATH / JOURNAL / BACKUP_DIR）
+# 加一个 READONLY，configure() 一次写死。5.7 起一个进程要同时挂几个文件夹，
+# 每个文件夹叫一个**笔记本**，于是换成：
+#
+#     _vaults   {vid: Vault}   按加入顺序，第一条是「主笔记本」
+#     _cur      threading.local 记着「这条线程现在在哪一本里」，缺省 = 主笔记本
+#     V()       当前那一本；函数里一律写 V().root / V().db_path …
+#
+# **没改成类。** 调用点几十处，改成类等于重写整个模块，而这里要的只是
+# 「同一套函数换一个根跑一遍」。（5.7 阶段 5：`fulltext.ROOT` 这类老写法的
+# 模块级 __getattr__ 兜底删了——全仓库一个调用方都没有，留着只会让人以为
+# 还有别的地方在用那几个全局。）
+#
+# 单库时表里只有一条、当前永远是它：命令行的离线通道
+# （configure(root, readonly=True) 之后直接 connect()）一个字都不用动。
+
+
+class Vault(object):
+    """一个笔记本：库根 ＋ 它 .amnote/ 下那几样 ＋ 各自的活状态。
+
+    名字 / 颜色 / 加入时间 / 在不在线由 portal_server 填（认得 notebooks.json 的
+    是它），这里只保证字段在、有个说得过去的默认值——两边写同一个对象，
+    不各存一份对不上。
+    """
+
+    __slots__ = ("vid", "name", "root", "real_root", "color", "added",
+                 "config_path", "db_path", "journal", "backup_dir",
+                 "readonly", "online", "sync_lock", "state", "rules_cache")
+
+    def __init__(self, vid, root, name="", color="", added="",
+                 readonly=False, online=True):
+        self.vid = vid
+        self.readonly = bool(readonly)
+        self.color = color
+        self.added = added
+        self.online = bool(online)
+        # 一把锁、一份同步状态、一份规则缓存**各本一份**：共用的话 A 本在扫
+        # B 本就只能排队，而 /__status 的进度也会互相串。
+        self.sync_lock = threading.Lock()
+        self.state = {"运行中": False, "待重跑": False}
+        self.rules_cache = {"mtime": None, "值": None}
+        self.point_at(root, name=name)
+
+    def point_at(self, root, name="", wait=10.0):
+        """（重新）指向一个库根。「重新定位」走这条：vid 不变，位置换了。
+
+        **跟正在跑的那趟扫描互斥**：db、流水、留档目录全是从下面这几个字段现拼
+        出来的，跑到一半换掉的话前半趟写进旧库、后半趟写进新库，两边都不完整。
+        所以先等那一趟收尾（最多 `wait` 秒）；真等不到也照换——「重新定位」是
+        用户点出来的动作，不能因为一趟大扫描就卡着不给回应。
+        （`__init__` 里叫这条时锁是新的，直接就拿到了。）
+        """
+        got = self.sync_lock.acquire(timeout=wait)
+        try:
+            return self._point_at(root, name=name)
+        finally:
+            if got:
+                self.sync_lock.release()
+
+    def _point_at(self, root, name=""):
+        self.root = os.path.abspath(os.path.expanduser(str(root)))
+        self.real_root = os.path.realpath(self.root)
+        amdir = os.path.join(self.root, ".amnote")
+        self.config_path = os.path.join(amdir, "config.json")
+        self.db_path = os.path.join(amdir, "fulltext.db")
+        self.journal = os.path.join(amdir, "changes.jsonl")
+        self.backup_dir = os.path.join(amdir, "backups")
+        self.rules_cache = {"mtime": None, "值": None}
+        self.name = name or os.path.basename(self.root.rstrip(os.sep)) or self.root
+        return self
+
+
+_vaults = {}                                      # {vid: Vault}，插入序＝加入序
+_cur = threading.local()                          # 这条线程当前钉在哪一本上
+
+
+def _bind(v):
+    """内部：把这条线程钉在一个 Vault **对象**上（None ＝ 回到主笔记本）。"""
+    _cur.v = v
+    _cur.vid = v.vid if v is not None else None
+
+
+def V():
+    """当前笔记本。没绑过就是主笔记本（＝第一本），一本都没有就抛。
+
+    **认对象，不认 vid。** 只记 vid 的话，一趟扫描跑到一半那一本被「移除」了
+    （`unregister` 把它从 `_vaults` 里摘掉），`V()` 就悄悄回落到主笔记本，
+    后半趟的流水、留档、正文抽取全写进别人家里。钉住对象之后，被移除的那一本
+    照样把自己这一趟跑完（写的是它自己的 `.amnote/`），只是没人再往它身上派新活。
+    """
+    v = getattr(_cur, "v", None)
+    if v is not None:
+        return v
+    for v in _vaults.values():                    # 插入序的第一条＝主笔记本
+        return v
+    raise RuntimeError("还没登记任何笔记本：先 configure() 或 register()")
+
+
+def main_vault():
+    """主笔记本（列表第一条）。一本都没有返回 None。"""
+    for v in _vaults.values():
+        return v
+    return None
+
+
+def vaults():
+    """按加入顺序的全部笔记本。"""
+    return list(_vaults.values())
+
+
+def get_vault(vid):
+    return _vaults.get(vid)
+
+
+def set_current(vid):
+    """把这条线程绑到某一本上。传 None ＝ 回到主笔记本。"""
+    _bind(vid if isinstance(vid, Vault) else _vaults.get(vid))
+    return _cur.vid
+
+
+class use(object):
+    """`with use(v):` —— 这一段代码在那一本里跑，出去自动还原。
+
+    后台同步线程和扇出（搜索、树、地图）全靠它：业务函数一个参数都不用加。
+    **钉的是对象**：跑到一半那一本被移除了也还写在自己家里（见 `V()`）。
+    """
+
+    __slots__ = ("v", "old")
+
+    def __init__(self, v):
+        self.v = v if isinstance(v, Vault) else _vaults.get(v)
+
+    def __enter__(self):
+        self.old = getattr(_cur, "v", None)
+        _bind(self.v)
+        return self.v
+
+    def __exit__(self, *exc):
+        _bind(self.old)
+        return False
+
+
+def _ensure_dirs(v):
+    """建 .amnote/ 和 backups/。只读的笔记本一个目录都不建（见 configure）。"""
+    if v.readonly:
+        return ""
+    for d in (os.path.dirname(v.config_path), v.backup_dir):
+        try:
+            os.makedirs(d, exist_ok=True)
+        except OSError as e:
+            return "建不了 %s：%s" % (d, e)
+    return ""
+
+
+def register(root, vid=None, name="", color="", added="", readonly=False,
+             online=None, make_dirs=True):
+    """登记一个笔记本，返回 Vault。**不动「当前」，也不动别的本。**
+
+    root 不在（外置盘没插、iCloud 没就绪）时登记成离线：一个目录都不建、
+    不扫描，位置留在列表里，等 /__pulse 探到它回来再挂上。
+    """
+    v = Vault(vid or secrets_token(), root, name=name, color=color,
+              added=added, readonly=readonly,
+              online=os.path.isdir(os.path.abspath(os.path.expanduser(str(root))))
+              if online is None else online)
+    if v.online and make_dirs:
+        _ensure_dirs(v)
+    old = _vaults.get(v.vid)
+    if old is not None:                           # 同 vid 重登记：位置不变
+        old.point_at(v.root, name=v.name)
+        old.online, old.readonly = v.online, v.readonly
+        if color:
+            old.color = color
+        return old
+    _vaults[v.vid] = v
+    return v
+
+
+def unregister(vid, wait=10.0):
+    """注销一本。文件一个字节都不动，只是这个进程不再挂它。
+
+    先从表里摘掉（下一趟请求立刻找不到它），再等那趟正在跑的扫描收尾——
+    钉在 `_cur.v` 上的那条线程写的是它自己的 `.amnote/`，等只是为了让「移除」
+    回去的时候库里没有半截活儿在跑。等不到（大库还在扫）也就算了。
+    """
+    v = _vaults.pop(vid.vid if isinstance(vid, Vault) else vid, None)
+    if v is not None and v.sync_lock.acquire(timeout=wait):
+        v.sync_lock.release()
+    return v
+
+
+def secrets_token():
+    """8 位十六进制的内部 id。**永不出现在路径里**，只在列表和动作参数里用。"""
+    return secrets.token_hex(4)
+
+
+def take_root_args(argv):
+    """抽出全部 --root PATH（可重复、可写在任意位置）。返回 (根列表, 剩余参数)。"""
+    roots = []
     rest = []
     i = 0
     while i < len(argv):
@@ -99,57 +293,56 @@ def take_root_arg(argv):
             if i + 1 >= len(argv):
                 print("请在 --root 后面写下文件夹的路径。", file=sys.stderr)
                 sys.exit(1)
-            root = argv[i + 1]
+            roots.append(argv[i + 1])
             i += 2
             continue
         rest.append(argv[i])
         i += 1
-    return root, rest
+    return roots, rest
+
+
+def take_root_arg(argv):
+    """老口径：只取最后一个 --root。返回 (root 或 None, 剩余参数)。"""
+    roots, rest = take_root_args(argv)
+    return (roots[-1] if roots else None), rest
 
 
 def configure(root=None, readonly=False):
     """定库根，并把索引 / 流水 / 备份 / 配置指到 {vault}/.amnote/。
 
-    必须在 import 之后、用 ROOT 之前调一次。库根来自参数或环境变量
+    5.7 起它的语义是「把这一个文件夹登记成唯一的、也是当前的笔记本」——
+    命令行和只挂一个根的场合照旧一句就够。挂多个根走 register()。
+
+    必须在 import 之后、用 V() 之前调一次。库根来自参数或环境变量
     AMNOTE_VAULT，不再往上找标志文件。没给就在 stderr 说明原因后退出。
 
     `readonly=True`：只把路径算出来，**一个目录都不建**。命令行在门户没开
     时读上一次的索引走这条——那是别人的笔记文件夹，一条只读命令不该在里面
     留下 `.amnote/`、`backups/` 或者 WAL 的边角料。connect() 跟着看这个开关。
     """
-    global ROOT, CONFIG_PATH, DB_PATH, JOURNAL, BACKUP_DIR, READONLY
     raw = (root if root is not None else "") or os.environ.get("AMNOTE_VAULT") or ""
     raw = str(raw).strip()
     if not raw:
         print("没有库根。请用 --root 指定一个文件夹，或设置环境变量 AMNOTE_VAULT。",
               file=sys.stderr)
         sys.exit(1)
-    ROOT = os.path.abspath(os.path.expanduser(raw))
-    if os.path.exists(ROOT) and not os.path.isdir(ROOT):
-        print(f"这不是文件夹：{ROOT}", file=sys.stderr)
+    full = os.path.abspath(os.path.expanduser(raw))
+    if os.path.exists(full) and not os.path.isdir(full):
+        print(f"这不是文件夹：{full}", file=sys.stderr)
         sys.exit(1)
-    if not os.path.isdir(ROOT):
-        print(f"找不到这个文件夹：{ROOT}", file=sys.stderr)
+    if not os.path.isdir(full):
+        print(f"找不到这个文件夹：{full}", file=sys.stderr)
         sys.exit(1)
-    amdir = os.path.join(ROOT, ".amnote")
-    READONLY = bool(readonly)
-    if not READONLY:
-        try:
-            os.makedirs(amdir, exist_ok=True)
-        except OSError as e:
-            print(f"建不了 {amdir}：{e}", file=sys.stderr)
+    _vaults.clear()                               # 「唯一一本」：清掉再登记
+    _bind(None)                                   # 钉着的那个对象也得松开，
+                                                  # 不然 V() 还回刚清掉的那一本
+    v = register(full, readonly=readonly, online=True, make_dirs=False)
+    if not readonly:
+        err = _ensure_dirs(v)
+        if err:
+            print(err, file=sys.stderr)
             sys.exit(1)
-    CONFIG_PATH = os.path.join(amdir, "config.json")
-    DB_PATH = os.path.join(amdir, "fulltext.db")
-    JOURNAL = os.path.join(amdir, "changes.jsonl")
-    BACKUP_DIR = os.path.join(amdir, "backups")
-    if not READONLY:
-        try:
-            os.makedirs(BACKUP_DIR, exist_ok=True)
-        except OSError as e:
-            print(f"建不了 {BACKUP_DIR}：{e}", file=sys.stderr)
-            sys.exit(1)
-    return ROOT
+    return v.root
 
 
 # 抽正文的上限。索引是「找得到」用的，不是照单全收：超长的截断并在 备注 里说明。
@@ -169,8 +362,8 @@ PDF_TEXT_CHARS = 500_000
 PDF_BATCH = 12                                    # 一次 osascript 处理几份 pdf
 PDF_TIMEOUT = 180
 
-_sync_lock = threading.Lock()
-_state = {"运行中": False, "待重跑": False}
+# 同步锁和「跑到哪儿了」按笔记本分家，挂在各自的 Vault 上（见上面 Vault）：
+# 共用一把的话 A 本在扫 B 本就得排队，/__status 的进度也会互相串。
 
 
 # ── 配置：收录规则的唯一来源 ─────────────────────────────────
@@ -214,7 +407,7 @@ except Exception:                                # 搬走了、或者它自己�
 def load_config(path=None):
     """读 config.json，逐项校验。返回 (配置, 问题列表)。"""
     if path is None:
-        path = CONFIG_PATH
+        path = V().config_path
     cfg = {k: (v.copy() if hasattr(v, "copy") else v) for k, v in DEFAULTS.items()}
     problems = []
     if not path or not os.path.exists(path):
@@ -251,25 +444,24 @@ def load_config(path=None):
     return cfg, problems
 
 
-_rules_cache = {"mtime": None, "值": None}
-
-
 def rules():
     """(跳过目录关键词, 噪声目录, 噪声文件)，跟着 config.json 的 mtime 走。
 
     老版本在 import 时把规则读死一次，改完设置得退出 app 才认。现在改完点一次
     重扫就生效——设置面板上那四项本来就是「改了要马上看效果」的东西。
     """
+    v = V()
+    cache = v.rules_cache                         # 缓存按本一份，不然规则会串库
     try:
-        m = os.path.getmtime(CONFIG_PATH)
+        m = os.path.getmtime(v.config_path)
     except OSError:
         m = 0
-    if _rules_cache["mtime"] != m:
-        c, _ = load_config()
-        _rules_cache["值"] = (tuple(c["跳过目录关键词"]),
-                              tuple(c["噪声目录"]), tuple(c["噪声文件"]))
-        _rules_cache["mtime"] = m
-    return _rules_cache["值"]
+    if cache["mtime"] != m:
+        c, _ = load_config(v.config_path)
+        cache["值"] = (tuple(c["跳过目录关键词"]),
+                       tuple(c["噪声目录"]), tuple(c["噪声文件"]))
+        cache["mtime"] = m
+    return cache["值"]
 
 
 # 附件＝看得了、但不进正文渲染的文件。值是显示用的类型名。
@@ -309,8 +501,9 @@ def walk_files():
     返回 {相对路径: (mtime, 大小, 类型)}。类型是 md / html / pdf / xlsx / csv /
     xls / docx / pptx（后三种收进流水但不抽正文——没有靠谱的抽取器）。"""
     skip_dir, _, _ = rules()
+    root = V().root
     out = {}
-    for dirpath, dirnames, filenames in os.walk(ROOT):
+    for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames
                        if d != ".amnote"
                        and not any(tok in d for tok in skip_dir)]
@@ -322,7 +515,7 @@ def walk_files():
             if fn.startswith("~$"):
                 continue
             full = os.path.join(dirpath, fn)
-            rel = os.path.relpath(full, ROOT)
+            rel = os.path.relpath(full, root)
             if should_skip(rel):
                 continue
             rel_u = rel.replace(os.sep, "/")
@@ -339,7 +532,7 @@ def walk_files():
 
 
 def _full(rel):
-    return os.path.join(ROOT, rel.replace("/", os.sep))
+    return os.path.join(V().root, rel.replace("/", os.sep))
 
 
 # ── 正文抽取 ────────────────────────────────────────────────
@@ -872,7 +1065,7 @@ def _connect_ro():
     退化的后果最多是「读到的是上一次 checkpoint 那一版」——命令行离线本来就是
     「用上次的索引」，stderr 上也这么说了。
     """
-    uri = "file:" + urllib.parse.quote(DB_PATH) + "?mode=ro"
+    uri = "file:" + urllib.parse.quote(V().db_path) + "?mode=ro"
     con = None
     try:
         con = sqlite3.connect(uri, timeout=30, uri=True)
@@ -896,9 +1089,9 @@ def connect():
     """开索引库。configure(readonly=True) 之后是**纯读**：URI 的 mode=ro，
     不改 journal_mode（那一句会写主库文件的头）、不建表。库不在就直接抛，
     调用方（命令行的离线通道）自己回一句「先打开 AM·Note」。"""
-    if READONLY:
+    if V().readonly:
         return _connect_ro()
-    con = sqlite3.connect(DB_PATH, timeout=30)
+    con = sqlite3.connect(V().db_path, timeout=30)
     con.execute("PRAGMA journal_mode=WAL")
     con.execute("PRAGMA synchronous=NORMAL")
     con.execute("PRAGMA mmap_size=536870912")
@@ -934,21 +1127,22 @@ def archive_text(rel, old_text):
     """把一份 md 改动前的内容写进 .amnote/backups/。返回备份文件名，写不了返回 ''。"""
     if not old_text:
         return ""
+    bak_dir = V().backup_dir
     try:
-        os.makedirs(BACKUP_DIR, exist_ok=True)
+        os.makedirs(bak_dir, exist_ok=True)
         flat = _flat(rel)
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")[:-3]
         name = f"{flat}__{stamp}.bak"
-        with open(os.path.join(BACKUP_DIR, name), "w", encoding="utf-8") as f:
+        with open(os.path.join(bak_dir, name), "w", encoding="utf-8") as f:
             f.write(old_text)
     except OSError:
         return ""
     # 同一份文件只留最近 BACKUP_KEEP 版（跟门户编辑那套同额同名，互相算在一起）
     try:
-        olds = sorted(fn for fn in os.listdir(BACKUP_DIR)
+        olds = sorted(fn for fn in os.listdir(bak_dir)
                       if fn.startswith(flat + "__") and fn.endswith(".bak"))
         for fn in olds[:-BACKUP_KEEP]:
-            os.remove(os.path.join(BACKUP_DIR, fn))
+            os.remove(os.path.join(bak_dir, fn))
     except OSError:
         pass
     _prune_backups()
@@ -957,10 +1151,11 @@ def archive_text(rel, old_text):
 
 def _prune_backups():
     """备份目录总大小超上限就从最旧的删起。Agent 批量改几百份时别让它无限长。"""
+    bak_dir = V().backup_dir
     try:
-        fns = [(fn, os.path.getmtime(os.path.join(BACKUP_DIR, fn)),
-                os.path.getsize(os.path.join(BACKUP_DIR, fn)))
-               for fn in os.listdir(BACKUP_DIR) if fn.endswith(".bak")]
+        fns = [(fn, os.path.getmtime(os.path.join(bak_dir, fn)),
+                os.path.getsize(os.path.join(bak_dir, fn)))
+               for fn in os.listdir(bak_dir) if fn.endswith(".bak")]
     except OSError:
         return
     total = sum(s for _, _, s in fns)
@@ -969,7 +1164,7 @@ def _prune_backups():
         return
     for fn, _, s in sorted(fns, key=lambda x: x[1]):
         try:
-            os.remove(os.path.join(BACKUP_DIR, fn))
+            os.remove(os.path.join(bak_dir, fn))
             total -= s
         except OSError:
             pass
@@ -982,7 +1177,7 @@ def archive_read(name):
     if (not name or "/" in name or os.sep in name or ".." in name
             or not name.endswith(".bak")):
         return None
-    p = os.path.join(BACKUP_DIR, name)
+    p = os.path.join(V().backup_dir, name)
     if not os.path.isfile(p):
         return None
     try:
@@ -1017,7 +1212,9 @@ def archive_read(name):
 # 「没认领到」「门户」「Agent 名字」挤在同一个字符串上，两个哨兵值都能被冒名）。
 
 _pw_lock = threading.Lock()
-_portal_writes = {}                   # {相对路径: [(写入时间, 代理名字), ...]}
+# 键是 **(vid, 相对路径)**：只按相对路径记的话，两本里同名的一份笔记会互相
+# 认领——A 本门户保存的那一笔被 B 本那趟同步消费掉，A 本的流水就落成「外部」。
+_portal_writes = {}                   # {(vid, 相对路径): [(写入时间, 代理名字), ...]}
 PW_WINDOW = 120                       # 保存时间和文件 mtime 差这么多秒内算同一笔
 PW_FILES = 500                        # 活表最多盯这么多份文件
 
@@ -1050,8 +1247,9 @@ def note_portal_write(rel, agent=None):
     if not rel:
         return
     now = time.time()
+    key = (V().vid, rel)
     with _pw_lock:
-        _portal_writes.setdefault(rel, []).append((now, (agent or "").strip()))
+        _portal_writes.setdefault(key, []).append((now, (agent or "").strip()))
         _pw_prune(now)
         if len(_portal_writes) > PW_FILES:        # 兜底，正常到不了
             for k in list(_portal_writes)[:len(_portal_writes) - PW_FILES]:
@@ -1069,9 +1267,10 @@ def take_portal_write(rel, mtime, window=PW_WINDOW):
     署名叫「门户」也冒充不了用户自己那一档。
     """
     now = time.time()
+    key = (V().vid, rel)
     with _pw_lock:
         _pw_prune(now)
-        lst = _portal_writes.get(rel)
+        lst = _portal_writes.get(key)
         if not lst:
             return (False, "")
         i = min(range(len(lst)), key=lambda j: abs(mtime - lst[j][0]))
@@ -1079,7 +1278,7 @@ def take_portal_write(rel, mtime, window=PW_WINDOW):
             return (False, "")
         who = lst.pop(i)[1]
         if not lst:
-            _portal_writes.pop(rel, None)
+            _portal_writes.pop(key, None)
         return (True, who)
 
 
@@ -1104,7 +1303,7 @@ def take_portal_write(rel, mtime, window=PW_WINDOW):
 # 中间一定隔着另一次同步。
 
 _pm_lock = threading.Lock()
-_portal_moves = {}                    # {相对路径: (记账时刻, 代理名字)}
+_portal_moves = {}                    # {(vid, 相对路径): (记账时刻, 代理名字)}
 PM_WINDOW = 300                       # 记了这么多秒还没被同步认领就作废
 
 
@@ -1116,8 +1315,9 @@ def note_portal_move(rel, agent=None):
     if not rel:
         return
     now = time.time()
+    key = (V().vid, rel)
     with _pm_lock:
-        _portal_moves[rel] = (now, (agent or "").strip())
+        _portal_moves[key] = (now, (agent or "").strip())
         for k in list(_portal_moves):
             if now - _portal_moves[k][0] >= PM_WINDOW:
                 _portal_moves.pop(k, None)
@@ -1130,8 +1330,9 @@ def take_portal_move(rel, window=PM_WINDOW):
     搬失败的那条路上也叫它一次，把刚记的那笔收回来。
     """
     now = time.time()
+    key = (V().vid, rel)
     with _pm_lock:
-        rec = _portal_moves.pop(rel, None)
+        rec = _portal_moves.pop(key, None)
     if rec is None or now - rec[0] >= window:
         return (False, "")
     return (True, rec[1])
@@ -1146,7 +1347,7 @@ def _journal_append(entries):
     if not entries:
         return
     try:
-        with open(JOURNAL, "a", encoding="utf-8") as f:
+        with open(V().journal, "a", encoding="utf-8") as f:
             for e in entries:
                 f.write(json.dumps(e, ensure_ascii=False) + "\n")
     except OSError:
@@ -1192,8 +1393,9 @@ def _journal_add(entries, seq):
     # 要就地改上一条，只能把整份读进来。流水是 1 MB 上下的小文件，
     # 而这条路只在门户连续保存时才走
     recs = []
+    journal = V().journal
     try:
-        with open(JOURNAL, encoding="utf-8") as f:
+        with open(journal, encoding="utf-8") as f:
             for line in f:
                 line = line.rstrip("\n")
                 if not line:
@@ -1230,7 +1432,7 @@ def _journal_add(entries, seq):
         _journal_append(add)
         return seq, len(add)
 
-    tmp = JOURNAL + ".tmp"                            # 先写临时文件再改名
+    tmp = journal + ".tmp"                            # 先写临时文件再改名
     try:
         with open(tmp, "w", encoding="utf-8") as f:
             for r in recs:
@@ -1238,7 +1440,7 @@ def _journal_add(entries, seq):
                          if isinstance(r, dict) else r) + "\n")
             for e in add:
                 f.write(json.dumps(e, ensure_ascii=False) + "\n")
-        os.replace(tmp, JOURNAL)
+        os.replace(tmp, journal)
     except OSError:
         try:
             os.remove(tmp)
@@ -1252,7 +1454,7 @@ def journal_read(after_seq=0, limit=500):
     """读流水，只回序号大于 after_seq 的，最多 limit 条（从新往旧截）。"""
     out = []
     try:
-        with open(JOURNAL, encoding="utf-8") as f:
+        with open(V().journal, encoding="utf-8") as f:
             for line in f:
                 try:
                     e = json.loads(line)
@@ -1275,22 +1477,31 @@ def sync(log=None):
     （那个参数就是 v20 那个误记 bug 的来源，一起删了）。
 
     并发：同一时刻只跑一趟。跑着的时候又被叫，登记一次待重跑，跑完自动补。"""
-    if not _sync_lock.acquire(blocking=False):
-        _state["待重跑"] = True
+    v = V()
+    if not v.sync_lock.acquire(blocking=False):
+        v.state["待重跑"] = True
         return {"ok": False, "说明": "已有一趟在跑，跑完会自动补一轮"}
-    _state["运行中"] = True
+    v.state["运行中"] = True
     try:
         r = _sync_once(log or (lambda *a: None))
     finally:
-        _state["运行中"] = False
-        _sync_lock.release()
-    if _state["待重跑"]:
-        _state["待重跑"] = False
+        v.state["运行中"] = False
+        v.sync_lock.release()
+    if v.state["待重跑"]:
+        v.state["待重跑"] = False
         return sync(log)
     return r
 
 
 def _sync_once(log):
+    # 库根还在吗。外置盘拔了 ／ 文件夹被挪走 ／ 正在被「重新定位」的那几秒里，
+    # walk_files() 回一个空表，下面就会把整本索引删光、往流水里灌一屏「删除」、
+    # 顺手给每一份都留一次档——而磁盘上那些文件一份都没少。
+    # portal 的 recheck_offline 每 3 秒探一次，回来了自动补一轮，这里直接不干活。
+    v = V()
+    if not os.path.isdir(v.root):
+        log("库根现在不在，这一趟跳过：%s" % v.root)
+        return {"ok": False, "说明": "库根现在不在，这一趟跳过", "库根": v.root}
     t0 = time.time()
     con = connect()
     cur = walk_files()
@@ -1477,13 +1688,14 @@ def compact(log=None):
     dup = con.execute("UPDATE 文档 SET 原文=NULL "
                       "WHERE 原文 IS NOT NULL AND 原文=正文").rowcount
     con.commit()
-    before = os.path.getsize(DB_PATH)
+    db_path = V().db_path
+    before = os.path.getsize(db_path)
     con.execute("VACUUM")
     con.close()
     r = {"ok": True, "重抽": len(rows), "有正文": n_ok, "空的": n_bad,
          "去重复副本": dup,
          "库MB": {"前": round(before / 1048576, 1),
-                  "后": round(os.path.getsize(DB_PATH) / 1048576, 1)},
+                  "后": round(os.path.getsize(db_path) / 1048576, 1)},
          "耗时秒": round(time.time() - t0, 1)}
     log(f"索引瘦身：{r}")
     return r
@@ -2119,10 +2331,10 @@ def search(q, limit=60, offset=0, subdir="", types=None, since=None, sort="score
 def index_status(con=None):
     own = con is None
     if own:
-        if not os.path.exists(DB_PATH):
+        if not os.path.exists(V().db_path):
             return {"状态": "未建库", "收录": 0, "上次同步": ""}
         con = connect()
-    st = {"状态": "同步中" if _state["运行中"] else "就绪",
+    st = {"状态": "同步中" if V().state["运行中"] else "就绪",
           "收录": con.execute("SELECT COUNT(*) FROM 文档").fetchone()[0],
           "无文本层": con.execute(
               "SELECT COUNT(*) FROM 文档 WHERE 备注='无文本层'").fetchone()[0],

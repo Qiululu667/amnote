@@ -17,7 +17,7 @@
 // clang 编 Objective-C 不碰那个目录，同样 import AppKit + WebKit，实测 0.65 秒。
 // 所以这里选 ObjC：代码啰嗦一点，但构建是干净的一条 clang 命令，换台机器也能跑。
 //
-// ─── 九条设计约束，改代码前先看 ─────────────────────────────────────────
+// ─── 十条设计约束，改代码前先看 ─────────────────────────────────────────
 //
 // 1. ⌘W / ⌘S / ⌘K / ⌘E / ⌘T / ⌘N / ⌘L 现在进菜单了（20260822 收 ⌘W ⌘S，
 //    20260829 加 ⌘K ⌘E；浏览器壳这一轮把 ⌘T ⌘N ⌘L 也收进来）。
@@ -82,6 +82,24 @@
 //    下载 AMNote-mac.zip → 有 digest 就核 sha256 → 解开后核对 bundle id
 //    必须是 app.amnote → 退出后脚本 ditto 覆盖当前 .app → open。
 //    已经在用的旧版不会凭空获得这条能力，得先手动装一版带检查的。
+// 10. 三个**只认参数域**的启动参数（`-Key Value`）。参数域是易失的：只在这一次启动里
+//    有效，不写进持久偏好，下次启动自己消失。它们是验收基础设施，正常使用碰不到。
+//    · `-AMNVaultPath <绝对路径>`：这一次用哪个库根。同名的键也是持久偏好
+//      （用户选库时写进 defaults），参数域的值优先。**单给它就是「本次强制单库」**：
+//      不读也不写 notebooks.json，子进程只拿 `--root`，测试库永远进不了用户那份
+//      笔记本列表；`adoptExisting` 也不认「在别人的笔记本列表里」这条（notebooksPersistent()）。
+//    · `-AMNSupportDir <绝对路径>`：把支撑目录整块挪走——端口文件、口令文件、
+//      notebooks.json、个人资料、占位空根全从它派生（supportDir()）。给了它就是**隔离实例**：
+//      验收不用再备份／恢复用户那个常驻实例的文件，而且**持久 defaults 一个字节都不写**
+//      （AMNVaultPath 只进内存的 gVaultOverride，AMNLaunchCount / AMNLastUpdateCheck /
+//      AMNLanguage / AppleLanguages / AMNAutoUpdate / AMNSkipVersion 一律只读，
+//      自动更新检查整条跳过）。**必须配 `-AMNVaultPath` 一起给**：隔离实例绝不回落到
+//      用户 defaults 里那个真库根，只给 `-AMNSupportDir` 就是首启态（网页画欢迎卡）。
+//    · `-AMNDumpArgs 1`：把这次算出来的支撑目录、库根、子进程 argv 打到 stdout 后退出。
+//      不起服务、不建窗口、不写端口文件、不建占位空根，唯一会落地的是 `-AMNSupportDir`
+//      指的那个目录本身。「只给 -AMNVaultPath」那条分支真跑会碰用户的支撑目录，
+//      靠它把参数拼装验干净。同类的还有 `-AMNDumpMenu 1`（打菜单树后退出，三语各过一遍）
+//      和 `-AMNOpenAtLaunch <路径>`（起来就打开这一份，走双击 md 那同一条队列）。
 
 #import <AppKit/AppKit.h>
 #import <WebKit/WebKit.h>
@@ -193,15 +211,62 @@ static NSString *pickRunnablePython(void) {
 }
 
 /// 路径对齐：POSIX 标准化 + NFC。defaults / 访达 / 状态接口来源可能不一致。
+/// **只用来比较**（两边都过一遍不会错），绝不要拿它的结果往外投递：
+/// stringByStandardizingPath 会把 `/private/tmp/…` 改写成 `/tmp/…`（符号链接同理），
+/// 而服务端登记的根是 realpath，改写过的路径在那边前缀匹配不上（fixlist 1）。
 static NSString *normPath(NSString *p) {
     if (!p.length) return p;
     return p.stringByStandardizingPath.precomposedStringWithCanonicalMapping;
 }
 
-/// ~/Library/Application Support/AMNote/。端口文件和口令文件都放这里。
+/// 参数域（`-Key Value`）里的字符串。参数域是**易失**的：只在这一次启动里有，
+/// 不写进持久偏好，下次启动自己消失。
+static NSString *argDomainString(NSString *key) {
+    id v = [[NSUserDefaults.standardUserDefaults volatileDomainForName:NSArgumentDomain]
+            objectForKey:key];
+    return ([v isKindOfClass:NSString.class] && [(NSString *)v length]) ? (NSString *)v : nil;
+}
+
+/// `-AMNSupportDir <path>`（5.7 加）。把端口文件、口令文件、笔记本列表、个人资料、
+/// 占位空根整块挪到别处，验收时不用再备份／恢复用户那个常驻实例的文件。
+/// **只认参数域**：它一旦能被写进持久偏好，用户实例就可能永久指到测试目录去。
+/// 整个进程算一次；相对路径一律不认。
+static NSString *supportDirArg(void) {
+    static NSString *cached = nil;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        NSString *raw = argDomainString(@"AMNSupportDir");
+        NSString *p = raw.length ? normPath(raw.stringByExpandingTildeInPath) : nil;
+        cached = [p hasPrefix:@"/"] ? [p copy] : nil;
+    });
+    return cached;
+}
+
+/// `-AMNVaultPath` 在参数域里的原值。隔离模式下这是库根的唯一来源。
+static NSString *vaultPathArg(void) { return argDomainString(kVaultKey); }
+
+/// 隔离实例＝给了 `-AMNSupportDir`（设计约束 10）。支撑文件全在那个目录里，
+/// **持久偏好一个字节都不许写**：验收跑一趟不该改用户的启动计数、上次检查更新的时间、
+/// 界面语言、自动更新开关。读还是照读（参数域和用户值都认）。
+static BOOL isolatedRun(void) { return supportDirArg().length > 0; }
+
+/// 持久偏好写入的唯一出口。隔离实例直接丢掉。value 为 nil ＝ 删这个键。
+static void prefSet(NSString *key, id value) {
+    if (isolatedRun()) return;
+    NSUserDefaults *d = NSUserDefaults.standardUserDefaults;
+    if (value) [d setObject:value forKey:key];
+    else       [d removeObjectForKey:key];
+    [d synchronize];
+}
+
+/// ~/Library/Application Support/AMNote/（或 `-AMNSupportDir` 指的地方）。
+/// 端口文件、口令文件、笔记本列表、占位空根、以及交给服务端的 AMNOTE_SUPPORT_DIR
+/// 全从这里派生——挪一次，全都跟着走。
 static NSString *supportDir(void) {
-    NSString *dir = [NSHomeDirectory() stringByAppendingPathComponent:
-                     @"Library/Application Support/AMNote"];
+    NSString *dir = supportDirArg();
+    if (!dir.length)
+        dir = [NSHomeDirectory() stringByAppendingPathComponent:
+               @"Library/Application Support/AMNote"];
     [[NSFileManager defaultManager] createDirectoryAtPath:dir
                               withIntermediateDirectories:YES
                                                attributes:nil
@@ -215,6 +280,20 @@ static NSString *portFilePath(void) {
 
 static NSString *tokenFilePath(void) {
     return [supportDir() stringByAppendingPathComponent:@"portal.token"];
+}
+
+/// 笔记本列表（契约 §6.1）。**归服务端写**，壳只在判库状态时读一眼。
+static NSString *notebooksFilePath(void) {
+    return [supportDir() stringByAppendingPathComponent:@"notebooks.json"];
+}
+
+/// 这一次启动要不要用那份持久的笔记本列表。
+/// `-AMNVaultPath X` 而没有 `-AMNSupportDir` ＝「本次强制单库」：不读不写列表，
+/// 子进程也不给 `--notebooks-file`，测试库永远进不了用户那份 notebooks.json（契约 §6.2）。
+/// 这条是**显式实现**的，不再靠「参数域优先级高于 application 域」那个隐式行为（shell §7.5）。
+static BOOL notebooksPersistent(void) {
+    if (supportDirArg().length) return YES;
+    return vaultPathArg().length == 0;
 }
 
 /// 工具目录：优先 bundle Resources 里的 portal_server.py；开发时再找源码 src。
@@ -240,9 +319,21 @@ static NSString *locateTools(void) {
     return nil;
 }
 
-/// 库根：只读 NSUserDefaults，不往上找任何标志文件。目录没了就当没选过。
+/// 隔离模式下这一次会话选中的库。只在内存里——`-AMNSupportDir` 起的实例
+/// 不许往用户的持久 defaults 里写 AMNVaultPath。
+static NSString *gVaultOverride = nil;
+
+/// 库根的**配置值**（可能指着一个已经不在的目录）。
+/// 隔离模式（`-AMNSupportDir`）下只认参数域：没给 `-AMNVaultPath` 就是首启态，
+/// 绝不回落到用户 defaults 里那个真库——测试实例不该碰用户的笔记。
+static NSString *savedVault(void) {
+    if (supportDirArg().length) return vaultPathArg() ?: gVaultOverride;
+    return [NSUserDefaults.standardUserDefaults stringForKey:kVaultKey];
+}
+
+/// 库根：只读上面那个配置值，不往上找任何标志文件。目录没了就当没选过。
 static NSString *locateRoot(void) {
-    NSString *p = [NSUserDefaults.standardUserDefaults stringForKey:kVaultKey];
+    NSString *p = savedVault();
     if (!p.length) return nil;
     BOOL dir = NO;
     if (![NSFileManager.defaultManager fileExistsAtPath:p isDirectory:&dir] || !dir) return nil;
@@ -251,8 +342,8 @@ static NSString *locateRoot(void) {
 
 static void saveVault(NSString *path) {
     if (!path.length) return;
-    [NSUserDefaults.standardUserDefaults setObject:path forKey:kVaultKey];
-    [NSUserDefaults.standardUserDefaults synchronize];
+    if (isolatedRun()) { gVaultOverride = [path copy]; return; }
+    prefSet(kVaultKey, path);
 }
 
 /// 只建 .amnote。随手记目录留给服务端第一次新建时再创建。
@@ -269,8 +360,14 @@ static void prepareVault(NSString *path) {
 /// 窗口照常出来，欢迎 / 找不到库那两张卡由网页按 __AMN_VAULT_STATE__ 自己画
 /// （design-spec §8）。**绝不写进 defaults**——写了下次启动就把占位当成真库，
 /// 「找不到上次的笔记库」永远不会再提示。
+/// 占位空根的路径。**只算不建**：`-AMNDumpArgs` 要能在什么都不落地的前提下
+/// 把参数拼装打出来（唯一会落地的是 supportDir() 顺手建的支撑目录本身）。
+static NSString *placeholderRootPath(void) {
+    return [supportDir() stringByAppendingPathComponent:@"Welcome"];
+}
+
 static NSString *placeholderRoot(void) {
-    NSString *p = [supportDir() stringByAppendingPathComponent:@"Welcome"];
+    NSString *p = placeholderRootPath();
     [[NSFileManager defaultManager] createDirectoryAtPath:p
                               withIntermediateDirectories:YES
                                                attributes:nil
@@ -279,27 +376,136 @@ static NSString *placeholderRoot(void) {
     return p;
 }
 
-/// 服务实际起在哪个目录：选过库就是库根，没有就是占位空根。
-static NSString *serviceRoot(void) {
-    NSString *v = locateRoot();
-    return v.length ? v : placeholderRoot();
+/// 这个路径是不是占位空根。**不建目录**（placeholderRoot() 会建），只做比对：
+/// 占位根不是笔记本，不该被写进用户的笔记本列表。
+static BOOL isPlaceholderRoot(NSString *p) {
+    if (!p.length) return NO;
+    return [normPath(p) isEqualToString:normPath(placeholderRootPath())];
 }
 
+/// notebooks.json 里登记的那些根。只读；文件不在、解析失败、形状不对一律当空——
+/// 这份文件归服务端写，壳只在判库状态和挑种子根时看一眼（契约 §6.7）。
+static NSArray<NSString *> *notebookRoots(void) {
+    if (!notebooksPersistent()) return @[];
+    NSData *d = [NSData dataWithContentsOfFile:notebooksFilePath()];
+    if (!d.length) return @[];
+    id o = [NSJSONSerialization JSONObjectWithData:d options:0 error:nil];
+    if (![o isKindOfClass:NSDictionary.class]) return @[];
+    id list = ((NSDictionary *)o)[@"笔记本"];
+    if (![list isKindOfClass:NSArray.class]) return @[];
+    NSMutableArray<NSString *> *out = [NSMutableArray array];
+    for (id it in (NSArray *)list) {
+        if (![it isKindOfClass:NSDictionary.class]) continue;
+        id p = ((NSDictionary *)it)[@"路径"];
+        if ([p isKindOfClass:NSString.class] && [(NSString *)p length]) [out addObject:p];
+    }
+    return out;
+}
+
+/// 列表里第一个文件夹还在的笔记本（＝服务端的主笔记本，只要它没离线）。
+static NSString *firstLiveNotebookRoot(void) {
+    NSFileManager *fm = NSFileManager.defaultManager;
+    for (NSString *p in notebookRoots()) {
+        BOOL dir = NO;
+        if ([fm fileExistsAtPath:p isDirectory:&dir] && dir) return p;
+    }
+    return nil;
+}
+
+/// 服务实际起在哪个目录：选过库就是库根；没有就退到列表里第一个还在的笔记本
+/// （多笔记本时用户可能把首启那本移除了，AMNVaultPath 就此作废）；再没有才是占位空根。
+/// `create=NO` 只算不建（`-AMNDumpArgs` 用）。
+static NSString *serviceRootCreating(BOOL create) {
+    NSString *v = locateRoot();
+    if (v.length) return v;
+    NSString *nb = firstLiveNotebookRoot();
+    if (nb.length) return nb;
+    return create ? placeholderRoot() : placeholderRootPath();
+}
+
+static NSString *serviceRoot(void) { return serviceRootCreating(YES); }
+
 /// 注入给网页的库状态：ok / first-run / missing。
-/// missing ＝ defaults 里还留着上次那个路径，但目录已经不在了。
+/// missing ＝ 配置里还留着上次那个路径，但目录已经不在了。
+/// 5.7：AMNVaultPath 没了不等于没库——笔记本列表里只要还有一个根活着就是 ok。
 static NSString *vaultState(void) {
     if (locateRoot().length) return @"ok";
-    NSString *saved = [NSUserDefaults.standardUserDefaults stringForKey:kVaultKey];
+    if (firstLiveNotebookRoot().length) return @"ok";
+    NSString *saved = savedVault();
     return saved.length ? @"missing" : @"first-run";
 }
 
 /// 注入给网页的库路径：ok 是当前库根，missing 是上次那个（网页要灰字显示它），
 /// first-run 没有路径就给空串。占位空根不是库，永远不往外说。
+/// 语义还是 AMNVaultPath 那一个（契约 §6.7）——列表里其余的本由页面从服务端读——
+/// 只有一种例外：AMNVaultPath 那个文件夹没了、列表里却还有活着的本（vaultState() 是
+/// `ok`），这时候注入上次那个死路径会让页面拿它当库根去拼绝对路径。给第一个活根。
 static NSString *vaultDisplayPath(void) {
     NSString *v = locateRoot();
     if (v.length) return v;
-    NSString *saved = [NSUserDefaults.standardUserDefaults stringForKey:kVaultKey];
+    NSString *nb = firstLiveNotebookRoot();
+    if (nb.length) return nb;
+    NSString *saved = savedVault();
     return saved.length ? saved : @"";
+}
+
+/// 这次起服务要不要给 `--notebooks-file`，给哪一个。两种不给的情形：
+///   · 本次强制单库（只给了 `-AMNVaultPath`）——不读不写用户的列表；
+///   · 起在占位空根上、而且列表也是空的（还没有任何库）——占位根不是笔记本，
+///     不该被种进列表。等用户在欢迎卡上选了真库，switchToVault 会带着真根重起一次，
+///     那一次才种下列表（契约 §6.9.1 的升级路径）。
+/// **占位根 + 列表非空 ＝ 所有本都离线**（外置盘没挂上）：这一趟照样要把列表交给
+/// 服务端，不然那几本这一趟既看不见也挂不回来（`--root` 由 portalArgs 顺手摘掉）。
+static NSString *notebooksFileForRoot(NSString *root) {
+    if (!notebooksPersistent()) return nil;
+    if (isPlaceholderRoot(root) && notebookRoots().count == 0) return nil;
+    return notebooksFilePath();
+}
+
+/// 交给 portal_server.py 的整串参数。抽成纯函数是为了 `-AMNDumpArgs` 能在
+/// **不起服务**的前提下把拼装验一遍（「只给 -AMNVaultPath」那条分支真跑会碰用户的支撑目录）。
+/// `--root` 在有列表时只起首启／升级的种子作用（契约 §6.2）。
+static NSArray<NSString *> *portalArgs(NSString *vaultPath, NSString *notebooksFile) {
+    NSMutableArray<NSString *> *a = [NSMutableArray arrayWithObject:@"portal_server.py"];
+    if (notebooksFile.length) {
+        [a addObject:@"--notebooks-file"];
+        [a addObject:notebooksFile];
+    }
+    // 占位空根只在「有列表要交给服务端」时才被摘掉：服务端拿 `--root` 是要并集进列表
+    // 并写回的（契约 §6.2），把 Welcome 种进去，用户的笔记本列表里就会多出一本假的。
+    // 没有列表那一趟（首启）照旧传，不然服务端两手空空直接 exit 1。
+    BOOL seedPlaceholder = notebooksFile.length && isPlaceholderRoot(vaultPath);
+    if (vaultPath.length && !seedPlaceholder) {
+        [a addObject:@"--root"];
+        [a addObject:vaultPath];
+    }
+    return a;
+}
+
+/// `-AMNDumpArgs 1`：把这次启动算出来的支撑目录、库根和子进程参数打到 stdout。
+/// 不起服务、不建窗口、不写端口文件、不建占位空根（serviceRootCreating(NO)）——
+/// 唯一会落地的是 `-AMNSupportDir` 指的那个目录本身（supportDir() 顺手建）。
+/// 验收「参数拼装」专用。
+static void amnDumpLaunchArgs(void) {
+    NSString *tools = locateTools();
+    NSString *root  = serviceRootCreating(NO);
+    NSString *nb    = notebooksFileForRoot(root);
+    NSString *none  = @"（未给）";
+    printf("# AMNDumpArgs\n");
+    printf("toolsDir       = %s\n", (tools ?: none).UTF8String);
+    printf("supportDir     = %s\n", supportDir().UTF8String);
+    printf("-AMNSupportDir = %s\n", (supportDirArg() ?: none).UTF8String);
+    printf("-AMNVaultPath  = %s\n", (vaultPathArg() ?: none).UTF8String);
+    printf("locateRoot     = %s\n", (locateRoot() ?: none).UTF8String);
+    printf("serviceRoot    = %s\n", root.UTF8String);
+    printf("vaultState     = %s\n", vaultState().UTF8String);
+    printf("持久列表       = %s\n", notebooksPersistent() ? "是" : "否（本次强制单库）");
+    printf("notebooksFile  = %s\n", (nb ?: @"（不传）").UTF8String);
+    printf("portFile       = %s\n", portFilePath().UTF8String);
+    printf("tokenFile      = %s\n", tokenFilePath().UTF8String);
+    printf("argv           = %s\n",
+           [portalArgs(root, nb) componentsJoinedByString:@" "].UTF8String);
+    fflush(stdout);
 }
 
 /// 「新建一个笔记库」的默认位置 ~/Documents/AM·Note（中间是 U+00B7，跟 app 名一致）。
@@ -689,6 +895,8 @@ static void applySeamlessChrome(NSWindow *window) {
 @interface PortalService : NSObject
 @property (nonatomic, copy)   NSString *toolsDir;
 @property (nonatomic, copy)   NSString *vaultPath;
+/// `--notebooks-file` 的值；nil ＝这次不给（本次强制单库／占位根／老服务端）。
+@property (nonatomic, copy)   NSString *notebooksFile;
 @property (nonatomic, strong) NSTask   *task;
 @property (nonatomic, assign) NSInteger port;
 @property (nonatomic, assign) BOOL      adopted;
@@ -723,8 +931,13 @@ static void applySeamlessChrome(NSWindow *window) {
     return [self spawnAndReturnError:errOut];
 }
 
-/// 端口文件里记着上一次的端口。还活着、且 /__status 的「库根」就是当前 vault，才复用。
+/// 端口文件里记着上一次的端口。还活着、且那个服务挂着当前这个根，才复用。
 /// 对不上就当没有，自己起。8770 一律不碰。
+/// 5.7：一进程多根之后「库根」只报主笔记本，我们要的根可能排在后面，
+/// 所以 `库根` 对不上时再看一遍 `笔记本[].路径`（契约 §6.7）。
+/// **本次强制单库（只给了 `-AMNVaultPath`）时不看这一条**：那种实例要的就是
+/// 「只挂这一个根」，用户那个常驻服务恰好把它列在里面也不能复用，
+/// 不然验收就悄悄连上了 8870 那个真实例。
 - (NSInteger)adoptExisting {
     if (!self.vaultPath.length) return 0;
     NSString *raw = [NSString stringWithContentsOfFile:portFilePath()
@@ -736,10 +949,20 @@ static void applySeamlessChrome(NSWindow *window) {
     if (p < 1024 || p > 65535 || p == 8770) return 0;
     NSDictionary *st = fetchStatus(p, 0.8);
     if (!st) return 0;
+    NSString *want = normPath(self.vaultPath);
     NSString *got = [st[@"库根"] isKindOfClass:NSString.class] ? st[@"库根"] : nil;
-    if (!got.length) return 0;
-    if (![normPath(got) isEqualToString:normPath(self.vaultPath)]) return 0;
-    return p;
+    if (got.length && [normPath(got) isEqualToString:want]) return p;
+    if (!notebooksPersistent()) return 0;
+    id list = st[@"笔记本"];
+    if ([list isKindOfClass:NSArray.class]) {
+        for (id it in (NSArray *)list) {
+            if (![it isKindOfClass:NSDictionary.class]) continue;
+            id one = ((NSDictionary *)it)[@"路径"];
+            if ([one isKindOfClass:NSString.class] &&
+                [normPath((NSString *)one) isEqualToString:want]) return p;
+        }
+    }
+    return 0;
 }
 
 - (BOOL)spawnAndReturnError:(NSString **)errOut {
@@ -763,8 +986,11 @@ static void applySeamlessChrome(NSWindow *window) {
 
     NSTask *t = [NSTask new];
     t.executableURL = [NSURL fileURLWithPath:py];
-    t.arguments = @[ @"portal_server.py", @"--root", self.vaultPath ];
+    t.arguments = portalArgs(self.vaultPath, self.notebooksFile);
     t.currentDirectoryURL = [NSURL fileURLWithPath:self.toolsDir];
+    // 起服务的参数留一行日志：多笔记本之后「这次到底挂了哪些根、持不持久」
+    // 是排查串库／列表没写回的第一现场。
+    NSLog(@"[AM·Note] 起服务：%@", [t.arguments componentsJoinedByString:@" "]);
 
     NSMutableDictionary *env = [NSProcessInfo.processInfo.environment mutableCopy];
     env[@"PYTHONUNBUFFERED"] = @"1";   // 不然第一行端口号会卡在缓冲区里
@@ -1073,14 +1299,21 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
         amnDumpMenuTree(NSApp.mainMenu, [self buildStatusMenu]);
         exit(0);
     }
+    // `-AMNDumpArgs 1`：把支撑目录、库根、子进程参数打出来然后退出。跟上面那条同理，
+    // 排在建窗口和起服务之前，不碰端口文件。「只给 -AMNVaultPath」那条分支不能真跑
+    // （会写用户实例的 portal.port），靠它验参数拼装。
+    if ([NSUserDefaults.standardUserDefaults boolForKey:@"AMNDumpArgs"]) {
+        amnDumpLaunchArgs();
+        exit(0);
+    }
     [self installUserInputMonitor];
 
     // `-AMNOpenAtLaunch <库内相对路径>`：启动完直接把这一份打开。给验收用的——
     // 命令行直接 exec 二进制（`…/MacOS/AM·Note -AMNVaultPath <库> -AMNOpenAtLaunch 某.md`）
     // 就能落到一份文稿上，不用去点界面、也不用 open/amnote:// 去惊动用户那个常驻实例。
     // arg 域的偏好是易失的：只在这一次启动里有，不写进持久 defaults，下次启动自己消失。
-    // 走的是双击 md / amnote:// 那同一条队列：库内相对路径 → AMN.openPath，
-    // 绝对路径 → AMN.openExternalPath（deliverOpen: 自己分），库内绝对路径不折成相对。
+    // 走的是双击 md / amnote:// 那同一条队列：一律 AMN.openPath，绝对路径也原样递
+    // （5.7 起壳不再折算相对路径，页面按所有笔记本的根去认，契约 §6.7）。
     //
     // 摆在 buildWindow **之前**是故意的：queueOpen: 见窗口已建好但没显示就会把它拉出来，
     // 那会在门户加载好之前先闪一个空窗（设计约束 N-8 就是为了不出现这个）。放在这儿
@@ -1177,7 +1410,9 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
     return YES;
 }
 
-/// 「库 → 选择文件夹…」，以及网页发来的 {type:'chooseVault'}（欢迎卡上那颗按钮）。
+/// 网页发来的 {type:'chooseVault'}：欢迎卡／「找不到上次那个文件夹」卡上那颗按钮。
+/// 5.7 起菜单里**没有**指向这里的项了——「库」菜单那条是「添加笔记本…」（mAddVault:），
+/// 换的是列表不是唯一库；这条只剩首启和库丢了那两张卡在用，所以保留。
 - (void)mChooseVault:(id)s {
     [NSApp activateIgnoringOtherApps:YES];
     NSString *old = locateRoot();
@@ -1185,6 +1420,64 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
     NSString *now = locateRoot();
     if (old.length && now.length && [normPath(old) isEqualToString:normPath(now)]) return;
     [self switchToVault];
+}
+
+/// 只选文件夹的面板，选完把绝对路径原样交给页面。加笔记本和重新定位共用一套。
+/// `multi=YES` 允许一次挑几个（添加笔记本是常见的批量动作）。
+/// **选完在主进程里对每个目录真读一次**：子进程 python 去扫「桌面／文稿／下载」这类
+/// 受 TCC 保护的位置时，授权是记在父 app 上的；不先在主进程坐实，
+/// 子进程扫盘就会一路 Operation not permitted（shell §6）。
+/// 取消返回空数组，调用方什么都不做。
+- (NSArray<NSString *> *)pickFolders:(BOOL)multi message:(NSString *)msg prompt:(NSString *)prompt {
+    NSOpenPanel *p = [NSOpenPanel openPanel];
+    p.canChooseFiles = NO;
+    p.canChooseDirectories = YES;
+    p.allowsMultipleSelection = multi;
+    p.canCreateDirectories = YES;
+    p.prompt = prompt;
+    p.message = msg;
+    // 预置当前主笔记本的**父目录**：笔记本多半是兄弟文件夹，从上一层起步少点一次。
+    NSString *cur = locateRoot();
+    if (cur.length)
+        p.directoryURL = [NSURL fileURLWithPath:cur.stringByDeletingLastPathComponent];
+
+    if ([p runModal] != NSModalResponseOK) return @[];
+    NSMutableArray<NSString *> *out = [NSMutableArray array];
+    for (NSURL *u in p.URLs) {
+        NSString *path = normPath(u.path);
+        if (!path.length) continue;
+        (void)[NSFileManager.defaultManager contentsOfDirectoryAtPath:path error:NULL];
+        [out addObject:path];
+    }
+    return out;
+}
+
+/// 「库 → 添加笔记本…」，以及网页发来的 {type:'addVault'}（设置里那颗按钮）。
+/// 壳只管弹面板、坐实授权、把路径递给页面——笔记本列表归服务端持有（契约 §6.0），
+/// 这里**不写 AMNVaultPath、不重起服务**。页面没导出 AMN.addNotebooks 时静默。
+/// 投递走 amnMain:：笔记本列表只有主框那块网页管得着，独立文稿窗在前台时
+/// 按 activeWeb 投递会静默落到一块没有这个接口的网页上。
+- (void)mAddVault:(id)s {
+    [NSApp activateIgnoringOtherApps:YES];
+    NSArray<NSString *> *paths =
+        [self pickFolders:YES
+                  message:L(@"挑一个或几个文件夹当笔记本。文件留在原地，不会上传到网上。")
+                   prompt:L(@"添加")];
+    if (!paths.count) return;
+    [self amnMain:@"addNotebooks" args:@[paths]];
+}
+
+/// 网页发来的 {type:'relocateVault', id:'a1b2c3d4'}：某个笔记本的文件夹找不到了
+/// （外置盘没挂上、iCloud 还没就绪），让用户重新指一个（契约 §4.9）。单选。
+- (void)relocateVault:(NSString *)nbid {
+    if (!nbid.length) return;
+    [NSApp activateIgnoringOtherApps:YES];
+    NSArray<NSString *> *paths =
+        [self pickFolders:NO
+                  message:L(@"重新指一下这个笔记本的文件夹。文件留在原地，只是换个位置。")
+                   prompt:L(@"选择文件夹")];
+    if (!paths.count) return;
+    [self amnMain:@"relocateNotebook" args:@[nbid, paths.firstObject]];
 }
 
 /// 换库：停服务 → 拆网页 → 起新服务 → 重载。重载那一次注入 __AMN_ONBOARDING__=true，
@@ -1260,15 +1553,16 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
         }
         // 没选过库也照样起得来：serviceRoot() 会退到占位空根，
         // 窗口正常显示，欢迎卡由网页画。这里只剩「连占位目录都建不出来」这一种失败。
-        NSString *vault = serviceRoot();
+        NSString *vault = serviceRoot();     // 这一步会把占位空根建出来（真起服务才建）
         if (!vault.length) {
             dispatch_async(dispatch_get_main_queue(), ^{
                 [self failReason:L(@"建不出笔记库目录")
-                          detail:L(@"请用菜单「库 → 选择文件夹…」选一个可写的文件夹。")];
+                          detail:L(@"请用菜单「库 → 添加笔记本…」选一个可写的文件夹。")];
             });
             return;
         }
         PortalService *svc = [[PortalService alloc] initWithTools:tools vault:vault];
+        svc.notebooksFile = notebooksFileForRoot(vault);
         NSString *err = nil;
         if (![svc startAndReturnError:&err]) {
             dispatch_async(dispatch_get_main_queue(), ^{ [self failWithMessage:err]; });
@@ -1905,7 +2199,16 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
 /// 所有 AMN.* 调用统一走这里。三层防御：网页没起来不发；window.AMN 不存在不发；
 /// 函数不存在不发。老门户装进新壳里只会是「按了没反应」，不会报错。
 - (void)amn:(NSString *)fn args:(NSArray *)args {
-    WKWebView *web = [self activeWeb];
+    [self amnOn:[self activeWeb] fn:fn args:args];
+}
+
+/// 只打**主框**那一块。设置、笔记本列表这些接口只有主框有，
+/// 独立文稿窗在前台时按 activeWeb 投递等于扔了（契约 §6.7 的三条消息都走这条）。
+- (void)amnMain:(NSString *)fn args:(NSArray *)args {
+    [self amnOn:_web fn:fn args:args];
+}
+
+- (void)amnOn:(WKWebView *)web fn:(NSString *)fn args:(NSArray *)args {
     if (!web || !fn.length) return;
     if (web == _web && !_loadedOnce) return;
     NSString *argStr = @"";
@@ -2047,11 +2350,19 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
         [self createVaultAtPath:path];
         return;
     }
+    // 5.7 多笔记本（契约 §6.7）。这两条也不回执：路径直接回调 AMN.addNotebooks /
+    // AMN.relocateNotebook，页面拿到之后自己去 POST /__notebooks，答复是那一趟的响应。
+    if ([type isEqualToString:@"addVault"]) { [self mAddVault:nil]; return; }
+    if ([type isEqualToString:@"relocateVault"]) {
+        NSString *nbid = [m[@"id"] isKindOfClass:NSString.class] ? m[@"id"] : nil;
+        [self relocateVault:nbid];
+        return;
+    }
     if ([type isEqualToString:@"checkUpdate"]) { [self mCheckUpdate:nil]; return; }
     if ([type isEqualToString:@"setAutoUpdate"]) {
         id on = m[@"on"];
         if (![on isKindOfClass:NSNumber.class]) return;
-        [NSUserDefaults.standardUserDefaults setBool:[on boolValue] forKey:kAutoCheckKey];
+        prefSet(kAutoCheckKey, @([on boolValue]));
         return;
     }
     if ([type isEqualToString:@"openURL"]) {
@@ -2075,18 +2386,20 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
 /// 网页发来的 {type:'setLanguage', lang:'auto'|'zh-Hans'|'zh-HK'|'en'}（契约 §2）。
 /// 写偏好 → 同步 AppleLanguages（让 AppKit 自带的面板跟着走）→ 清缓存 → relocalize。
 /// 认不出来的值就地丢掉，不动现状。
+/// 隔离实例（`-AMNSupportDir`）只换内存里那份：用户的 AMNLanguage / AppleLanguages
+/// 不许被验收改掉（设计约束 10）。代价是这一趟 AppKit 自带面板跟不上，验收用不着。
 - (void)applyLanguage:(id)raw {
     NSString *pref = AMNNormalizeLanguagePref(raw);
     if (!pref.length) return;
-    NSUserDefaults *d = NSUserDefaults.standardUserDefaults;
-    if ([pref isEqualToString:@"auto"]) {
-        [d removeObjectForKey:kAMNLangKey];
-        [d removeObjectForKey:@"AppleLanguages"];
+    if (isolatedRun()) {
+        gAMNLangOverride = [pref copy];
+    } else if ([pref isEqualToString:@"auto"]) {
+        prefSet(kAMNLangKey, nil);
+        prefSet(@"AppleLanguages", nil);
     } else {
-        [d setObject:pref forKey:kAMNLangKey];
-        [d setObject:@[ AMNAppleLanguageTag(pref) ] forKey:@"AppleLanguages"];
+        prefSet(kAMNLangKey, pref);
+        prefSet(@"AppleLanguages", @[ AMNAppleLanguageTag(pref) ]);
     }
-    [d synchronize];
     AMNResetLanguage();
     [self relocalize];
 }
@@ -2276,22 +2589,28 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
 
 - (void)application:(NSApplication *)app openURLs:(NSArray<NSURL *> *)urls {
     for (NSURL *u in urls) {
-        NSString *rel = [self relPathForURL:u];
-        if (rel.length) [self queueOpen:rel];
+        NSString *path = [self openPathForURL:u];
+        if (path.length) [self queueOpen:path];
     }
 }
 
 /// 旧入口兜底。实现了 openURLs 的系统不会再走这里；留下是防止
 /// `open -a` 某些路径只送 openFile。
 - (BOOL)application:(NSApplication *)app openFile:(NSString *)filename {
-    NSString *rel = [self relPathForURL:[NSURL fileURLWithPath:filename]];
-    if (rel.length) [self queueOpen:rel];
+    NSString *path = [self openPathForURL:[NSURL fileURLWithPath:filename]];
+    if (path.length) [self queueOpen:path];
     return YES;
 }
 
-/// 双击的 md、amnote://open?path=… 都归到「库内相对路径」这一种形态，交给 AMN.openPath。
-/// 库外的绝对路径原样留下，deliverOpen: 会改走 AMN.openExternalPath。
-- (NSString *)relPathForURL:(NSURL *)u {
+/// 双击的 md、amnote://open?path=… → 一个可以直接交给 AMN.openPath 的路径。
+/// 5.7 起**不再在壳里折算成库内相对路径**：多笔记本之后「属于哪个根」只有页面知道
+/// （它手里有整份列表），壳只比一个 AMNVaultPath 会把别的笔记本里的文件折错。
+/// file URL 给的就是绝对路径；amnote:// 里写的是什么就原样递过去（相对路径由页面
+/// 按当前模式认——单库是库内相对，多库是「笔记本名/…」）。
+/// **一个字符都不许改**：normPath() 里那个 stringByStandardizingPath 会把
+/// `/private/tmp/…` 改写成 `/tmp/…`（符号链接同理），而服务端登记的根是 realpath，
+/// 改写过的路径在 `/__locate` 和页面的前缀匹配那边都对不上，双击就成了「没反应」。
+- (NSString *)openPathForURL:(NSURL *)u {
     NSString *path = nil;
     if (u.isFileURL) {
         NSURL *file = u.filePathURL ?: u;
@@ -2303,31 +2622,40 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
         }
     }
     if (!path.length) return nil;
-    path = normPath(path);
-    if (![path hasPrefix:@"/"]) return path;                 // 已经是相对路径
-    NSString *root = normPath(locateRoot());
-    if (root.length) {
-        NSString *prefix = [root stringByAppendingString:@"/"];
-        if ([path hasPrefix:prefix]) return [path substringFromIndex:prefix.length];
-        if ([path isEqualToString:root]) return @"";
+    return path;
+}
+
+/// 一律 AMN.openPath（契约 §6.7）。页面遍历所有根取最长前缀，认得出库外的那些。
+/// 投递走 amnMain:（与 mAddVault: 同一做法）：独立文稿窗在前台时 activeWeb 是那扇窗，
+/// 可 surfaceForOpen 端到人眼前的是主窗，文稿会开在一扇看不见的窗里。
+- (void)deliverOpen:(NSString *)path {
+    if (!path.length) return;
+    [self amnMain:@"openPath" args:@[path]];
+}
+
+- (void)queueOpen:(NSString *)path {
+    if (!path.length) return;
+    if (_pageReady && _loadedOnce) {
+        [self deliverOpen:path];
+        [self surfaceForOpen];
+        return;
     }
-    return path;                                             // 库外的路径原样递过去
-}
-
-- (void)deliverOpen:(NSString *)rel {
-    if (!rel.length) return;
-    if ([rel hasPrefix:@"/"]) [self amn:@"openExternalPath" args:@[rel]];
-    else [self amn:@"openPath" args:@[rel]];
-}
-
-- (void)queueOpen:(NSString *)rel {
-    if (!rel.length) return;
-    if (_pageReady && _loadedOnce) { [self deliverOpen:rel]; return; }
     if (!_pendingOpens) _pendingOpens = [NSMutableArray array];
-    if (![_pendingOpens containsObject:rel]) [_pendingOpens addObject:rel];
+    if (![_pendingOpens containsObject:path]) [_pendingOpens addObject:path];
     // 窗口关着的时候双击一份 md、或者 amnote:// 进来，得把窗口开回来，
     // 不然这条就一直躺在队列里没人取。窗口还没建好时 openMainWindow 自己会退。
     if (_win && !_win.isVisible) [self openMainWindow];
+}
+
+/// 收到「打开这一份」之后把自己端到人眼前（用户补充需求，契约 §6.7 末尾）。
+/// 从访达双击、「打开方式」、拖到 Dock 图标进来时，app 已经在跑而且多半被别的窗口盖着，
+/// 不主动上前的话，文稿是在一个看不见的窗口里打开的，看着像「双击没反应」。
+/// 冷启动本来就会激活，这里重复调一次无害（openMainWindow 幂等）。
+- (void)surfaceForOpen {
+    if (_quitting || !_win) return;
+    // ⌘H 藏起来之后光 makeKeyAndOrderFront: 是出不来的，先解除隐藏。
+    if (NSApp.isHidden) [NSApp unhide:nil];
+    [self openMainWindow];          // 窗口被关掉时它会先把 web 重新挂回来
 }
 
 /// 门户刚就绪时补发攒下的动作：打开哪几份、以及那一次没赶上的重扫。
@@ -2337,7 +2665,8 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
     if (_pendingOpens.count) {
         NSArray *pend = [_pendingOpens copy];
         [_pendingOpens removeAllObjects];
-        for (NSString *rel in pend) [self deliverOpen:rel];
+        for (NSString *path in pend) [self deliverOpen:path];
+        [self surfaceForOpen];
     }
     if (_pendingRescan) {
         _pendingRescan = NO;
@@ -2386,7 +2715,12 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
     NSMenu *file = [[NSMenu alloc] initWithTitle:L(@"文件")];
     [[file addItemWithTitle:L(@"新建窗口") action:@selector(mNew:) keyEquivalent:@"n"] setTarget:self];
     [[file addItemWithTitle:L(@"新建标签页") action:@selector(mNewTab:) keyEquivalent:@"t"] setTarget:self];
-    [[file addItemWithTitle:L(@"新建随手记") action:@selector(mNewNote:) keyEquivalent:@""] setTarget:self];
+    // ⌥⌘N 新建随手记（5.7 加，§8.7 拍板）。⌘N 是「新建窗口」，两者不冲突：
+    // AppKit 按 charactersIgnoringModifiers + 修饰键整体匹配，⌥⌘N 落不到 ⌘N 上。
+    NSMenuItem *newNote = [file addItemWithTitle:L(@"新建随手记")
+                                          action:@selector(mNewNote:) keyEquivalent:@"n"];
+    newNote.keyEquivalentModifierMask = NSEventModifierFlagCommand | NSEventModifierFlagOption;
+    newNote.target = self;
     [file addItem:NSMenuItem.separatorItem];
     NSMenuItem *popw = [file addItemWithTitle:L(@"在新窗口打开")
                                        action:@selector(mPopoutWindow:) keyEquivalent:@"o"];
@@ -2484,7 +2818,10 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
     // ── 库（X-15：原来叫「服务」，跟系统那个 Services 撞名）──
     NSMenuItem *libItem = [NSMenuItem new];
     NSMenu *lib = [[NSMenu alloc] initWithTitle:L(@"库")];
-    [[lib addItemWithTitle:L(@"选择文件夹…") action:@selector(mChooseVault:) keyEquivalent:@""] setTarget:self];
+    // 5.7：原来这里是「选择文件夹…」（换掉唯一那个库）。多笔记本之后「换库」这个动作
+    // 只剩首启／库丢了那两张卡还在用（chooseVault / createVault 消息），菜单这一条
+    // 改成加一本（契约 §6.7）。
+    [[lib addItemWithTitle:L(@"添加笔记本…") action:@selector(mAddVault:) keyEquivalent:@""] setTarget:self];
     [lib addItem:NSMenuItem.separatorItem];
     [[lib addItemWithTitle:L(@"重扫全库") action:@selector(rescan:) keyEquivalent:@""] setTarget:self];
     [[lib addItemWithTitle:L(@"在浏览器里打开门户") action:@selector(openInBrowser:) keyEquivalent:@""] setTarget:self];
@@ -2564,7 +2901,9 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
         a == @selector(zoomIn:) || a == @selector(zoomOut:) || a == @selector(zoomReset:)) {
         return _web != nil && _loadedOnce;
     }
-    if (a == @selector(rescan:) || a == @selector(openInBrowser:) || a == @selector(serviceInfo:)) {
+    // 添加笔记本要把路径交给页面去 POST /__notebooks，服务没起来时点了没用，先灰着。
+    if (a == @selector(mAddVault:) ||
+        a == @selector(rescan:) || a == @selector(openInBrowser:) || a == @selector(serviceInfo:)) {
         return _svc.port > 0;
     }
     if (a == @selector(mCheckUpdate:)) return !_updBusy;
@@ -2726,7 +3065,7 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
 // 正在跑的二进制不能自己覆盖自己，所以真正替换交给退出后的 bash 脚本。
 
 - (void)mToggleAutoUpdate:(id)s {
-    [NSUserDefaults.standardUserDefaults setBool:!amnAutoCheckOn() forKey:kAutoCheckKey];
+    prefSet(kAutoCheckKey, @(!amnAutoCheckOn()));
 }
 
 - (void)mCheckUpdate:(id)s {
@@ -2735,9 +3074,12 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
 }
 
 - (void)scheduleAutoUpdateCheck {
+    // 隔离实例整条跳过（设计约束 10）：既不该动用户的启动计数，
+    // 也不该在验收跑到第 18 秒时弹一个「有新版本」把截图挡掉。
+    if (isolatedRun()) return;
     NSUserDefaults *d = NSUserDefaults.standardUserDefaults;
     NSInteger n = [d integerForKey:kLaunchCountKey] + 1;
-    [d setInteger:n forKey:kLaunchCountKey];
+    prefSet(kLaunchCountKey, @(n));
     if (!amnAutoCheckOn()) return;
     if (n < 2) return;        // 第一次打开别弹，跟 Sparkle 同一份客气
     NSDate *last = [d objectForKey:kLastCheckKey];
@@ -2758,7 +3100,7 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
     _updBusy = YES;
     _updInteractive = interactive;
     _updCancel = NO;
-    [NSUserDefaults.standardUserDefaults setObject:[NSDate date] forKey:kLastCheckKey];
+    prefSet(kLastCheckKey, [NSDate date]);
 
     NSString *api = [NSString stringWithFormat:
                      @"https://api.github.com/repos/%@/releases/latest", kUpdateRepo];
@@ -2938,7 +3280,7 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
             return;
         }
         if (r == NSAlertThirdButtonReturn && ver.length) {
-            [NSUserDefaults.standardUserDefaults setObject:ver forKey:kSkipVerKey];
+            prefSet(kSkipVerKey, ver);
         }
         _updBusy = NO;
     };

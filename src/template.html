@@ -171,7 +171,34 @@
      窄窗里那两条侧栏的 bottom 都还在 calc 里引用它，删了会整片塌掉。 */
   --status-h:0px;
   --chrome-h:var(--tabstrip-h);
+
+  /* ── 5.7：笔记本身份色（八色盘）──
+     八色分布在 hue 346→211 那一段（玫瑰 346 / 梅 308 / 蓝 211 / 灰 217 /
+     青 178 / 绿 130 / 黄 43 / 橙 19），230–300 那一段整段留给 --accent：
+     紫只表示「选中」，身份色一旦也有紫，选中的工作笔记本和身份为紫的读书
+     笔记本就分不开了（P4）。饱和度压在 30–68%，跟 --ok / --folder 一个调子。
+     浅色一套对白底 4.03–5.48:1、对 --canvas ≥3.6（过 WCAG 1.4.11 的 3:1），
+     深色一套整体提亮一档。明度是第二条线索（黄 L32 最深、玫瑰 L50 最浅），
+     红绿色盲把 绿/橙/玫瑰 压到一起时还有明暗和「色点后面永远跟着名字」。
+     颜色的唯一入口是祖先上的 --nb / --nb-soft（见下面八枚 .nb-* 类）。 */
+  --nb-blue:#3f74ab;   --nb-blue-soft:#eaf1f9;
+  --nb-teal:#2b7b79;   --nb-teal-soft:#e5f2f1;
+  --nb-green:#45804f;  --nb-green-soft:#e9f3eb;
+  --nb-gold:#9d7a1c;   --nb-gold-soft:#f4efdf;
+  --nb-orange:#a95a34; --nb-orange-soft:#f8eee9;
+  --nb-rose:#b04f66;   --nb-rose-soft:#f9ecef;
+  --nb-plum:#96508d;   --nb-plum-soft:#f6ecf5;
+  --nb-slate:#6c7686;  --nb-slate-soft:#eef0f3;
 }
+/* 八枚一次性写好的「挂色」类。下游一律写 var(--nb)，也可以内联 style="--nb:…"。 */
+.nb-blue  {--nb:var(--nb-blue);   --nb-soft:var(--nb-blue-soft)}
+.nb-teal  {--nb:var(--nb-teal);   --nb-soft:var(--nb-teal-soft)}
+.nb-green {--nb:var(--nb-green);  --nb-soft:var(--nb-green-soft)}
+.nb-gold  {--nb:var(--nb-gold);   --nb-soft:var(--nb-gold-soft)}
+.nb-orange{--nb:var(--nb-orange); --nb-soft:var(--nb-orange-soft)}
+.nb-rose  {--nb:var(--nb-rose);   --nb-soft:var(--nb-rose-soft)}
+.nb-plum  {--nb:var(--nb-plum);   --nb-soft:var(--nb-plum-soft)}
+.nb-slate {--nb:var(--nb-slate);  --nb-soft:var(--nb-slate-soft)}
 
 :root[data-theme="light"]{ color-scheme: light }
 :root[data-theme="dark"] { color-scheme: dark  }
@@ -214,6 +241,15 @@
   --paper-edge:rgba(215,226,250,.10); --paper-shadow:rgba(0,0,0,.22);
   --paper-b:#7d968f; --paper-line:#3a414c;
   --paper-dot:#33413b; --paper-dot-ico:#8fa89b;
+  /* 笔记本八色（深）：浅色那八个压在 #1b1e24 上会糊成八坨深灰，整体提亮一档。 */
+  --nb-blue:#8ab4e0;   --nb-blue-soft:#2b3a4a;
+  --nb-teal:#63b8b4;   --nb-teal-soft:#24403f;
+  --nb-green:#84bd8c;  --nb-green-soft:#29402f;
+  --nb-gold:#d3b263;   --nb-gold-soft:#3d3624;
+  --nb-orange:#e0977a; --nb-orange-soft:#43332a;
+  --nb-rose:#df8fa4;   --nb-rose-soft:#432f36;
+  --nb-plum:#cd92c8;   --nb-plum-soft:#3e2f3e;
+  --nb-slate:#a3adbb;  --nb-slate-soft:#333944;
 }}
 :root[data-theme="dark"]{
   --canvas:#1b1e24; --win:#252931; --side:#1b1e24; --chrome:#22262d; --list:#1f232a;
@@ -252,6 +288,15 @@
   --paper-edge:rgba(215,226,250,.10); --paper-shadow:rgba(0,0,0,.22);
   --paper-b:#7d968f; --paper-line:#3a414c;
   --paper-dot:#33413b; --paper-dot-ico:#8fa89b;
+  /* 笔记本八色（深）：浅色那八个压在 #1b1e24 上会糊成八坨深灰，整体提亮一档。 */
+  --nb-blue:#8ab4e0;   --nb-blue-soft:#2b3a4a;
+  --nb-teal:#63b8b4;   --nb-teal-soft:#24403f;
+  --nb-green:#84bd8c;  --nb-green-soft:#29402f;
+  --nb-gold:#d3b263;   --nb-gold-soft:#3d3624;
+  --nb-orange:#e0977a; --nb-orange-soft:#43332a;
+  --nb-rose:#df8fa4;   --nb-rose-soft:#432f36;
+  --nb-plum:#cd92c8;   --nb-plum-soft:#3e2f3e;
+  --nb-slate:#a3adbb;  --nb-slate-soft:#333944;
 }
 
 @media (prefers-reduced-motion:reduce){
@@ -642,16 +687,18 @@ kbd{
    开始页拿它替掉了书签栏（顶层文件夹 ＋ 已收藏），文件夹页拿它列子文件夹。
    不描边：静态是 --field 的浅底块，鼠标进来才浮起来变成一枚白片。 */
 .dirchips{display:flex;flex-wrap:wrap;gap:8px;margin:0 1px 20px}
-.dirchip{
+/* 5.7：笔记本条（.nbchip）跟文件夹芯片是同一套外形，共有的几行写在一起，
+   差异（色点、选中态、找不到态）在文件末尾那一段里。 */
+.dirchip,.nbchip{
   display:inline-flex;align-items:center;gap:7px;height:28px;padding:0 13px;
   border-radius:999px;background:var(--field);border:1px solid transparent;
   color:var(--t2);font-size:11.5px;
   transition:background-color var(--d-base) ease,color var(--d-base) ease,
              box-shadow var(--d-base) var(--ease-out),transform var(--d-base) var(--ease-out);
 }
-.dirchip:hover{background:var(--card-face);color:var(--t1);
+.dirchip:hover,.nbchip:hover{background:var(--card-face);color:var(--t1);
   box-shadow:var(--el-1);transform:translateY(-1px)}
-.dirchip:active:not([disabled]){transform:translateY(0);box-shadow:none}
+.dirchip:active:not([disabled]),.nbchip:active:not([disabled]){transform:translateY(0);box-shadow:none}
 .dirchip svg{width:13px;height:13px;color:var(--bm-ico);flex:none}
 .dirchip.fav svg{color:var(--pin)}
 .dirchip .n{color:var(--t3);font-size:10px}
@@ -1887,6 +1934,176 @@ body.solo #chrome{display:none!important}
   .md.f-hk h4,.md.f-hk h5,.md.f-hk h6{font-weight:min(600, calc(max(300, var(--rw,400)) + 100))}
   .histbox>.tw{display:block!important}
 }
+
+/* ═══ 5.7：多笔记本 ═══════════════════════
+   规矩两条，整段都在守它：
+   · 颜色是身份，紫色是选中（P4）。八色只出现在色点、色点后的名字、
+     设置里的小色块上；「谁被选中」永远是 --accent-soft ＋ --accent。
+   · 单库零变化（P1）。这一段全部规则都挂在多笔记本才出现的元素上
+     （.nbchips / .nd / .pc-seg.nb / …），一个笔记本时这些元素根本不画。 */
+
+/* ── 色点 ──
+   全套多笔记本 UI 只靠这一枚。默认 8px（笔记本条、设置），
+   .sm 6px（标签页、⌘K 行、卡片页脚、路径芯片）。
+   不描边——实心圆本身就够；「找不到」那一态才换成一圈 inset 环。 */
+.nd{display:inline-block;width:8px;height:8px;border-radius:50%;flex:none;
+  background:var(--nb,var(--t4))}
+.nd.sm{width:6px;height:6px}
+.nd.gone{background:none;box-shadow:inset 0 0 0 1.5px var(--t4)}
+
+/* ── 笔记本条 ──
+   位置：问候语之下、文件夹芯片行之上。骨架跟 .dirchips 一样（见上面合并的那两条），
+   差异只有色点和 .dirchip 从来没有过的选中态。 */
+.nbchips{display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin:0 1px 12px}
+/* 选中＝紫。色点留着——紫说「我被选中了」，色点说「我是谁」，两句话不打架。 */
+.nbchip.on,.dirchip.on{background:var(--accent-soft);color:var(--accent);font-weight:500}
+.nbchip.on:hover,.dirchip.on:hover{background:var(--accent-soft);color:var(--accent)}
+.dirchip.on svg{color:var(--accent)}
+/* 「全部」没有色点：它不是一个笔记本，是没有筛选。 */
+.nbchip.all{padding:0 14px}
+/* 文件夹找不到：整枚压成 --t4，色点换空心环，尾巴挂一句小字。不移除。 */
+.nbchip.gone{color:var(--t4);background:var(--field)}
+.nbchip.gone:hover{color:var(--t3);background:var(--card-face)}
+.nbchip .gonetag{font-size:10px;color:var(--t4)}
+.nbchip.on .gonetag{color:var(--accent);opacity:.7}
+/* 末尾那枚 ＋：跟 .chipfold 一样安静，不占底色。 */
+.nbchip.add{background:none;color:var(--t4);padding:0 9px;gap:5px}
+.nbchip.add:hover{background:var(--field);color:var(--t2);box-shadow:none;transform:none}
+.nbchip.add svg{width:13px;height:13px}
+.nbchip.fav svg{width:13px;height:13px;color:var(--pin);flex:none}
+/* 名字长的截住：一条最多 168px，再长打省略号。 */
+.nbchip .lbl{max-width:168px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+/* ── 问候语旁那一笔 ──
+   「早安，Lulu · ● 工作」。聚焦某个笔记本时才有；紫色不用，只用 --t3 ＋ 色点。 */
+.home-greeting .here{display:inline-flex;align-items:center;gap:7px;vertical-align:middle;
+  margin-left:.42em;font-size:.58em;font-weight:400;color:var(--t3);letter-spacing:0}
+.home-greeting .here .nd{width:7px;height:7px}
+
+/* ── 卡片页脚 ──
+   「全部」模式：色点 ＋ 笔记本名 ＋ › ＋ 目录。色点接管了原来那枚黄夹子的位置
+   （一行 9px 的页脚里塞不下四样东西），聚焦模式和单库模式照旧还是黄夹子。 */
+.card-footer .nbname{flex:none;color:var(--t3)}
+.card-footer .csep{flex:none;color:var(--t4)}
+.card-footer .nd{margin-right:1px}
+.cards.list .card-footer .nbname{max-width:88px;overflow:hidden;
+  text-overflow:ellipsis;white-space:nowrap}
+
+/* ── 继续阅读大卡 ──
+   这一行是普通文字流不是 flex，色点得自己带右边距。 */
+.resume-bottom .nd{margin-right:5px}
+.resume-bottom .nbname{color:var(--t3)}
+
+/* ── 路径芯片 ──
+   「● 工作 › 会议 › 周会.md」。开头那枚 .fi 黄夹子换成色点：同一个 14px 槽位，
+   芯片一个像素都不变宽，fitPathChip 那套收 … 的逻辑照旧。 */
+.pathchip .fi.nbdot{display:flex;align-items:center;justify-content:center;color:var(--nb)}
+.pathchip .pc-seg.nb{color:var(--t2)}
+
+/* ── 标签页 ──
+   两案，用 .tabbar 上的修饰类切：(a) .nb-dot 标题前一枚 6px 色点；
+   (b) .nb-bar 顶部 2px 色条（单条标签窄于 110px 时整条退到这一案）。
+   .nb-bar 的当前标签要把 --tab-shadow 一起写回去，只写 inset 会把「浮起来」那层丢掉。 */
+#tabstrip .tabbar.nb-dot .tab .nd{margin-right:-3px}
+#tabstrip .tabbar.nb-bar .tab .nd{display:none}
+/* --nb 得给个兜底值：没挂色点的标签（库外只读、别的来源）上 var(--nb) 解不出来，
+   整条 box-shadow 声明会被丢掉——连 .tab.on 的 --tab-shadow 一起没了。 */
+#tabstrip .tabbar.nb-bar .tab{box-shadow:inset 0 2px 0 var(--nb, transparent)}
+#tabstrip .tabbar.nb-bar .tab.on{box-shadow:inset 0 2px 0 var(--nb, transparent),var(--tab-shadow)}
+#tabpick .tprow .nd{flex:none;margin-right:6px}
+
+/* ── 左上那颗云 ──
+   聚焦某个笔记本时，云的右下角挂一枚 7px 色点，外面一圈 --chrome 把它托起来。
+   「全部」模式不挂——那时候 app 不处在任何一个笔记本里。 */
+#navHome{position:relative}
+#navHome .nd{position:absolute;right:1px;bottom:1px;width:7px;height:7px;
+  box-shadow:0 0 0 2px var(--chrome);pointer-events:none}
+
+/* ── ⌘K / 搜索结果 ── */
+.search-row small .nd{margin-right:5px;position:relative;top:1px}
+.search-row small .nbname{color:var(--t3)}
+/* 这几处是普通文字流（不是 .card-footer 那种 flex），› 得自己带左右间距 */
+.search-row small .csep,.resume-bottom .csep,#toast .csep{margin:0 4px;color:var(--t4)}
+/* 范围芯片行：⌘K 面板里贴在输入行下面，结果页里贴在 .serp-q 下面。 */
+.modal .nbchips.scope{margin:0;padding:9px 14px 3px}
+.serp .nbchips.scope{margin:0 0 14px;padding:0 12px}
+.nbchips.scope .nbchip{height:26px;padding:0 11px;font-size:11px;gap:6px}
+.nbchips.scope .nbchip .nd{width:7px;height:7px}
+
+/* ── toast ── */
+#toast .nd{margin:0 1px;position:relative;top:1px}
+
+/* ── 文件夹下钻（§5）──
+   面包屑在芯片行上方；子文件夹芯片另起一行、不占底色，比顶层浅一档，
+   一眼看出「这是第二层」。被点开的那一枚顶层芯片进入 .on。 */
+.dirchip.sub{height:26px;padding:0 11px;font-size:11px;
+  background:none;color:var(--t3)}
+.dirchip.sub svg{color:var(--t4)}
+.dirchip.sub:hover{background:var(--card-face);color:var(--t1);box-shadow:var(--el-1)}
+.dirchip.sub .n{color:var(--t4);font-size:10px}
+.dirchips.subs{margin:-14px 1px 20px;padding-left:14px;gap:6px}
+.crumbs{display:flex;flex-wrap:wrap;align-items:center;gap:7px;margin:0 1px 10px;
+  font-size:11.5px;color:var(--t3)}
+.crumbs .cb{color:var(--t2)}
+.crumbs .cb:hover{color:var(--t1)}
+.crumbs .cb.now{color:var(--t1);font-weight:500}
+.crumbs .sep{color:var(--t4)}
+.crumbs .nd{margin-right:1px}
+
+/* ── 提示卡多的那一句 ── */
+.tipcard .tc-more{margin:13px 0 0;font-size:11.5px;color:var(--t2);
+  display:flex;align-items:center;gap:8px}
+.tipcard .tc-more svg{width:13px;height:13px;color:var(--accent);flex:none}
+
+/* ═══ 设置 · 笔记本列表 ═══
+   原来的「当前笔记库」那张 .vault 大卡换成一列 .nbrow。
+   一行＝色块 / 名字（可改） / 灰字路径（点击访达显示） / 篇数 / 默认 / 移除。 */
+#viewCfg .nblist{display:flex;flex-direction:column;gap:8px}
+#viewCfg .nbrow{display:flex;align-items:center;gap:13px;padding:11px 14px;
+  border-radius:12px;background:var(--card-face);box-shadow:var(--el-1)}
+#viewCfg .nbsw{position:relative;width:28px;height:28px;border-radius:9px;flex:none;
+  display:flex;align-items:center;justify-content:center;background:var(--nb-soft)}
+#viewCfg .nbsw .nd{width:11px;height:11px}
+#viewCfg .nbsw:hover{box-shadow:var(--el-1)}
+#viewCfg .nbsw[aria-expanded="true"]{box-shadow:0 0 0 2px var(--accent)}
+#viewCfg .nbrow .meta{flex:1;min-width:0}
+#viewCfg .nbrow .nm{display:block;font-size:14px;font-weight:600;line-height:1.35;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  padding:1px 3px;margin:-1px -3px;border-radius:5px}
+#viewCfg .nbrow .nm:focus{background:var(--field);outline:none}
+/* button 是 fit-content 撑的，光给 display:block 收不住：绝对路径很长，
+   必须写死 width:100% 才会在行内打省略号而不是把整行顶出去。 */
+#viewCfg .nbrow .pth{display:block;width:100%;font-size:11.5px;color:var(--t3);margin-top:2px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-align:left}
+#viewCfg .nbrow .pth:hover{color:var(--t2)}
+#viewCfg .nbrow .n{flex:none;font-size:11.5px;color:var(--t3);
+  font-variant-numeric:tabular-nums}
+#viewCfg .nbrow .nbacts{flex:none;display:flex;align-items:center;gap:4px}
+/* 「默认」是个既成事实，不是按钮：紫底小标。「设为默认」才是 .btnt。 */
+#viewCfg .nbtag{flex:none;font-size:10px;font-weight:600;letter-spacing:.03em;
+  color:var(--accent);background:var(--accent-soft);border-radius:6px;padding:4px 8px}
+/* 找不到：整行压灰，色点换空心环，路径那一行换成一句话 ＋「重新定位…」。 */
+#viewCfg .nbrow.gone{background:var(--warn-bg);box-shadow:0 0 0 1px var(--warn-bd)}
+#viewCfg .nbrow.gone .nm{color:var(--t2)}
+#viewCfg .nbrow.gone .nbsw{background:var(--field)}
+#viewCfg .nbrow.gone .pth{color:var(--t4)}
+#viewCfg .nbadd{margin-top:10px}
+/* 八色小色盘：4×2，一格 26px。当前那一格套一圈紫。 */
+#viewCfg .nbpal{position:absolute;top:34px;left:-8px;z-index:30;
+  display:grid;grid-template-columns:repeat(4,26px);gap:7px;padding:9px;
+  border-radius:12px;background:var(--card-face);box-shadow:var(--el-3);
+  animation:arrive .14s ease-out}
+#viewCfg .nbpal span{width:26px;height:26px;border-radius:8px;background:var(--nb-soft);
+  display:flex;align-items:center;justify-content:center;cursor:pointer}
+#viewCfg .nbpal span .nd{width:11px;height:11px}
+#viewCfg .nbpal span.on{box-shadow:0 0 0 2px var(--accent)}
+/* 「哪个笔记本的选项」——随手记 / 整理范围两段共用的小分段控件。 */
+#viewCfg .seg.nbseg button{display:inline-flex;align-items:center;gap:6px}
+#viewCfg .seg.nbseg .nd{width:7px;height:7px}
+/* 头像浮层那一行的色点 */
+#userPop .vault .v .nd{margin-right:5px;position:relative;top:1px}
+/* [[题名]] 多个候选那一列 */
+#wlpick .nd{margin-right:6px}
 </style>
 <script>
 /* 语言要在首屏之前定下来：<html lang> 决定 :lang(zh-HK) 那条界面字体规则。
@@ -1996,6 +2213,7 @@ body.solo #chrome{display:none!important}
       <input id="ck" type="text" autocomplete="off" spellcheck="false" placeholder="找一篇笔记，或一个想法…" aria-label="找一篇笔记，或一个想法">
       <button type="button" class="escb" id="ckEsc" aria-label="关闭"><kbd>Esc</kbd></button>
     </div>
+    <div id="ckScope"></div>
     <div class="modal-body" id="ckList" role="listbox" aria-label="结果"></div>
     <div class="modal-footer">
       <span><kbd>↑</kbd> <kbd>↓</kbd> 选择</span>
@@ -2238,15 +2456,30 @@ const DEF_ST={sbw:224, side:true, toc:true, bookmarks:false, recents:[],
   tips:false,           /* 开始页那张「第一次来？」提示卡，只有全新档案才为 true */
   chipsOpen:true,       /* 开始页那行文件夹芯片展着还是收着，收起只剩「已收藏」＋一枚计数 */
   cfgTab:'reading',     /* 设置弹层上次停在哪一段 */
-  cfgAdv:false};        /* 「高级」那段的折叠区展没展开 */
+  cfgAdv:false,         /* 「高级」那段的折叠区展没展开 */
+  nb:'',                /* 5.7 当前笔记本的名字。'' ＝「全部」，单库时恒为 '' */
+  nbMark:''};           /* 5.7 存储里那些路径的形态：'' ＝无前缀，'multi' ＝带笔记本名前缀 */
 /* 整个键不存在＝这台机器第一次打开门户。只认「没有 tp-state」这一种情况：
    老用户哪怕把每个值都改回默认，键也还在，提示卡不会突然冒出来。 */
 const FRESH_PROFILE = (()=>{ try{ return localStorage.getItem('tp-state')===null }catch(e){ return false } })();
 let ST=Object.assign({}, DEF_ST, (()=>{ try{ return JSON.parse(localStorage.getItem('tp-state')||'{}') }catch(e){ return {} } })());
 let stSaveT=null;
-function saveST(){ clearTimeout(stSaveT); stSaveT=setTimeout(()=>{
+/* 该整页重来、却因为有没存住的字停下的那一次（5.7 笔记本翻面，见 reloadForNb）。
+   挂着的这段时间一个字都别往 localStorage 写：手上是旧形态的路径，写回去就把
+   人家迁好的那份盖了。声明摆在这儿是因为 saveST() 在下面几行就被调用了。 */
+let nbHold=null;
+function saveST(){
+  if(nbHold) return;
+  clearTimeout(stSaveT); stSaveT=setTimeout(()=>{
+    try{ localStorage.setItem('tp-state', JSON.stringify(ST)); }catch(e){}
+  },300);
+}
+/* 立刻写盘（不防抖）。整页 reload 之前必须走这一条：防抖那 300 毫秒里
+   location.reload() 一执行，刚迁好的路径就没了。 */
+function saveSTNow(){
+  clearTimeout(stSaveT); stSaveT=null;
   try{ localStorage.setItem('tp-state', JSON.stringify(ST)); }catch(e){}
-},300); }
+}
 if(FRESH_PROFILE){ ST.tips=true; saveST(); }
 function applyST(){
   document.documentElement.style.setProperty('--sbw', ST.sbw+'px');
@@ -2258,8 +2491,189 @@ function applyST(){
   if(ST.bookmarks!==false){ ST.bookmarks=false; saveST(); }
 }
 /* 库根绝对路径。从 /__status 拿——分享、拖出去的 file:// URI、
-   报给壳的当前文件路径都要它。拿不到就是空串，那几件事静默不做。 */
+   报给壳的当前文件路径都要它。拿不到就是空串，那几件事静默不做。
+   多笔记本时它仍是**主笔记本**的根（服务端约定），别拿它拼别的本里的路径，
+   拼绝对路径一律走 absOf() / NB.rootOf()。 */
 let LIBROOT='';
+
+/* ═══ 5.7 笔记本 ═══════════════════════════
+   一个文件夹＝一个笔记本，全部笔记本合起来还叫笔记库。列表由服务端持有
+   （/__status.笔记本，也在多笔记本的 /__tree 里带一份），页面只读不存——
+   localStorage 是按端口分家的，端口一漂就是另一份（5.6 的教训）。
+
+   **模式 ＝ 列表长度 ≥ 2。** 多笔记本时所有对外路径都以笔记本名开头
+   （`工作/会议/周会.md`），单笔记本时不加前缀、界面上一个色点都不画（P1）。
+   所以这一段里几乎每个函数都有「单库直接返回原样」那一条短路。 */
+const NB_COLORS = ['blue','teal','green','gold','orange','rose','plum','slate'];
+const NB_COLOR_NAMES = {blue:K('蓝'), teal:K('青'), green:K('绿'), gold:K('黄'),
+  orange:K('橙'), rose:K('玫瑰'), plum:K('梅'), slate:K('灰')};
+const NB = {
+  list: [],                       /* /__status.笔记本 原样 */
+  mode: '',                       /* 服务端说的「单」／「多」；空＝还没问到 */
+  get multi(){ return NB.list.length >= 2; },
+  /* 当前聚焦的笔记本名。'' ＝「全部」。单库恒为 ''；名字对不上（改过名、
+     移除过）也退回「全部」，不让一个死名字把整页过滤成空。 */
+  get cur(){
+    if(!NB.multi) return '';
+    const v=String(ST.nb||'');
+    return (v && NB.byName(v)) ? v : '';
+  },
+  /* 「全部」模式下新建落到哪本。服务端的「默认」指针，缺省是主笔记本。 */
+  get default(){
+    const d=NB.list.find(x=>x.默认);
+    return (d||NB.list[0]||{}).名字||'';
+  },
+  byName(n){ return NB.list.find(x=>x.名字===n) || null; },
+  byId(id){ return NB.list.find(x=>x.id===id) || null; },
+  /* 前缀路径 → 笔记本名。单库恒为 ''。 */
+  of(path){
+    if(!NB.multi) return '';
+    const s=String(path||''), i=s.indexOf('/');
+    const head=i<0 ? s : s.slice(0,i);
+    return NB.byName(head) ? head : '';
+  },
+  /* 前缀路径 → 库内相对路径。单库原样返回。 */
+  strip(path){
+    const s=String(path||'');
+    const n=NB.of(s);
+    return n ? s.slice(n.length+1) : s;
+  },
+  /* 前缀路径 → 它所在笔记本的绝对根。单库退回 LIBROOT。 */
+  rootOf(path){
+    const n=NB.of(path);
+    if(n){ const b=NB.byName(n); return b ? String(b.路径||'') : ''; }
+    return LIBROOT;
+  },
+  color(name){
+    const b=NB.byName(name);
+    const c=b && b.颜色;
+    return NB_COLORS.indexOf(c)>=0 ? c : 'slate';
+  },
+  cls(name){ return 'nb-'+NB.color(name); },
+  offline(name){ const b=NB.byName(name); return !!(b && b.状态==='离线'); },
+  /* 所有根：多本各一条，单本就是 LIBROOT（名字为空＝路径不加前缀）。
+     openPath(绝对路径)／拖进来的文件按这张表取最长前缀。 */
+  roots(){
+    if(NB.multi) return NB.list.map(n=>({name:n.名字, root:String(n.路径||'')}));
+    if(NB.list.length===1) return [{name:'', root:String(NB.list[0].路径||'')}];
+    return LIBROOT ? [{name:'', root:LIBROOT}] : [];
+  },
+};
+/* 路径里笔记本名占掉的段数：多本 1，单本 0。切 _d0/_d1、算「这一层」都用它。 */
+const bookDepth = () => NB.multi ? 1 : 0;
+/* 色点。多笔记本才画，单库一枚都没有（P1）。 */
+function nbDot(name, opt){
+  if(!NB.multi || !name) return '';
+  opt=opt||{};
+  return `<i class="nd${opt.sm?' sm':''}${opt.gone?' gone':''} ${NB.cls(name)}"></i>`;
+}
+/* 前缀路径 → 绝对路径。原来那六处 LIBROOT+'/'+rel 全走这里。 */
+function absOf(rel){
+  const r=NB.rootOf(rel);
+  return r ? r+'/'+NB.strip(rel) : '';
+}
+/* 这一条属不属于当前聚焦的笔记本。「全部」和单库一律为真。 */
+function inCurBook(i){
+  const cur=NB.cur;
+  return !cur || NB.of(i && (i.路径||i)) === cur;
+}
+/* 某一本的随手记目录（前缀路径）。name 为空＝主／单笔记本。 */
+function noteDirOf(name){
+  const b=name ? NB.byName(name) : null;
+  const d=(b && b.随手记目录) || NOTE_DIR;
+  return NB.multi && name ? name+'/'+d : d;
+}
+/* 绝对路径 → 前缀路径（取最长匹配的那个根）。不在任何一本里就回 null。 */
+function relFromAbs(abs){
+  const p=String(abs||'');
+  let best=null;
+  NB.roots().forEach(r=>{
+    if(!r.root) return;
+    const root=r.root.replace(/\/+$/,'')+'/';
+    if(p.indexOf(root)!==0) return;
+    if(best && best.root.length>=root.length) return;
+    best={root, name:r.name, rel:p.slice(root.length)};
+  });
+  if(!best || !best.rel) return null;
+  return best.name ? best.name+'/'+best.rel : best.rel;
+}
+
+/* ── 存储里的路径迁移 ──────────────────────
+   tp-state 里存路径的只有三处：pins[]、recents[].路径、lastPath。
+   `nbMark` 记着它们此刻是什么形态：'' ＝无前缀，'multi' ＝带笔记本名前缀。
+   服务端说的模式跟它对不上就迁一次：
+     单 → 多：老键只可能属于主笔记本，统一加上主笔记本名前缀；
+     多 → 单：剥掉等于那唯一一本名字的前缀，别的本的键直接丢（那些文件已经不在库里了）。
+   迁完之前 prunePins() 不剪枝——它按 items 里的路径认领，形态不一致会把收藏全删光。 */
+let nbReady=false;
+/* 跑起来之后又翻了一次面（别的窗口、CLI、壳菜单动了笔记本，这一趟轮询才发现）。
+   首屏那一次不算：那时候还没有开着的标签，迁完照常画就是了。 */
+let nbFlipped=false;
+function nbMapStored(fn){
+  const pins=Array.isArray(ST.pins)?ST.pins:[];
+  ST.pins=pins.map(fn).filter(Boolean);
+  const rec=Array.isArray(ST.recents)?ST.recents:[];
+  ST.recents=rec.map(r=>{
+    if(!r || !r.路径) return null;
+    const p=fn(r.路径);
+    return p ? Object.assign({}, r, {路径:p}) : null;
+  }).filter(Boolean);
+  if(ST.lastPath) ST.lastPath=fn(ST.lastPath)||'';
+}
+function nbMigrate(mode, mainName){
+  const want = mode==='多' ? 'multi' : '';
+  const have = ST.nbMark==='multi' ? 'multi' : '';
+  if(want===have) return false;
+  if(want==='multi'){
+    if(!mainName) return false;                    // 名字还没到，下一趟再迁
+    const pre=mainName+'/';
+    nbMapStored(p=>{ p=String(p||''); return (!p || p.indexOf(pre)===0) ? p : pre+p; });
+  }else{
+    const pre=mainName ? mainName+'/' : '';
+    nbMapStored(p=>{
+      p=String(p||''); if(!p) return '';
+      if(pre && p.indexOf(pre)===0) return p.slice(pre.length);
+      return p.indexOf('/')<0 ? p : '';            // 别的本的：丢
+    });
+  }
+  ST.nbMark=want;
+  ST.nb='';                                        // 形态换了，「当前笔记本」重来
+  saveST();
+  return true;
+}
+/* 服务端给的笔记本列表落地。/__status 和多本的 /__tree 都会调，谁先到算谁的。 */
+function nbApply(list, mode){
+  if(!Array.isArray(list) || !list.length) return false;
+  const before=JSON.stringify(NB.list.map(n=>[n.名字,n.颜色,n.状态,n.默认,n.路径]));
+  NB.list=list;
+  if(mode) NB.mode=mode;
+  const m = mode || (list.length>=2 ? '多' : '单');
+  const first=!nbReady;
+  if(nbMigrate(m, (list[0]||{}).名字||'') && !first) nbFlipped=true;
+  nbReady=true;
+  const after=JSON.stringify(NB.list.map(n=>[n.名字,n.颜色,n.状态,n.默认,n.路径]));
+  return before!==after;
+}
+/* 存储里的路径形态翻了面（单↔多），或者同源另一个窗口刚翻过：手上的 TABS /
+   stack / CLOSED / NOTEPV / TRASHED 全是旧形态，半页新半页旧是最难查的一类错，
+   所以只走「落盘 → 整页重来」这一条——跟切换界面语言是同一条老路（setLang）。
+   存不下就**不 reload**：重载等于把没落盘的字扔了。挂起来，等编辑收了在 tick() 里补。
+   opt.writeST＝这一趟是自己迁的，ST 得先手写一遍（防抖那 300 毫秒等不到 reload）；
+   别的窗口迁的那一趟一个字都别写，手上这份是旧形态。 */
+async function reloadForNb(opt){
+  opt=opt||{};
+  nbFlipped=false;
+  if(opt.writeST) saveSTNow();
+  if(!(await saveAllForReload())){
+    nbHold={writeST:!!opt.writeST, quiet:true};
+    if(!opt.quiet) notify(TR('先把这一份存好，笔记本的改动才跟得上'));
+    return false;
+  }
+  nbHold=null;
+  if(opt.writeST) saveSTNow();
+  location.reload();
+  return true;
+}
 
 /* ═══ 个人资料 ═══════════════════════════
    名字、头像、要不要问候，三样都在服务端（Application Support 里的 profile.json），
@@ -2367,14 +2781,22 @@ function vaultPath(){ return String(window.__AMN_VAULT_PATH__ || LIBROOT || '');
 function openUserPop(){
   const p=$('#userPop'), b=$('#userChip'); if(!p || !b) return;
   const nm=profileName(), path=vaultPath();
-  const swap = SHELL
-    ? `<button type="button" data-up="choose">${esc(TR('更换笔记库…'))}</button>` : '';
+  /* 多笔记本时这一格改说「我现在在哪本」；单库一字不变（P1）。 */
+  const cur=NB.cur;
+  const vault = NB.multi
+    ? `<div class="vault"><span class="k">${esc(cur?TR('当前笔记本'):TR('全部笔记本'))}</span>
+      <span class="v">${cur ? nbDot(cur)+esc(cur)
+        : esc(TR('{n} 本',{n:NB.list.length}))}</span></div>`
+    : (path?`<div class="vault"><span class="k">${esc(TR('当前笔记库'))}</span>
+      <span class="v" title="${esc(path)}">${esc(baseName(path))}</span></div>`:'');
+  const swap = NB.multi
+    ? `<button type="button" data-up="manage">${esc(TR('管理笔记本…'))}</button>`
+    : (SHELL ? `<button type="button" data-up="choose">${esc(TR('更换笔记库…'))}</button>` : '');
   p.innerHTML=`<div class="who">
       <span class="av">${avatarHtml(22)}</span>
       <span class="nm">${esc(nm||TR('个人资料'))}</span>
     </div>
-    ${path?`<div class="vault"><span class="k">${esc(TR('当前笔记库'))}</span>
-      <span class="v" title="${esc(path)}">${esc(baseName(path))}</span></div>`:''}
+    ${vault}
     <div class="acts">
       <button type="button" data-up="edit">${esc(TR('编辑资料…'))}</button>
       ${swap}
@@ -2384,6 +2806,7 @@ function openUserPop(){
     const a=x.dataset.up;
     closeUserPop();
     if(a==='edit'){ ST.cfgTab='profile'; saveST(); openCfg(); }
+    else if(a==='manage'){ ST.cfgTab='library'; saveST(); openCfg(); }
     else if(a==='choose') post({type:'chooseVault'});
   });
   p.classList.add('on');
@@ -2471,6 +2894,13 @@ const url = p => IS_HTTP ? '/'+seg(p)
 const dirOf = p => { const i=String(p||'').lastIndexOf('/'); return i<0?'':String(p).slice(0,i); };
 const unesc = s => String(s).replace(/&amp;/g,'&').replace(/&lt;/g,'<')
   .replace(/&gt;/g,'>').replace(/&quot;/g,'"').replace(/&#39;/g,"'");
+/* md 里写 `/图示/x.svg` 这种「从库根算起」的地址，多笔记本时算的是**写它那一本的根**
+   （P7：路径以笔记本名开头，跨本引用没有意义）。base 是这份文档所在的目录，
+   头一段就是它那一本。单库回空串，一切照旧。 */
+function nbAbsBase(base){
+  const n=NB.multi ? NB.of(base||'') : '';
+  return n ? n+'/' : '';
+}
 
 function resolveRef(u, base, isImg){
   // inl() 是先 esc() 再跑正则的，所以这里拿到的已经是转义过的文本，先还原
@@ -2484,7 +2914,7 @@ function resolveRef(u, base, isImg){
                      : /^(?:https?:|mailto:|#|\/\/)/i.test(u);
     return ok ? u : (isImg ? '' : '#');
   }
-  const parts = (u[0]==='/' ? u.slice(1) : (base ? base+'/'+u : u)).split('/');
+  const parts = (u[0]==='/' ? nbAbsBase(base)+u.slice(1) : (base ? base+'/'+u : u)).split('/');
   const out=[];
   for(const s of parts){
     if(!s || s==='.') continue;
@@ -2511,8 +2941,9 @@ async function openExternal(rel){
 async function revealVault(){
   if(IS_HTTP){
     try{
+      // 聚焦某一本时开那一本的根（空串在多本里没有着落，服务端会当成主笔记本）
       const r=await (await fetch('/__reveal',{method:'POST',
-        headers:hdrs(), body:JSON.stringify({路径:''})})).json();
+        headers:hdrs(), body:JSON.stringify({路径:NB.cur ? NB.cur+'/' : ''})})).json();
       if(r && r.ok) return;
     }catch(e){}
   }
@@ -2549,7 +2980,7 @@ function clipPath(rel, opt){
   if(!txt){
     if(!rel) return;
     if(!LIBROOT){ flash(TR('还没连上服务')); return; }
-    txt='file://'+LIBROOT+'/'+rel;
+    txt='file://'+absOf(rel);
   }
   copyText(txt).then(ok=>flash(ok ? (opt.msg||TR('路径已拷贝')) : TR('拷不了')));
 }
@@ -2570,10 +3001,12 @@ function notify(t, opt){
   sp.className='toast-text';
   sp.textContent=String(t||'');
   el.appendChild(sp);
+  if(opt.html) sp.innerHTML=opt.html;            // 「已在 ● 工作 新建」那种带色点的
   if(act && act.label){
     const b=document.createElement('button');
     b.type='button'; b.className='toast-act'; b.textContent=act.label;
-    b.onclick=()=>{ hideToast(); if(act.fn) act.fn(); };
+    // 位置传给回调：「换一个」要在这颗按钮旁边弹一列笔记本，收掉之后就量不到了
+    b.onclick=()=>{ const r=b.getBoundingClientRect(); hideToast(); if(act.fn) act.fn(r); };
     el.appendChild(b);
   }
   el.classList.toggle('act', !!(act && act.label));
@@ -3353,6 +3786,9 @@ function togglePin(rel){
   repaintPages();
 }
 function prunePins(){
+  /* 笔记本列表还没回来（或者刚要迁移）：这时候 items 里的路径形态跟 pins 里的
+     可能不是一回事，剪下去就是把收藏静默删光。等 nbApply() 落地再说。 */
+  if(!nbReady) return;
   const arr=Array.isArray(ST.pins)?ST.pins:[];
   if(!arr.length || !items.length) return;
   const have=new Set(items.map(i=>i.路径));
@@ -3368,8 +3804,12 @@ function openPins(newTab){
 function pageDocs(kind, folder){
   let pool;
   if(kind==='pins'){ const set=pinSet(); pool=items.filter(i=>set.has(i.路径)); }
-  else if(kind==='folder') pool=filesInFolder(folder);
+  else if(kind==='folder') pool=filesInFolder(folder);   // 文件夹本身已经限定了笔记本
   else pool=items.slice();
+  /* 聚焦某个笔记本时只看那一本；「全部」和单库不过滤（P2 / P3）。
+     文件夹页的 folder 前缀里已经带着笔记本名，不用再筛一遍。 */
+  // 收藏是跨笔记本的（§4b.1），不跟着笔记本条收窄
+  if(kind!=='folder' && kind!=='pins' && NB.cur) pool=pool.filter(inCurBook);
   pool=pool.filter(i=>{ const k=kindOf(i); return k==='md'||k==='html'; });
   const f=homeFilter();
   if(f!=='all') pool=pool.filter(i=>kindOf(i)===f);
@@ -3386,13 +3826,68 @@ function resumeDoc(){
   for(let n=0;n<rec.length;n++){
     const r=rec[n]; if(!r || !r.路径) continue;
     const it=items.find(i=>i.路径===r.路径);
-    if(it && kindOf(it)==='md') return it;
+    if(it && kindOf(it)==='md' && inCurBook(it)) return it;
   }
   return null;
 }
+/* 这一篇在哪个目录里。多笔记本时先把笔记本名那一段剥掉——它由 showBook()
+   决定要不要单独说，不跟目录混成一串。 */
 function folderLabel(rel){
-  const p=String(rel||''), at=p.lastIndexOf('/');
+  const p=NB.strip(String(rel||'')), at=p.lastIndexOf('/');
   return at<0 ? TR('库根') : p.slice(0, at);
+}
+/* 正在画的这一屏的「范围」。null＝跟笔记本条走；'' ＝跨全部笔记本
+   （已收藏页、搜索里把范围切回「全部」的那一次）；'名字' ＝限在那一本。
+   收藏是跨笔记本的虚拟文件夹，哪怕此刻聚焦在某一本，它也得报清楚每条是谁的。 */
+let nbCtx=null;
+function withNbCtx(v, fn){
+  const old=nbCtx; nbCtx=v;
+  try{ return fn(); } finally{ nbCtx=old; }
+}
+/* 「这一篇是哪一本的」要不要露出来：只有范围是「全部」时要（P3/P4）。
+   聚焦某一本和单库都不说——同一个笔记本里不必反复讲自己是谁。 */
+function showBook(rel){
+  if(!NB.multi) return '';
+  const s = nbCtx===null ? NB.cur : nbCtx;
+  return s ? '' : NB.of(rel);
+}
+/* 卡片页脚 / 继续阅读 / ⌘K / 搜索结果那一段「这一篇在哪儿」。
+   「全部」模式：● 工作 › 会议（就在那一本的根上时只写 ● 工作，不写「› 库根」——
+   笔记本名本身已经说清了）。聚焦某一本和单库：还是今天那样，黄夹子 ＋ 目录。
+   opt.fdr＝目录那一段套 .fdr（卡片页脚靠它打省略号）；opt.icon＝没有色点时补黄夹子。 */
+/* 就在某一本的根上、而且这一屏不打算说本名（聚焦模式）：这时候「库根」是句
+   没着落的话——哪一本的根？多笔记本时一律报「● 本名」，跟「全部」模式同一种写法。
+   单库照旧写「库根」（P1 零变化）。回空串＝没有这一档，走原来那条。 */
+function rootBook(rel, book){
+  if(book || !NB.multi) return '';
+  return NB.of(rel);
+}
+function whereHtml(rel, opt){
+  opt=opt||{};
+  const book=showBook(rel);
+  const inner=NB.strip(String(rel||''));
+  const root = inner.indexOf('/')<0;
+  if(root){
+    const own=rootBook(rel, book);
+    if(own) return nbDot(own,{sm:true})+`<span class="nbname">${esc(own)}</span>`;
+  }
+  const dir = root ? (book ? '' : TR('库根')) : folderLabel(rel);
+  const d = dir ? (opt.fdr ? `<span class="fdr">${esc(dir)}</span>` : esc(dir)) : '';
+  if(book) return nbDot(book,{sm:true})+`<span class="nbname">${esc(book)}</span>`
+    + (d ? `<span class="csep">›</span>`+d : '');
+  return (opt.icon ? icon('folder',11) : '') + d;
+}
+/* 同一段的纯文本版：给 title / aria-label 这种放不下标签的地方。 */
+function folderText(rel){
+  const book=showBook(rel);
+  const inner=NB.strip(String(rel||''));
+  const root = inner.indexOf('/')<0;
+  if(root){
+    const own=rootBook(rel, book);
+    if(own) return own;
+  }
+  const dir = root ? (book ? '' : TR('库根')) : folderLabel(rel);
+  return book ? (dir ? book+' › '+dir : book) : dir;
 }
 /* 卡片上那两行摘录。/__tree 给的「预览」是原始 md，井号、星号、表格竖线
    全在里面；先洗一遍，再把开头重复的标题去掉，不然卡片上标题会写两遍。 */
@@ -3410,10 +3905,13 @@ function greetingHtml(ico, eyebrow, title, sub, opts){
   const scan = (opts&&opts.scan)
     ? `<span class="ey-sep"></span><span class="scan" data-scan><i></i><span class="tx">${esc(scanChipText())}</span></span>`
     : '';
+  /* 聚焦某个笔记本时大标题后面淡淡带一笔「· ● 工作」（§4.1）。「全部」不带。 */
+  const here = (opts&&opts.here)
+    ? `<span class="here">· ${nbDot(opts.here)}${esc(opts.here)}</span>` : '';
   return `<div class="home-greeting">
     <div>
       <div class="eyebrow">${ico} ${esc(eyebrow)}${scan}</div>
-      <h1>${esc(title)}</h1>
+      <h1>${esc(title)}${here}</h1>
       <p class="home-sub">${esc(sub)}</p>
     </div>
     <button type="button" class="hbtn key hero-new" data-act="newnote">${icon('plus',16)}<span class="lbl">${esc(TR('新建随手记'))}</span></button>
@@ -3424,20 +3922,105 @@ function greetingHtml(ico, eyebrow, title, sub, opts){
    顶层文件夹一多就是三行，5.4.1 起整行可收：收起后只剩「已收藏」＋一枚计数，
    位置不动，所以上面的问候区不会跟着跳。一个顶层文件夹都没有时不出收放件。 */
 function chipsOpen(){ return ST.chipsOpen!==false; }
-function favChipHtml(){
-  return `<button type="button" class="dirchip fav" data-act="pins" title="${esc(TR('已收藏'))}">${icon('star',13)}<span>${esc(TR('已收藏'))}</span></button>`;
+function favChipHtml(cls){
+  return `<button type="button" class="${cls||'dirchip'} fav" data-act="pins" title="${esc(TR('已收藏'))}">${icon('star',13)}<span${cls?' class="lbl"':''}>${esc(TR('已收藏'))}</span></button>`;
 }
-function startChipsHtml(){
+/* 当前笔记本（或单库）那一本的顶层文件夹。data-folder 用的是**前缀路径**，
+   点开的文件夹页因此天然知道自己属于哪一本。 */
+function bookDirs(book){
   const dirs=(TREE&&TREE.目录)||[];
-  if(!dirs.length) return `<div class="dirchips">${favChipHtml()}</div>`;
-  if(!chipsOpen()){
-    return `<div class="dirchips folded">${favChipHtml()}<button type="button" class="chipfold"
+  if(!NB.multi) return dirs.map(d=>({名称:d.名称, 显示名:d.显示名||d.名称, 份数:d.份数||0, path:d.名称}));
+  // 文件夹页看的是**那个文件夹自己那一本**，不一定等于笔记本条选的那一本
+  const cur=book===undefined ? NB.cur : book;
+  if(!cur) return [];
+  return dirs.filter(d=>d.本===cur)
+    .map(d=>({名称:d.名称, 显示名:d.显示名||d.名称, 份数:d.份数||0, path:cur+'/'+d.名称}));
+}
+/* opt.on＝下钻时被点开的那一枚（前缀路径）；opt.drill＝文件夹页那一版，
+   不画「已收藏」也不画收放件（这两样属于开始页）。 */
+function startChipsHtml(opt){
+  opt=opt||{};
+  const dirs=bookDirs(opt.book);
+  /* 多笔记本时「已收藏」挪进了笔记本条（§4b.1），这一行只管文件夹。 */
+  const fav = (NB.multi || opt.drill) ? '' : favChipHtml();
+  const chip=d=>`<button type="button" class="dirchip${opt.on===d.path?' on':''}" data-folder="${esc(d.path)}" title="${esc(d.名称)}">${icon('folder',13)}<span>${esc(d.显示名)}</span></button>`;
+  if(!dirs.length) return fav ? `<div class="dirchips">${fav}</div>` : '';
+  if(!opt.drill && !chipsOpen()){
+    return `<div class="dirchips folded">${fav}<button type="button" class="chipfold"
       data-act="chipsfold" aria-expanded="false" title="${esc(TR('展开文件夹'))}">${icon('folder',14)}<span>${esc(TR('{n} 个文件夹',{n:dirs.length}))}</span><span class="ar" aria-hidden="true">›</span></button></div>`;
   }
-  return `<div class="dirchips">${dirs.map(d=>
-      `<button type="button" class="dirchip" data-folder="${esc(d.名称)}" title="${esc(d.名称)}">${icon('folder',13)}<span>${esc(d.显示名||d.名称)}</span></button>`
-    ).join('')}${favChipHtml()}<button type="button" class="chipfold"
-      data-act="chipsfold" aria-expanded="true" title="${esc(TR('收起文件夹'))}">${icon('chevron-up',13)}<span>${esc(TR('收起'))}</span></button></div>`;
+  const fold = opt.drill ? '' : `<button type="button" class="chipfold"
+      data-act="chipsfold" aria-expanded="true" title="${esc(TR('收起文件夹'))}">${icon('chevron-up',13)}<span>${esc(TR('收起'))}</span></button>`;
+  return `<div class="dirchips">${dirs.map(chip).join('')}${fav}${fold}</div>`;
+}
+/* ── 笔记本条（P2）──────────────────────
+   `全部 | ● 工作 | ● 读书 | ☆ 已收藏 | ＋`。开始页唯一的「当前笔记本」开关，
+   只有两本以上才画。超过 6 本按 .chipfold 那套收起来，「全部」「已收藏」「＋」永不收。
+   opt.scope＝⌘K／搜索页顶上那一行范围芯片：矮一档、没有「＋」和「已收藏」，
+   选择只影响这一次。 */
+function nbStripHtml(cur, opt){
+  opt=opt||{};
+  if(!NB.multi) return '';
+  const scope=!!opt.scope;
+  const folded = !scope && NB.list.length>6 && ST.nbFold!==false;
+  const one=n=>{
+    const gone=n.状态==='离线';
+    return `<button type="button" class="nbchip ${NB.cls(n.名字)}${cur===n.名字?' on':''}${gone?' gone':''}"`
+      + ` data-nb="${esc(n.名字)}" title="${esc(n.名字)}">`
+      + nbDot(n.名字,{gone})
+      + `<span class="lbl">${esc(n.名字)}</span>`
+      + (gone?`<span class="gonetag">${esc(TR('找不到'))}</span>`:'')
+      + `</button>`;
+  };
+  /* 收起来时露头的那两枚里必须有当前选中的那一本：把它藏了，界面上就再也看不出
+     自己此刻在哪一本里。不在前两枚里就顶掉第二枚。 */
+  let shown=NB.list;
+  if(folded){
+    shown=NB.list.slice(0,2);
+    const b=cur ? NB.byName(cur) : null;
+    if(b && shown.indexOf(b)<0) shown=[NB.list[0], b];
+  }
+  let h=`<div class="nbchips${scope?' scope':''}">`
+    + `<button type="button" class="nbchip all${cur===''?' on':''}" data-nb="">`
+    + `<span class="lbl">${esc(TR('全部'))}</span></button>`
+    + shown.map(one).join('');
+  if(folded)
+    h+=`<button type="button" class="chipfold" data-act="nbfold" aria-expanded="false"`
+      + ` title="${esc(TR('展开笔记本'))}"><span>${esc(TR('{n} 本',{n:NB.list.length-shown.length}))}</span>`
+      + `<span class="ar" aria-hidden="true">›</span></button>`;
+  // 展开着也要给一条收回去的路（文件夹芯片那一行早就是这么做的）
+  else if(!scope && NB.list.length>6)
+    h+=`<button type="button" class="chipfold" data-act="nbfold" aria-expanded="true"`
+      + ` title="${esc(TR('收起笔记本'))}">${icon('chevron-up',13)}<span>${esc(TR('收起'))}</span></button>`;
+  if(!scope){
+    h+=favChipHtml('nbchip');
+    h+=`<button type="button" class="nbchip add" data-act="addnb" title="${esc(TR('添加笔记本…'))}"`
+      + ` aria-label="${esc(TR('添加笔记本…'))}">${icon('plus',13)}</button>`;
+  }
+  return h+`</div>`;
+}
+/* 面包屑（下钻）：`● 工作 › 会议 › 2026`，每一段都点得回去。 */
+function crumbsHtml(folder){
+  const parts=String(folder||'').split('/').filter(Boolean);
+  const d=bookDepth();
+  const book=d ? (parts[0]||'') : '';
+  const rest=parts.slice(d);
+  if(!book && !rest.length) return '';
+  let h=`<nav class="crumbs" aria-label="${esc(TR('位置'))}">`;
+  const acc=[];
+  if(book){
+    acc.push(book);
+    h+=nbDot(book,{sm:true})
+      + `<button type="button" class="cb${rest.length?'':' now'}" data-folder="${esc(book)}">${esc(book)}</button>`;
+  }else{
+    h+=`<button type="button" class="cb${rest.length?'':' now'}" data-folder="">${esc(TR('库根'))}</button>`;
+  }
+  rest.forEach((s,i)=>{
+    acc.push(s);
+    h+=`<span class="sep">›</span><button type="button" class="cb${i===rest.length-1?' now':''}"`
+      + ` data-folder="${esc(acc.join('/'))}">${esc(s)}</button>`;
+  });
+  return h+`</nav>`;
 }
 /* 就地重画，滚动位置由 repaintPages 留住；设置页开着就顺手把那颗开关也拨过去。 */
 function setChipsOpen(on){
@@ -3457,6 +4040,7 @@ function tipsCardHtml(){
       ${row('edit',esc(TR('双击正文即可编辑，边写边存')))}
       ${row('focus',esc(TR('专注模式，屏幕上只剩正文')))}
     </div>
+    <p class="tc-more">${icon('plus',13)}${esc(TR('可以再添加一个文件夹当笔记本'))}</p>
   </div>`;
 }
 function sectionHead(label, n){
@@ -3485,7 +4069,7 @@ function cardHtml(i){
       <span class="card-top"><span class="file-icon${html?' html':''}">${icon(html?'globe':'doc',15)}</span><span class="kind-label">${html?'HTML':'MD'}</span></span>
       <h3>${esc(title)}</h3>
       <p class="card-excerpt">${esc(ex)}</p>
-      <span class="card-footer">${icon('folder',11)}<span class="fdr">${esc(folderLabel(rel))}</span>${mark}<span class="when num">${esc(fmtWhen(i.修改时间))}</span></span>
+      <span class="card-footer">${whereHtml(rel,{fdr:1, icon:1})}${mark}<span class="when num">${esc(fmtWhen(i.修改时间))}</span></span>
     </button>
     <button type="button" class="card-pin${pinned?' pinned':''}" data-pin="${esc(rel)}"
       title="${esc(pinTip)}" aria-label="${esc(pinTip+' '+title)}" aria-pressed="${pinned?'true':'false'}">${icon('star',13)}</button>
@@ -3513,7 +4097,7 @@ function resumeHtml(i){
       <span class="overline">${icon('clock',12)} ${esc(TR('继续阅读'))}</span>
       <h2>${esc(cleanTitle(i))}</h2>
       <p class="excerpt">${esc(ex)}</p>
-      <span class="resume-bottom"><span>${esc(folderLabel(i.路径))} · ${mark?mark+' · ':''}${esc(fmtWhen(i.修改时间))}</span><span class="continue">${esc(TR('接着读'))} ${icon('arrow',13)}</span></span>
+      <span class="resume-bottom"><span>${whereHtml(i.路径)} · ${mark?mark+' · ':''}${esc(fmtWhen(i.修改时间))}</span><span class="continue">${esc(TR('接着读'))} ${icon('arrow',13)}</span></span>
     </span>
     <span class="paper-art" aria-hidden="true">
       <span class="paper-front"><b></b><i></i><i></i><i></i><i></i><i></i></span>
@@ -3531,7 +4115,8 @@ function paintStart(box){
       <button type="button" class="hbtn" data-act="revealvault">${icon('folder',15)}<span class="lbl">${esc(TR('在访达中打开这个文件夹'))}</span></button>`;
     box.innerHTML=`<div class="home">
       ${greetingHtml(icon('leaf',13),TR('我的笔记'),
-        greetOn()?greetTitle():TR('今天，想记下什么？'),TR('笔记库已经就位，就差第一篇。'),{scan:true})}
+        greetOn()?greetTitle():TR('今天，想记下什么？'),TR('笔记库已经就位，就差第一篇。'),{scan:true, here:NB.cur})}
+      ${nbStripHtml(NB.cur)}
       ${emptyHtml(TR('这里还空着'),esc(TR('把 Markdown 或网页放进笔记库，它们会自动出现在这里。'))+'<br>'+esc(TR('文件留在原地，不上传，不改格式。')),{big:true, buttons:btns})}
       </div>`;
     return;
@@ -3539,10 +4124,13 @@ function paintStart(box){
   const all=pageDocs('start');
   const shown=all.slice(0,12);
   const last=resumeDoc();
+  const cur=NB.cur;
   // 标题右边那个数报的是这一屏画了几张，不是库里一共几篇——数跟眼睛看到的对得上。
   // 装不下的走下面那条去库根，文件夹页里接着翻。
-  const more=all.length>shown.length
-    ? `<button type="button" class="see-all" data-folder="">${icon('folder',14)}<span>${esc(TR('看全部 {n} 篇',{n:all.length}))}</span></button>`
+  // 「全部」模式下没有库根可去（§4b.7），这一条不画。
+  const rootOfPage = NB.multi ? cur : '';
+  const more=(all.length>shown.length && (!NB.multi || cur))
+    ? `<button type="button" class="see-all" data-folder="${esc(rootOfPage)}">${icon('folder',14)}<span>${esc(TR('看全部 {n} 篇',{n:all.length}))}</span></button>`
     : '';
   /* 问候开着时大标题让给「早上好，某某」，副句接着说下去：上次读到哪儿，
      没读过就问一句今天想写什么。问候关掉＝原来那两句，一个字不动。 */
@@ -3551,8 +4139,9 @@ function paintStart(box){
             : TR('今天，想记下什么？'));
   box.innerHTML=`<div class="home">
     ${greetingHtml(icon('leaf',13),TR('我的笔记'),
-      greetOn()?greetTitle():TR('今天，想记下什么？'),sub,{scan:true})}
-    ${startChipsHtml()}
+      greetOn()?greetTitle():TR('今天，想记下什么？'),sub,{scan:true, here:cur})}
+    ${nbStripHtml(cur)}
+    ${(NB.multi && !cur) ? '' : startChipsHtml()}
     ${last?resumeHtml(last):''}
     ${tipsCardHtml()}
     ${sectionHead(TR('最近打开'), shown.length)}
@@ -3564,50 +4153,74 @@ function paintPins(t, box){
   box=box||(paneOf(t)&&paneOf(t).querySelector('.pagebox'));
   if(!box) return;
   const list=pageDocs('pins');
-  box.innerHTML=`<div class="home">
+  withNbCtx('', ()=>{ box.innerHTML=`<div class="home">
     ${greetingHtml(icon('star',13),TR('收藏##eyebrow'),TR('已收藏'),TR('把常看的、喜欢的，留在手边。'))}
     ${sectionHead(TR('收藏的笔记'), list.length)}
     ${cardsHtml(list, emptyHtml(TR('还没有收藏'),esc(TR('在卡片右上角点一下 ★，它就放进这里了。'))))}
-  </div>`;
+  </div>`; });
 }
 function paintSerp(t, box){
   box=box||(paneOf(t)&&paneOf(t).querySelector('.pagebox'));
   if(!box) return;
   const q=String((t && (t.q||ensureStack(t).q))||'').trim();
   const ts=q.toLowerCase().split(/\s+/).filter(Boolean);
-  if(q && kw!==q){ setKw(q); ftKick(); }
+  /* 范围芯片：默认跟笔记本条走，在这一页改了只影响这一次搜索（brief §3）。
+     换了搜索词就重新跟上笔记本条。 */
+  if(t && t.nbsQ!==q){ t.nbsQ=q; t.nbs=NB.cur; }
+  const scope=(t && t.nbs) || '';
+  if(q && (kw!==q || FT.nb!==scope)){ setKw(q); ftKick(scope); }
+  /* 「匹配的笔记本」与「匹配的文件夹」两类（§6.6）。多本时文件夹带本名前缀。 */
+  const books=(NB.multi && ts.length)
+    ? NB.list.filter(n=>ts.every(x=>n.名字.toLowerCase().includes(x)))
+    : [];
   const folders=(TREE&&TREE.目录||[]).filter(d=>{
     if(!ts.length) return false;
+    if(scope && NB.multi && d.本!==scope) return false;
     const hay=(d.名称+' '+(d.显示名||'')).toLowerCase();
     return ts.every(x=>hay.includes(x));
   });
-  const list=docsMatching(q);
-  if(!list.length && !folders.length){
-    box.innerHTML=`<div class="serp"><p class="serp-q">${esc(TR('在库中搜索'))}</p>
+  const list=docsMatching(q, scope);
+  const strip=nbStripHtml(scope, {scope:true});
+  if(!list.length && !folders.length && !books.length){
+    box.innerHTML=`<div class="serp"><p class="serp-q">${esc(TR('在库中搜索'))}</p>${strip}
       <div class="vacant"><h2>${esc(TR('没有找到「{q}」',{q}))}</h2><p>${esc(TR('换个词，或点书签栏里的文件夹看看。'))}</p></div></div>`;
     return;
   }
+  withNbCtx(scope, ()=>{
   box.innerHTML=`<div class="serp">
-    <p class="serp-q">${esc(TR('找到 {n} 条',{n:list.length+folders.length}))} · ${esc(q)}</p>
-    ${folders.map(d=>`<button type="button" class="search-row" data-folder="${esc(d.名称)}">
+    <p class="serp-q">${esc(TR('找到 {n} 条',{n:list.length+folders.length+books.length}))} · ${esc(q)}</p>
+    ${strip}
+    ${books.map(n=>`<button type="button" class="search-row" data-folder="${esc(n.名字)}">
       <span class="ico">${icon('folder',17)}</span>
-      <span class="search-info"><strong>${esc(d.显示名||d.名称)}</strong><small>${esc(TR('根目录下的子文件夹'))} · ${esc(d.名称)}/</small></span>
+      <span class="search-info"><strong>${esc(n.名字)}</strong><small>${nbDot(n.名字,{sm:true})}${esc(TR('笔记本'))} · ${esc(TR('收录 {n} 篇',{n:n.收录||0}))}</small></span>
       <span class="enter">↵</span>
     </button>`).join('')}
+    ${folders.map(d=>{
+      const path=(NB.multi && d.本) ? d.本+'/'+d.名称 : d.名称;
+      return `<button type="button" class="search-row" data-folder="${esc(path)}">
+      <span class="ico">${icon('folder',17)}</span>
+      <span class="search-info"><strong>${esc(d.显示名||d.名称)}</strong><small>${(NB.multi&&d.本)?nbDot(d.本,{sm:true})+`<span class="nbname">${esc(d.本)}</span><span class="csep">›</span>`:''}${esc(TR('根目录下的子文件夹'))} · ${esc(d.名称)}/</small></span>
+      <span class="enter">↵</span>
+    </button>`;}).join('')}
     ${list.map(i=>{
       const html=kindOf(i)==='html';
       const sn=snipOf(i, ts) || esc(cardText(i));
       return `<button type="button" class="search-row" data-open="${esc(i.路径)}" data-kind="${html?'html':'md'}">
         <span class="ico">${icon(html?'globe':'doc',17)}</span>
-        <span class="search-info"><strong>${hl(cleanTitle(i), ts)}</strong><small>${esc(folderLabel(i.路径))}${sn?' · '+sn:''}</small></span>
+        <span class="search-info"><strong>${hl(cleanTitle(i), ts)}</strong><small>${whereHtml(i.路径)}${sn?' · '+sn:''}</small></span>
         ${html?'<span class="kind">HTML</span>':''}
         <span class="enter">↵</span>
       </button>`;
     }).join('')}
-  </div>`;
+  </div>`; });
 }
+/* 「这一层」＝笔记本名那几段之后正好只剩文件名。单库时 bookDepth() 是 0，
+   跟原来那句 indexOf('/')<0 一模一样。 */
 function filesInFolder(folder){
-  if(!folder) return items.filter(i=>String(i.路径||'').indexOf('/')<0);
+  if(!folder){
+    const n=bookDepth()+1;
+    return items.filter(i=>String(i.路径||'').split('/').length===n);
+  }
   const prefix=String(folder)+'/';
   return items.filter(i=>{
     const p=String(i.路径||'');
@@ -3615,12 +4228,24 @@ function filesInFolder(folder){
     return p.slice(prefix.length).indexOf('/')<0;
   });
 }
+/* folder 一律是**前缀路径**（多本时第一段是笔记本名）。 */
 function subfoldersOf(folder){
   const dirs=(TREE&&TREE.目录)||[];
-  if(!folder) return dirs.map(d=>({名称:d.名称, 显示名:d.显示名||d.名称, 份数:d.份数||0}));
-  if(folder.indexOf('/')<0){
-    const d=dirs.find(x=>x.名称===folder);
-    return ((d&&d.子目录)||[]).map(s=>({名称:s.名称, 显示名:s.名称, 份数:s.份数||0, path:folder+'/'+s.名称}));
+  const d=bookDepth();
+  const parts=String(folder||'').split('/').filter(Boolean);
+  const book=d ? (parts[0]||'') : '';
+  const rel=parts.slice(d);
+  if(!rel.length){
+    // 笔记本根（多）／库根（单）：直接就是 TREE.目录 里属于这一本的那些
+    if(d && !book) return [];
+    return dirs.filter(x=>!d || x.本===book)
+      .map(x=>({名称:x.名称, 显示名:x.显示名||x.名称, 份数:x.份数||0,
+                path:(book?book+'/':'')+x.名称}));
+  }
+  if(rel.length===1){
+    const dd=dirs.find(x=>x.名称===rel[0] && (!d || x.本===book));
+    return ((dd&&dd.子目录)||[]).map(s=>({名称:s.名称, 显示名:s.名称, 份数:s.份数||0,
+                                          path:folder+'/'+s.名称}));
   }
   const prefix=folder+'/';
   const names=new Map();
@@ -3636,22 +4261,36 @@ function subfoldersOf(folder){
   });
   return [...names.keys()].sort().map(n=>({名称:n, 显示名:n, 份数:names.get(n), path:folder+'/'+n}));
 }
+/* 文件夹页（下钻，§4b.14）：
+   面包屑「● 工作 › 会议」在最上面，接着是这一本的顶层芯片（当前那一枚 .on），
+   子文件夹另起一行、浅一档——跟兄弟目录混在同一行的话，看着像是它的邻居
+   而不是它的孩子。 */
 function paintFolder(t, box){
   box=box||(paneOf(t)&&paneOf(t).querySelector('.pagebox'));
   if(!box) return;
   const folder=t.folder || (ensureStack(t).folder) || '';
   const list=pageDocs('folder', folder);
   const subs=subfoldersOf(folder);
-  const name=folder.split('/').filter(Boolean).pop() || TR('库根');
-  const chips=subs.length
-    ? `<div class="dirchips">${subs.map(s=>{
+  const d=bookDepth();
+  const parts=folder.split('/').filter(Boolean);
+  const book=d ? (parts[0]||'') : '';
+  const inner=parts.slice(d);
+  const name=inner.length ? inner[inner.length-1] : (book || TR('库根'));
+  const top=inner.length ? parts.slice(0, d+1).join('/') : '';
+  const subChips=subs.length
+    ? `<div class="dirchips${inner.length?' subs':''}">${subs.map(s=>{
         const path=s.path || (folder ? folder+'/'+s.名称 : s.名称);
-        return `<button type="button" class="dirchip" data-folder="${esc(path)}">${icon('folder',13)}<span>${esc(s.显示名||s.名称)}</span>${s.份数?`<span class="n num">${s.份数}</span>`:''}</button>`;
+        return `<button type="button" class="dirchip${inner.length?' sub':''}" data-folder="${esc(path)}">${icon('folder',13)}<span>${esc(s.显示名||s.名称)}</span>${s.份数?`<span class="n num">${s.份数}</span>`:''}</button>`;
       }).join('')}</div>`
     : '';
+  // 在某一层里面：上面先摆这一本的顶层芯片（当前那枚点亮），子文件夹在下一行
+  const sibChips=inner.length ? startChipsHtml({drill:true, on:top, book:d?book:undefined}) : '';
+  const sub=TR('{n} 篇',{n:list.length})+(inner.length?' · '+inner.join('/'):'');
   box.innerHTML=`<div class="home">
-    ${greetingHtml(folderMark(14),TR('文件夹'), name, TR('{n} 篇',{n:list.length})+(folder?' · '+folder:''))}
-    ${chips}
+    ${greetingHtml(folderMark(14),TR('文件夹'), name, sub, {here:book})}
+    ${crumbsHtml(folder)}
+    ${sibChips}
+    ${subChips}
     ${sectionHead(TR('这个文件夹里'), list.length)}
     ${cardsHtml(list, emptyHtml(subs.length?TR('这一层还没有文件'):TR('空文件夹'), esc(subs.length?TR('点上面的子文件夹看看。'):TR('这里还没有 md 或 html。'))))}
   </div>`;
@@ -3680,13 +4319,29 @@ function syncChrome(){
   const back=$('#navBack'), fwd=$('#navFwd');
   if(back) back.toggleAttribute('disabled', !canBack(t));
   if(fwd)  fwd.toggleAttribute('disabled', !canForward(t));
+  syncHomeDot();
   syncScanChip();
 }
+/* 云的右下角那枚色点：只在聚焦某一本时挂，「全部」和单库不挂（§4b.6）。
+   它回答「我现在在哪本」，笔记本条回答「我可以去哪本」，两者不重复。 */
+function syncHomeDot(){
+  const h=$('#navHome'); if(!h) return;
+  const cur=NB.cur;
+  let d=h.querySelector('.nd');
+  if(!cur){ if(d) d.remove(); return; }
+  if(!d){ d=document.createElement('i'); d.setAttribute('aria-hidden','true'); h.appendChild(d); }
+  d.className='nd sm '+NB.cls(cur);
+}
 
+/* 这个标签属于哪一本（库外文档和页面标签没有本）。 */
+function nbOfTab(t){ return (t && !t.ext && t.path) ? NB.of(t.path) : ''; }
 function tabFolder(t){
-  const p=String((t && (t.ext ? (t.abs||t.path) : t.path)) || '');
-  const parts=p.split('/').filter(Boolean);
-  if(t && t.ext) return parts.length>=2 ? parts[parts.length-2] : TR('库外');
+  if(t && t.ext){
+    const parts=String(t.abs||t.path||'').split('/').filter(Boolean);
+    return parts.length>=2 ? parts[parts.length-2] : TR('库外');
+  }
+  // 多本时先剥掉笔记本名，不然「工作/周会.md」的「文件夹」会写成「工作」
+  const parts=NB.strip(String((t&&t.path)||'')).split('/').filter(Boolean);
   return parts.length>1 ? parts[parts.length-2] : '';
 }
 function commonPrefixLen(a, b){
@@ -3724,6 +4379,15 @@ function tabLabel(t, all){
   const others=(all||[]).filter(x=>x && x!==t)
     .map(x=>String(x.title||'').trim() || TR('无标题'));
   if(others.some(o=>o===title)){
+    /* 撞名：两份都叫「周会」时补一段说清是哪一份。分属不同笔记本时补**笔记本名**
+       ——两个「会议」文件夹里的两份周会，补文件夹名一个字都分不开（§4b.4）。
+       色点是第二道保险，文字这一道给色盲用户和窄窗口。 */
+    const me=nbOfTab(t);
+    if(me){
+      const clash=(all||[]).some(x=>x && x!==t
+        && (String(x.title||'').trim()||TR('无标题'))===title && nbOfTab(x)!==me);
+      if(clash) return {kind:'plain', text:title+' · '+me};
+    }
     const folder=tabFolder(t);
     return {kind:'plain', text: folder ? title+' · '+folder : title};
   }
@@ -3756,6 +4420,10 @@ function drawTabs(){
   const on = !SOLO;
   bar.classList.toggle('on', on);
   bar.classList.remove('has-more');
+  /* 标签身份两案：默认色点，layoutTabs 量出单条太窄时整条退成顶部色条。
+     单库两案都不挂，标签一个像素都不变（P1）。 */
+  bar.classList.toggle('nb-dot', NB.multi && !bar.classList.contains('nb-bar'));
+  if(!NB.multi) bar.classList.remove('nb-bar');
   document.body.classList.toggle('tabs-on', on);
   if(!on){ bar.innerHTML=''; return; }
   bar.innerHTML = TABS.map(t=>{
@@ -3764,8 +4432,10 @@ function drawTabs(){
       ? `<span class="tt"><span class="h">${esc(lab.head)}</span><span class="e">${esc(lab.tail)}</span></span>`
       : `<span class="tt plain">${esc(lab.text)}</span>`;
     const tip=esc(t.title||'')+(t.path?' — '+esc(t.path):'');
-    return `<div class="tab${t.id===curTab?' on':''}${dirty(t)?' dirty':''}" data-id="${t.id}" title="${tip}" role="tab" aria-selected="${t.id===curTab?'true':'false'}">
+    const nb=nbOfTab(t);
+    return `<div class="tab${t.id===curTab?' on':''}${dirty(t)?' dirty':''}${nb?' '+NB.cls(nb):''}" data-id="${t.id}" title="${tip}" role="tab" aria-selected="${t.id===curTab?'true':'false'}">
        <span class="fav" aria-hidden="true">${icon(tabIcon(t),14)}</span>
+       ${nb?`<i class="nd sm" aria-hidden="true"></i>`:''}
        ${tt}<i class="ddot" title="${esc(TR('未保存'))}"></i>
        <button type="button" class="tx" data-close="${t.id}" title="${esc(TR('关掉'))}">${icon('close',11)}</button>
      </div>`;
@@ -3788,6 +4458,20 @@ function drawTabs(){
   requestAnimationFrame(layoutTabs);
 }
 
+/* 标签身份两案的自动切换（§4b.5）：单条标签窄到 110px 以下时，
+   色点占掉的那 12px 就抢走了标题最后二十来个像素——整条退成顶部 2px 色条。
+   回去的门槛抬到 122px，免得刚好卡在边界上来回抖。 */
+function nbTabStyle(bar, tabs){
+  if(!NB.multi){ bar.classList.remove('nb-dot','nb-bar'); return; }
+  const vis=tabs.filter(el=>!el.hidden);
+  if(!vis.length){ bar.classList.add('nb-dot'); bar.classList.remove('nb-bar'); return; }
+  const w=Math.min(...vis.map(el=>el.getBoundingClientRect().width));
+  if(!w) return;                                  // 还没上屏，量不出来
+  const isBar=bar.classList.contains('nb-bar');
+  const next = isBar ? (w < 122) : (w < 110);
+  bar.classList.toggle('nb-bar', next);
+  bar.classList.toggle('nb-dot', !next);
+}
 function layoutTabs(){
   const bar=$('#tabbar');
   if(!bar || !bar.classList.contains('on')) return;
@@ -3796,6 +4480,7 @@ function layoutTabs(){
   if(!tabs.length || !more) return;
   tabs.forEach(el=>{ el.hidden=false; });
   bar.classList.remove('has-more');
+  nbTabStyle(bar, tabs);
 
   const fits=()=>{
     const vis=tabs.filter(el=>!el.hidden);
@@ -3831,6 +4516,7 @@ function layoutTabs(){
   more.querySelector('.n').textContent=String(n);
   more.title=TR('其余 {n} 份',{n});
   more.setAttribute('aria-label', TR('其余 {n} 份',{n}));
+  nbTabStyle(bar, tabs);                          // 收完之后剩下那几条可能又宽回来了
 }
 
 function tabPickOn(){ const p=$('#tabpick'); return !!(p && p.classList.contains('on')); }
@@ -3850,9 +4536,11 @@ function openTabPick(){
   if(!hidden.length){ closeTabPick(); return; }
   p.innerHTML=hidden.map(t=>{
     const folder=tabFolder(t);
-    return `<button type="button" class="tprow" data-id="${t.id}">
+    const nb=nbOfTab(t);
+    return `<button type="button" class="tprow${nb?' '+NB.cls(nb):''}" data-id="${t.id}">
+      ${nb?`<i class="nd sm" aria-hidden="true"></i>`:''}
       <span class="nm"><span class="a">${esc(t.title||TR('无标题'))}</span>
-      ${folder?`<span class="b">${esc(folder)}</span>`:''}</span>
+      ${folder?`<span class="b">${esc(nb?nb+' › '+folder:folder)}</span>`:(nb?`<span class="b">${esc(nb)}</span>`:'')}</span>
       <span class="x" data-close="${t.id}" title="${esc(TR('关掉'))}">${icon('close',11)}</span>
     </button>`;
   }).join('');
@@ -4081,6 +4769,16 @@ function pathSegs(t){
     return all.slice(Math.max(0, all.length-2)).map(x=>({t:x}));
   }
   const parts=String(t.path||'').split('/').filter(Boolean);
+  /* 多笔记本：第一段就是笔记本名，带 nb 记号（色点 ＋ ⌘点开那一本的根目录页）。 */
+  if(bookDepth() && parts.length>=2){
+    const acc=[parts[0]];
+    const out=[{t:parts[0], f:parts[0], nb:1}];
+    parts.slice(1).forEach((x,i,arr)=>{
+      if(i<arr.length-1){ acc.push(x); out.push({t:x, f:acc.join('/')}); }
+      else out.push({t:x});
+    });
+    return out;
+  }
   if(parts.length<2) return [{t:TR('库根'), f:''}, {t:parts[0]||String(t.title||'')}];
   const acc=[];
   return parts.map((x,i)=>{
@@ -4090,9 +4788,14 @@ function pathSegs(t){
 }
 function pathFull(t){ return t.ext ? String(t.abs||t.path||'') : String(t.path||''); }
 function pathChipHtml(t){
+  /* 多笔记本时开头那枚黄夹子换成色点：同一个 14px 槽位，芯片一个像素都不变宽。 */
+  const nb=nbOfTab(t);
+  const fi = nb
+    ? `<span class="fi nbdot ${NB.cls(nb)}"><i class="nd"></i></span>`
+    : `<span class="fi">${icon('folder',14)}</span>`;
   return `<button type="button" class="pathchip has-tip" data-dt="path" aria-label="${esc(TR('拷贝路径'))}"`
     + ` data-segs="${esc(JSON.stringify(pathSegs(t)))}">`
-    + `<span class="fi">${icon('folder',14)}</span>`
+    + fi
     + `<span class="pc-body"></span>`
     + `<span class="cp"><span class="ic-copy">${icon('copy',13)}</span>`
     +   `<span class="ic-done">${icon('check',13)}</span></span>`
@@ -4107,7 +4810,7 @@ function fitPathChip(chip){
     let h = from>0 ? `<span class="pc-seg">…</span><span class="pc-sep">›</span>` : '';
     segs.slice(from).forEach((sg,i,arr)=>{
       const last=i===arr.length-1;
-      h+=`<span class="pc-seg${last?' now':''}"${sg.f!=null?` data-folder="${esc(sg.f)}"`:''}>${esc(sg.t)}</span>`;
+      h+=`<span class="pc-seg${last?' now':''}${sg.nb?' nb':''}"${sg.f!=null?` data-folder="${esc(sg.f)}"`:''}${sg.nb?` data-nb="${esc(sg.t)}"`:''}>${esc(sg.t)}</span>`;
       if(!last) h+=`<span class="pc-sep">›</span>`;
     });
     body.classList.toggle('tight', !!tight);
@@ -4130,6 +4833,7 @@ function pathChipClick(e, chip, t){
              {newTab:true});
     return;
   }
+  // 单击整枚芯片＝拷绝对路径（多本时按那一本的根拼，不是主笔记本的根）
   if(t.ext) clipPath('', {text:pathFull(t), msg:TR('已拷贝路径')});
   else clipPath(t.path, {msg:TR('已拷贝路径')});
   chip.classList.remove('is-copied');
@@ -4142,7 +4846,7 @@ function pathChipClick(e, chip, t){
 }
 function shareDoc(t){
   if(!t || t.ext) return;
-  if(SHELL) post({type:'share', path:LIBROOT+'/'+t.path});
+  if(SHELL) post({type:'share', path:absOf(t.path)});
   else notify(TR('分享要在 AM·Note 里用。'));
 }
 
@@ -4499,6 +5203,16 @@ function newPane(t){
       if(act.dataset.act==='revealvault'){ revealVault(); return; }
       if(act.dataset.act==='tipsok'){ ST.tips=false; saveST(); repaintPages(); return; }
       if(act.dataset.act==='chipsfold'){ setChipsOpen(!chipsOpen()); return; }
+      if(act.dataset.act==='addnb'){ addVaultFlow(); return; }
+      // 收放两个方向都走这一颗：默认（undefined）＝收着，按一下展开，再按一下收回
+      if(act.dataset.act==='nbfold'){ ST.nbFold=(ST.nbFold===false); saveST(); repaintPages(); return; }
+    }
+    /* 笔记本条：整页唯一的「当前笔记本」开关（P2）。
+       搜索结果页顶上那一行长得一样，但它是「这一次的范围」，不动 ST.nb。 */
+    const nbc=e.target.closest('[data-nb]');
+    if(nbc){
+      if(nbc.closest('.nbchips.scope')){ t.nbs=nbc.dataset.nb||''; paintPage(t, {quiet:true}); return; }
+      setCurNb(nbc.dataset.nb||''); return;
     }
     const pin=e.target.closest('[data-pin]');
     if(pin){ e.preventDefault(); e.stopPropagation(); togglePin(pin.dataset.pin); return; }
@@ -4543,7 +5257,7 @@ function newPane(t){
     const hp=e.target.closest('.histpill');
     if(hp){ const box=hp.closest('.histbox'); if(box) box.classList.toggle('open'); return; }
     const a=e.target.closest('a'); if(!a || !md0.contains(a)) return;
-    if(a.dataset.wl!==undefined){ e.preventDefault(); openWiki(a.dataset.wl, e); return; }
+    if(a.dataset.wl!==undefined){ e.preventDefault(); openWiki(a.dataset.wl, e, t.path); return; }
     const rel=libRel(a.dataset.u||'', dirOf(t.path));
     if(rel){ e.preventDefault(); openByPath(rel, {newTab:e.metaKey||e.ctrlKey}); }
   });
@@ -4689,12 +5403,33 @@ async function openDoc(it, opt){
   if(opt.jump && t && kind==='md') flashHit(t, opt.jump);
 }
 
-/* ── 按路径 / 题名打开 ──────────────────── */
-function openByPath(rel, opt){
+/* ── 按路径 / 题名打开 ────────────────────
+   绝对路径 → 前缀路径，先问服务端 `GET /__locate?abs=`：它按 realpath 比，
+   `/tmp` 与 `/private/tmp`、库里的软链接都能对上，而页面这边只有字符串前缀
+   （壳递进来的路径没标准化过，两种写法都可能到）。老服务端没有这条路由
+   （或者服务没起）才退回客户端的最长前缀匹配。 */
+let locateOff=false;        // 老服务端没这条路由：问过一次就别再问，免得每开一份刷一条 404
+async function locateAbs(abs){
+  if(IS_HTTP && !locateOff){
+    try{
+      const rs=await fetch('/__locate?abs='+encodeURIComponent(abs),{cache:'no-store'});
+      if(rs.status===404){ locateOff=true; throw 0; }
+      const r=await rs.json();
+      if(r && r.ok && r.路径) return {rel:String(r.路径)};
+      if(r && r.代码==='outside') return {};                 // 确实在所有笔记本外头
+      if(r && r.代码==='bad_path') return {bad:r.错误||''};
+    }catch(e){}                                              // 没应答／回了看不懂的：往下回落
+  }
+  return {rel:relFromAbs(abs)||''};
+}
+async function openByPath(rel, opt){
   if(!rel) return;
+  /* 壳递进来的一律是绝对路径（访达双击、拖进来、-AMNOpenAtLaunch）：折成前缀
+     路径；一个都不沾边的 .md 走库外只读那条路。 */
   if(rel[0]==='/' ){
-    const root=LIBROOT ? LIBROOT.replace(/\/$/,'')+'/' : '';
-    if(root && rel.startsWith(root)) return openByPath(rel.slice(root.length), opt);
+    const hit=await locateAbs(rel);
+    if(hit.rel) return openByPath(hit.rel, opt);
+    if(hit.bad!==undefined){ tell(TR('打不开'), hit.bad||TR('这个路径不合法')); return; }
     if(/\.md$/i.test(rel)) return openExtPath(rel);
     tell(TR('打不开'), TR('库外的文件只能读 .md：{path}',{path:rel}));
     return;
@@ -4712,7 +5447,8 @@ function libRel(u, base){
   if(!u || /^(?:[a-z][a-z0-9+.\-]*:|\/\/|#)/i.test(u)) return null;
   u=u.split('#')[0].split('?')[0];
   if(!/\.(md|html|htm)$/i.test(u)) return null;
-  const parts=(u[0]==='/' ? u.slice(1) : (base ? base+'/'+u : u)).split('/');
+  // 「/…」＝从**写它那一本**的根算起（多笔记本时补回本名前缀，同 resolveRef）
+  const parts=(u[0]==='/' ? nbAbsBase(base)+u.slice(1) : (base ? base+'/'+u : u)).split('/');
   const out=[];
   for(let s of parts){
     if(!s || s==='.') continue;
@@ -4723,24 +5459,38 @@ function libRel(u, base){
   return out.length ? out.join('/') : null;
 }
 
-/* [[题名]] 解析：先跟标题精确对，再跟文件名主干对，再退到包含匹配。 */
-function wikiMatches(name){
+/* [[题名]] 解析：先跟标题精确对，再跟文件名主干对，再退到包含匹配。
+   多笔记本时先在**同一本**里找，找不到才扩到全体——[[周会]] 写在工作笔记里，
+   多半指的是工作那一本的周会（brief §6.6）。 */
+function wikiMatches(name, from){
   const n=name.trim().toLowerCase();
   if(!n) return [];
   const stem=p=>p.split('/').pop().replace(/\.(md|html|htm)$/i,'').toLowerCase();
-  const exact=items.filter(i=>(i.标题||'').toLowerCase()===n || stem(i.路径)===n);
-  if(exact.length) return exact;
-  return items.filter(i=>(i.标题||'').toLowerCase().includes(n) || stem(i.路径).includes(n))
-              .slice(0,12);
+  const pick=pool=>{
+    const exact=pool.filter(i=>(i.标题||'').toLowerCase()===n || stem(i.路径)===n);
+    if(exact.length) return exact;
+    return pool.filter(i=>(i.标题||'').toLowerCase().includes(n) || stem(i.路径).includes(n))
+               .slice(0,12);
+  };
+  const book=NB.multi ? NB.of(from||'') : '';
+  if(book){
+    const mine=pick(items.filter(i=>NB.of(i.路径)===book));
+    if(mine.length) return mine;
+  }
+  return pick(items);
 }
-function openWiki(name, e){
-  const c=wikiMatches(name);
+function openWiki(name, e, from){
+  const c=wikiMatches(name, from);
   if(!c.length){ flash(TR('库里没有叫「{name}」的产出',{name})); return; }
   if(c.length===1) return openDoc(c[0], {newTab:!!(e&&(e.metaKey||e.ctrlKey))});
   let pk=$('#wlpick');
   if(!pk){ pk=document.createElement('div'); pk.id='wlpick'; document.body.appendChild(pk);
     document.addEventListener('click', ev=>{ if(!pk.contains(ev.target)) pk.classList.remove('on'); }, true); }
-  pk.innerHTML=c.map((i,ix)=>`<button data-ix="${ix}">${esc(i.标题)}<span class="wp">${esc(i.路径)}</span></button>`).join('');
+  pk.innerHTML=c.map((i,ix)=>{
+    const nb=NB.of(i.路径);
+    return `<button data-ix="${ix}"${nb?` class="${NB.cls(nb)}"`:''}>${nbDot(nb,{sm:true})}${esc(i.标题)}`
+      + `<span class="wp">${nb?esc(nb)+' › ':''}${esc(NB.strip(i.路径))}</span></button>`;
+  }).join('');
   pk.querySelectorAll('button').forEach(b=>b.onclick=ev=>{
     ev.stopPropagation(); pk.classList.remove('on'); openDoc(c[+b.dataset.ix], {newTab:!!(ev.metaKey||ev.ctrlKey)}); });
   pk.classList.add('on');
@@ -4800,7 +5550,7 @@ async function loadMd(t){
   }catch(err){
     md.textContent='';
     tell(TR('读不出这一份'), IS_HTTP ? TR('服务没应答。') :
-      TR('浏览器不允许网页读本地文件。从 Dock 上的 AM·Note 图标进来就能读。')+'\n\n'+LIBROOT+'/'+t.path);
+      TR('浏览器不允许网页读本地文件。从 Dock 上的 AM·Note 图标进来就能读。')+'\n\n'+absOf(t.path));
   }
   applyPref();
   drawDocMeta(t);
@@ -6231,7 +6981,7 @@ function syncNative(){
   lastNat=sig;
   const file=hasDocNow(t);
   post({type:'doc', title:t?(t.title||''):null,
-        path: file ? ((t&&!t.ext)?(LIBROOT+'/'+t.path):t.path) : null});
+        path: file ? ((t&&!t.ext)?absOf(t.path):t.path) : null});
   post({type:'dirty', on:d});
   post({type:'canedit', on:!!file && !t.ext && kindOfTab(t)==='md' && canEditPath(t.path)});
 }
@@ -6531,10 +7281,12 @@ let PAGE=80;                    // 往下滚动续加，不加按钮
 
 const stripNo = s => String(s||'').replace(/^\d{1,2}[、_.．]\s*/,'');
 
-/* 文件夹＝路径的前两段。再往下不切——库里的专项就住在第二层。 */
+/* 文件夹＝路径的前两段。再往下不切——库里的专项就住在第二层。
+   多笔记本时先把开头的笔记本名剥掉：不剥的话「工作」会被当成一个顶层文件夹。 */
 function prepItems(){
+  const d=bookDepth();
   items.forEach(i=>{
-    const seg=(i.路径||'').split('/');
+    const seg=(i.路径||'').split('/').slice(d);
     i._d0 = seg.length>1 ? seg[0] : '';
     i._d1 = seg.length>2 ? seg[1] : '';
   });
@@ -6585,6 +7337,15 @@ function whenLabel(sec, wide){
 function setTree(t){
   if(!t || !t.ok) return;
   TREE=t;
+  /* 多本的 /__tree 顺手带一份笔记本列表：比 /__status 早到时先用它，
+     首屏就能画对笔记本条（单本的 /__tree 一字不变，没有这个键）。 */
+  let nbNew=false;
+  if(Array.isArray(t.笔记本) && t.笔记本.length){
+    const was=NB.multi;
+    nbNew = nbApply(t.笔记本, '多') || was!==NB.multi;
+    // 这一趟翻了面：下面这棵树的路径形态跟手上的标签对不上，画它没有意义，整页重来
+    if(nbFlipped){ reloadForNb({writeST:true}); return; }
+  }
   let docs=t.文档||[];
   /* 刚挪进废纸篓的那几份：索引跟上之前先当它们不在。索引真的不列了就解除，
      免得这张表越攒越长（撤销那条路上 untrashDoc 自己会删）。
@@ -6600,10 +7361,17 @@ function setTree(t){
   items=docs.map(d=>({
     路径:d.路径, 标题:d.标题||'', 类型:d.类型||'md',
     修改时间:d.改于||0, 日期:ymd(d.改于), 预览:d.预览||'',
+    本:d.本||'',                              // 多本时服务端标好了这一条属于哪一本
     代理:d.代理||''}));                       // 有名字＝最近一次是本机 AI 助手改的
   prepItems(); syncNotePv(); prunePins();
   buildNav(); render();
   syncScanChip();
+  /* 笔记本列表刚到（solo 窗口、首屏 /__tree 比 /__status 快）：
+     标签的色点、云上那一枚、文档头的路径芯片都得补画一次。 */
+  if(nbNew){
+    syncHomeDot(); drawTabs();
+    const at=active(); if(at) drawDocBar(at);
+  }
   TABS.forEach(t=>{
     const k=kindOfTab(t);
     if(isPageKind(k)) paintPage(t);
@@ -6629,10 +7397,17 @@ function kindOk(i){
   if(fKind==='html') return k==='html';
   return k==='md' || k==='html';
 }
+/* 这一条在不在它那一本的随手记目录里。多本时每本各有各的随手记目录。 */
+function inNotesDir(rel){
+  const book=NB.of(rel);
+  const b=book ? NB.byName(book) : null;
+  const nd=(b&&b.随手记目录)||NOTE_DIR;
+  return NB.strip(String(rel||'')).startsWith(nd+'/');
+}
 function passes(i){
-  if(fNotes) return String(i.路径||'').startsWith(NOTE_DIR+'/');
+  if(fNotes) return inNotesDir(i.路径);
   if(!kindOk(i)) return false;
-  if(String(i.路径||'').startsWith(NOTE_DIR+'/') && !fDir) return false;  // 随手记有自己那一格
+  if(inNotesDir(i.路径) && !fDir) return false;                          // 随手记有自己那一格
   if(fDir===null) return true;                                           // 最近：md 和 html 都进
   if(i._d0!==fDir) return false;
   if(fSub && i._d1!==fSub) return false;
@@ -6661,9 +7436,12 @@ function buildNav(){
   const ct=$('#ctRecent'); if(ct)
     ct.textContent=items.filter(i=>(i.修改时间||0)*1000 > Date.now()-7*864e5).length || '';
 
+  /* 多笔记本时按当前那一本筛：`名称` 是本内相对的，两本都有「会议」就会重名，
+     不筛就是同一个名字出现两遍、点哪一枚都说不清是谁的。「全部」不筛。 */
   const dirs=(TREE && TREE.目录)
-    ? TREE.目录.map(d=>({名称:d.名称, 份数:d.份数, 子目录:d.子目录||[]})) : [];
-  const sig=[fDir,fSub,!!kw,dirs.length,dirs.map(d=>d.名称+':'+d.份数).join('|')].join('~');
+    ? TREE.目录.filter(d=>!NB.cur || d.本===NB.cur)
+        .map(d=>({名称:d.名称, 份数:d.份数, 子目录:d.子目录||[]})) : [];
+  const sig=[fDir,fSub,!!kw,NB.cur,dirs.length,dirs.map(d=>d.名称+':'+d.份数).join('|')].join('~');
   if(sig===navSig) return;
   navSig=sig;
 
@@ -6703,28 +7481,35 @@ function goHome(notes){
   buildNav(); render();
 }
 function openNotesFolder(){
-  navigate(makeEntry('folder', {folder:NOTE_DIR, title:NOTE_DIR, path:NOTE_DIR+'/'}));
+  // 跟 newNote() 用同一条解析：聚焦哪一本就开哪一本的随手记
+  const f=noteDirOf(NB.multi ? (NB.cur||NB.default) : '');
+  navigate(makeEntry('folder', {folder:f, title:f.split('/').pop(), path:f+'/'}));
 }
 
 /* ── 搜索 ───────────────────────────────
    搜索一律走全库：只要搜索框里有字，文件夹就不参与。 */
 const terms = () => kw.toLowerCase().split(/\s+/).filter(Boolean);
-const hayOf = i => (String(i.标题||'')+' '+String(i.路径||'')+' '+String(i.预览||'')).toLowerCase();
+/* 路径里那一段笔记本名不参与匹配：留着它，打「工作」就等于把那一本所有笔记
+   都算成命中（范围芯片才是选本的地方，不是搜索词）。 */
+const hayOf = i => (String(i.标题||'')+' '+NB.strip(String(i.路径||''))+' '+String(i.预览||'')).toLowerCase();
 
 /* 标题和路径的匹配在本地立刻出；正文命中问服务的全文索引（/__search），防抖 250ms。 */
-let FT={q:'', map:new Map(), 状态:'', 总:0, timer:null};
-function ftKick(){
+let FT={q:'', nb:'', map:new Map(), 状态:'', 总:0, timer:null};
+/* nb＝这一次搜索限在哪一本（'' ＝全体）。范围换了也要重发，缓存键是 q＋nb。 */
+function ftKick(nb){
   if(!LIVE) return;
   const q=kw;
-  if(q===FT.q) return;
+  nb=String(nb||'');
+  if(q===FT.q && nb===FT.nb) return;
   clearTimeout(FT.timer);
-  if(!q){ FT={q:'', map:new Map(), 状态:'', 总:0, timer:null}; return; }
+  if(!q){ FT={q:'', nb:'', map:new Map(), 状态:'', 总:0, timer:null}; return; }
   FT.timer=setTimeout(async()=>{
     try{
-      const r=await (await fetch('/__search?q='+encodeURIComponent(q)+'&n=200',
+      const r=await (await fetch('/__search?q='+encodeURIComponent(q)+'&n=200'
+                                 +(nb?'&nb='+encodeURIComponent(nb):''),
                                  {cache:'no-store'})).json();
       if(kw!==q) return;                       // 打字比请求快，过期的丢掉
-      FT.q=q;
+      FT.q=q; FT.nb=nb;
       FT.map=new Map((r.结果||[]).map(h=>[h.路径,h]));
       FT.状态=(r.状态||{}).状态||'';
       FT.总=r.总命中||0;
@@ -6741,14 +7526,17 @@ function hit(i){
   if(k!=='md' && k!=='html') return false;
   return ts.every(t=>hayOf(i).includes(t)) || (FT.q===kw && FT.map.has(i.路径));
 }
-function docsMatching(q){
+/* nb＝这一次的搜索范围（'' ＝全体）。跟服务端的 nb= 用同一个名字。 */
+function docsMatching(q, nb){
   q=String(q||'').trim();
+  nb=String(nb||'');
   const ts=q.toLowerCase().split(/\s+/).filter(Boolean);
   if(!ts.length) return [];
   const seen=new Set(), out=[];
   const useFt=FT.q===q;
+  const okBook=p=>!nb || NB.of(p)===nb;
   const take=i=>{
-    const p=i && i.路径; if(!p || seen.has(p)) return;
+    const p=i && i.路径; if(!p || seen.has(p) || !okBook(p)) return;
     const k=kindOf(i);
     if(k!=='md' && k!=='html') return;
     seen.add(p); out.push(i);
@@ -6763,12 +7551,16 @@ function docsMatching(q){
         take({路径:p, 标题:h.标题||p.split('/').pop(), 类型:h.类型, 预览:''});
     });
   }
-  return out.sort((a,b)=>score(b,ts)-score(a,ts));
+  /* 同分时当前笔记本优先（brief §3）。 */
+  const cur=NB.cur;
+  const mine=i=>(cur && NB.of(i.路径)===cur) ? 1 : 0;
+  return out.sort((a,b)=>(score(b,ts)-score(a,ts)) || (mine(b)-mine(a)));
 }
 
 /* 相关度：文件名全中最重（跟服务端第一档同一个判据），标题次之，正文命中加一点。 */
 function score(i, ts){
-  const t=(i.标题||'').toLowerCase(), p=(i.路径||'').toLowerCase();
+  // 笔记本名那一段不算分（同 hayOf）：不然聚焦哪一本，那一本整体高 8 分
+  const t=(i.标题||'').toLowerCase(), p=NB.strip(i.路径||'').toLowerCase();
   const name=p.split('/').pop();
   const fb0=FT.map.get(i.路径);
   let s=0;
@@ -6893,10 +7685,17 @@ const NOTEPV=new Map();
 
 const byRecent=(a,b)=>(b.修改时间||0)-(a.修改时间||0);
 
+/* 这一趟全文搜索限在哪一本：搜索结果页上改过范围就听它的，否则跟笔记本条走。
+   render() 和 paintSerp() 各踢一次 ftKick，两边给的范围不一样时同一次搜索会
+   打两趟 /__search，后一趟还把前一趟的结果顶掉。 */
+function serpScope(){
+  const at=active();
+  return (at && kindOfTab(at)==='search' && at.nbs) ? at.nbs : NB.cur;
+}
 function render(){
   const ts=terms(), searching=ts.length>0;
   document.body.classList.toggle('searching', searching);
-  if(searching) ftKick();
+  if(searching) ftKick(serpScope());
   buildNav();
   const kind = searching ? 'res' : 'lrow';
   const glab = 'lgroup';
@@ -6964,7 +7763,7 @@ function wireRows(root){
     el.oncontextmenu=e=>{ if(!selSet.has(seq)) selectSeq(seq, false); rowMenu(e, seq); };
     el.ondragstart=e=>{
       const picked=(selSet.size?[...selSet]:[seq]).map(s=>listNow[s]).filter(Boolean);
-      const uris=picked.map(i=>'file://'+encodeURI(LIBROOT+'/'+i.路径)).join('\n');
+      const uris=picked.map(i=>'file://'+encodeURI(absOf(i.路径))).join('\n');
       try{
         e.dataTransfer.setData('text/uri-list', uris);
         e.dataTransfer.setData('text/plain', uris);
@@ -7036,7 +7835,7 @@ function rowMenu(e, seq){
     else if(id==='reveal') picked.forEach(x=>revealPath(x.路径));
     else if(id==='copyrel') copyText(picked.map(x=>x.路径).join('\n')).then(ok=>flash(ok?TR('路径已拷贝'):TR('拷不了')));
     else if(id==='copyurl'){
-      copyText(picked.map(x=>'file://'+LIBROOT+'/'+x.路径).join('\n'))
+      copyText(picked.map(x=>'file://'+absOf(x.路径)).join('\n'))
         .then(ok=>flash(!ok ? TR('拷不了') : (picked.length>1?TR('{n} 条路径已拷贝',{n:picked.length}):TR('路径已拷贝'))));
     }
   });
@@ -7087,12 +7886,12 @@ function docMenu(e, t){
     else if(id==='cancel') cancelEdit();
     else if(id==='newwin') openSolo(t.path);
     else if(id==='copyurl'){
-      const s = t.ext ? t.abs : (LIBROOT+'/'+t.path);
+      const s = t.ext ? t.abs : absOf(t.path);
       copyText('file://'+s).then(ok=>flash(ok?TR('路径已拷贝'):TR('拷不了')));
     }
     else if(id==='reveal') revealPath(t.path);
     else if(id==='type') openType();
-    else if(id==='share') post({type:'share', path:LIBROOT+'/'+t.path});
+    else if(id==='share') post({type:'share', path:absOf(t.path)});
   });
 }
 
@@ -7193,12 +7992,19 @@ const CK_ACTS=[
   {id:'home', title:K('回到开始页'), kbd:'',
    kw:['home','start','start page','开始','開始','首页','首頁'],
    go(){ navigate(makeEntry('start', {title:TR('开始')})); }},
+  /* 只有两本以上才出现：弹一列笔记本（含「全部」），选了就是笔记本条那一下。 */
+  {id:'nb', title:K('切换到笔记本…'), kbd:'', multi:true,
+   kw:['notebook','switch','vault','笔记本','筆記本','切换','切換'],
+   go(){ pickNotebook(null, {all:true}, n=>setCurNb(n)); }},
 ];
 /* seed 预填一段文字。opt.select 为真＝全选（AMN.search），否则光标停在末尾
    （开始页敲第一个字那条路：接着敲第二个字不能把第一个顶掉）。 */
+/* ⌘K 面板这一次的搜索范围。开面板时跟笔记本条对齐，改了只影响这一次。 */
+let ckScope='';
 function openQuick(seed, opt){
   opt=opt||{};
   closeUserPop();               // 盖住了就不该还开着：Esc 得先关面板
+  ckScope=NB.cur;
   $('#cmdkWrap').classList.add('on');
   const el=$('#ck'); el.value=seed||''; ckSel=0; ckRender();
   setTimeout(()=>{
@@ -7212,7 +8018,8 @@ const quickOn = () => $('#cmdkWrap').classList.contains('on');
 function ckNotes(q){
   q=String(q||'').trim().toLowerCase();
   const stem=p=>p.split('/').pop().replace(/\.(md|html|htm)$/i,'');
-  const pool=items.filter(i=>{ const k=kindOf(i); return k==='md'||k==='html'; });
+  const pool=items.filter(i=>{ const k=kindOf(i); return k==='md'||k==='html'; })
+    .filter(i=>!ckScope || NB.of(i.路径)===ckScope);
   if(!q) return pool.sort(byRecent).slice(0,12);
   const w=q.split(/\s+/).filter(Boolean);
   const rank=i=>{
@@ -7226,8 +8033,11 @@ function ckNotes(q){
     });
     return s;
   };
+  /* 同分时当前笔记本优先（brief §3 的搜索范围细则）。 */
+  const cur=NB.cur;
+  const mine=i=>(cur && NB.of(i.路径)===cur) ? 1 : 0;
   return pool.map(i=>({i, s:rank(i)})).filter(x=>x.s>=0)
-    .sort((a,b)=> b.s-a.s || (b.i.修改时间||0)-(a.i.修改时间||0))
+    .sort((a,b)=> b.s-a.s || mine(b.i)-mine(a.i) || (b.i.修改时间||0)-(a.i.修改时间||0))
     .slice(0,12).map(x=>x.i);
 }
 function ckItems(q){
@@ -7236,6 +8046,7 @@ function ckItems(q){
   const head=raw ? [{kind:'q', q:raw}] : [];
   /* 三处都认：译文（眼睛看到的那串）、简体源串、别名。 */
   const acts=CK_ACTS.filter(a=>{
+    if(a.multi && !NB.multi) return false;
     if(!low) return true;
     const hay=[TR(a.title), a.title].concat(a.kw||[]).join(' ').toLowerCase();
     return hay.includes(low);
@@ -7247,15 +8058,20 @@ function ckItems(q){
 const CK_ICON={tab:'plus', new:'new-note', win:'newwin',
   edit:'pencil', type:'sliders', finder:'folder', home:'home'};
 /* 全库搜索：跟原来地址栏回车一字不差——setKw ＋ 一张搜索结果页。 */
-function runSearch(q, newTab){
+function runSearch(q, newTab, scope){
   q=String(q||'').trim(); if(!q) return;
   setKw(q);
-  navigate(makeEntry('search', {q, title:q, path:TR('搜索: {q}',{q})}), {newTab:!!newTab});
+  const p=navigate(makeEntry('search', {q, title:q, path:TR('搜索: {q}',{q})}), {newTab:!!newTab});
+  // ⌘K 里改过范围就带过去，别让结果页又跳回笔记本条那一本
+  if(scope!==undefined && p && p.then) p.then(t=>{
+    if(t){ t.nbsQ=q; t.nbs=scope; paintPage(t); }
+  });
 }
 function runCk(it, newTab){
+  const scope=ckScope;
   closeQuick();
   if(!it) return;
-  if(it.kind==='q'){ runSearch(it.q, newTab); return; }
+  if(it.kind==='q'){ runSearch(it.q, newTab, scope); return; }
   if(it.kind==='act'){ it.a.go(); return; }
   openDoc(it.i, newTab?{newTab:true}:null);
 }
@@ -7292,7 +8108,10 @@ function ckRender(){
     html+=`<div class="search-label">${esc(TR('动作'))}</div>`;
     acts.forEach(it=>{
       const n=ckList.indexOf(it);
-      html+=row(n, icon(CK_ICON[it.a.id]||'arrow',17), esc(TR(it.a.title)), '',
+      /* 「新建随手记」的副标写清楚会落到哪一本（P5）。 */
+      const tgt = (it.a.id==='new' && NB.multi) ? (NB.cur||NB.default) : '';
+      const sub = tgt ? nbDot(tgt,{sm:true})+`<span class="nbname">${esc(tgt)}</span>` : '';
+      html+=row(n, icon(CK_ICON[it.a.id]||'arrow',17), esc(TR(it.a.title)), sub,
         it.a.kbd ? `<kbd>${esc(it.a.kbd)}</kbd>` : '<span class="enter">↵</span>');
     });
   }
@@ -7302,15 +8121,25 @@ function ckRender(){
     notes.forEach(it=>{
       const n=ckList.indexOf(it);
       const isHtml=kindOf(it.i)==='html';
-      const bits=[folderLabel(it.i.路径), cardText(it.i)].filter(Boolean);
+      /* 副标：「● 工作 › 会议 · 摘要」。范围锁在某一本时不重复报本名。 */
+      const where = withNbCtx(ckScope, ()=>whereHtml(it.i.路径));
+      const ex=cardText(it.i);
       html+=row(n, icon(isHtml?'globe':'doc',17), mark(cleanTitle(it.i)),
-        esc(bits.join(' · ')), '<span class="enter">↵</span>');
+        where+(ex?' · '+esc(ex):''), '<span class="enter">↵</span>');
     });
   }
   if(!ckList.length || (ckList.length===1 && qrow)){
     html+=`<div class="modal-empty"><h2>${esc(TR('还没找到这篇笔记'))}</h2>`
       + `<p>${esc(TR('换一个短一点的词试试。'))}</p>`
       + `<button type="button" class="hbtn" id="ckNew">${icon('plus',15)}<span>${esc(TR('先记下这个想法'))}</span></button></div>`;
+  }
+  const sc=$('#ckScope');
+  if(sc){
+    sc.innerHTML=nbStripHtml(ckScope, {scope:true});
+    sc.querySelectorAll('[data-nb]').forEach(b=>b.onclick=()=>{
+      ckScope=b.dataset.nb||''; ckSel=0; ckRender();
+      const el=$('#ck'); if(el) el.focus();
+    });
   }
   $('#ckList').innerHTML=html;
   $$('#ckList .search-row').forEach(el=>{
@@ -7558,18 +8387,22 @@ async function newNote(){
   const cur=active(); if(cur && cur.editing) flushSave(cur);
   const {日, 紧}=ymdParts();
   const body='# '+UNTITLED_LOCAL+'\n\n';
+  /* 只看笔记本条：聚焦某一本就落它的随手记，「全部」落默认笔记本（P5）。
+     **不看正在读的是哪一本**——那不是一种模式，看它规则就变成两条了。 */
+  const book = NB.multi ? (NB.cur || NB.default) : '';
+  const dir = noteDirOf(book);
   newNoteBusy=true;
   try{
     const used=takenPaths();
     for(let i=1;i<=20;i++){
-      const rel=`${NOTE_DIR}/${UNTITLED_LOCAL}${i>1?'_'+i:''}_${紧}.md`;
+      const rel=`${dir}/${UNTITLED_LOCAL}${i>1?'_'+i:''}_${紧}.md`;
       if(used.has(rel)) continue;
       let r;
       try{
         r=await (await fetch('/__save',{method:'POST', headers:hdrs(),
           body:JSON.stringify({路径:rel, 正文:body, 新建:true})})).json();
       }catch(e){ tell(TR('建不了'), TR('服务没应答')); return; }
-      if(r && r.ok){ await openFreshNote(r.路径||rel, 日); return; }
+      if(r && r.ok){ await openFreshNote(r.路径||rel, 日); newNoteToast(book, r.路径||rel, body); return; }
       /* 「这个名字被占了」要靠稳定的短码认，别去匹配服务端的中文文案——
          那句话现在会跟着语言变。老服务不给「代码」，退回原来那条正则。 */
       const code=(r&&r.代码)||'';
@@ -7593,6 +8426,197 @@ async function openFreshNote(rel, 日){
   await startEdit({fresh:true});
 }
 
+/* ═══ 5.7 笔记本的那几个动作 ═══════════════
+   切当前本、弹一列笔记本、新建之后那句 toast 和它的退路、增删改名重定位。 */
+
+/* 笔记本条／⌘K 里选了一本。'' ＝「全部」。 */
+function setCurNb(name){
+  const v=String(name||'');
+  if(!NB.multi || ST.nb===v) return;
+  ST.nb=v; saveST();
+  syncHomeDot();
+  ftKick(v);                                  // 搜索的默认范围跟着走
+  const at=active();
+  TABS.forEach(t=>{ if(isPageKind(kindOfTab(t))) paintPage(t, {quiet:t!==at}); });
+  pushState();
+}
+/* 弹一列笔记本让人选。壳里是真的 NSMenu，浏览器里是同款面板（都走 popMenu）。
+   anchor 可以是元素、DOMRect，或者不给（就落在窗口中间偏下）。 */
+function pickNotebook(anchor, opt, cb){
+  opt=opt||{};
+  const r = (anchor && anchor.getBoundingClientRect) ? anchor.getBoundingClientRect()
+          : (anchor && anchor.left!=null ? anchor : null);
+  const e={clientX: r?r.left:Math.round(innerWidth/2)-90,
+           clientY: r?r.top:Math.round(innerHeight*0.6),
+           preventDefault(){}, stopPropagation(){}};
+  const list=NB.list.filter(n=>n.名字!==opt.exclude);
+  const rows=list.map((n,i)=>({id:'nb'+i, label:n.名字}));
+  if(opt.all) rows.unshift({id:'all', label:TR('全部')});
+  if(!rows.length) return;
+  popMenu(e, rows, id=>{
+    if(id==='all'){ cb(''); return; }
+    const n=list[+String(id).slice(2)];
+    if(n) cb(n.名字);
+  });
+}
+/* 新建之后立刻说清楚落在哪一本，并留一条退路（§4b.3）。单库一句都不多说。 */
+/* 「● 工作」这一小块：先拿一个占位符走完翻译、整条 esc()，最后才把占位符换成
+   那一段标签——名字和标签都逃不掉转义，i18n 还是「{nb}」这一个键
+   （跟 agInstalledAt 用的是同一套办法）。 */
+const NB_MARK='\u0001';
+function nbInText(key, name){
+  const mark=nbDot(name,{sm:true})+`<span class="nbname">${esc(name)}</span>`;
+  return esc(TR(key,{nb:NB_MARK})).replace(NB_MARK, ()=>mark);
+}
+function newNoteToast(book, rel, body){
+  if(!NB.multi || !book) return;
+  notify(TR('已在 {nb} 新建',{nb:book}), {
+    html: nbInText(K('已在 {nb} 新建'), book),
+    ms: 6000,
+    action: {label:TR('换一个'), fn:r=>moveFreshNote(rel, body, r)},
+  });
+}
+/* 「换一个」：只对刚建、还没动过的空笔记有效。
+   服务端那边是「在目标本的随手记里新建一份 ＋ 把原件挪进废纸篓」，
+   标签无缝跟过去（路径改掉，编辑态不断）。 */
+async function moveFreshNote(rel, body, anchor){
+  const t=TABS.find(x=>!x.ext && x.path===rel);
+  if(!t || !t.fresh || dirty(t)){
+    notify(TR('这一篇已经写过了，换本得自己搬')); return;
+  }
+  pickNotebook(anchor, {exclude:NB.of(rel)}, async name=>{
+    const t2=TABS.find(x=>!x.ext && x.path===rel);
+    if(!t2 || !t2.fresh || dirty(t2)){ notify(TR('这一篇已经写过了，换本得自己搬')); return; }
+    const dir=noteDirOf(name);
+    const used=takenPaths();
+    const fn=rel.split('/').pop();
+    let dest=dir+'/'+fn;
+    if(used.has(dest)){
+      const stem=fn.replace(/\.md$/i,'');
+      for(let i=2;i<=20;i++){ const d2=`${dir}/${stem}_${i}.md`; if(!used.has(d2)){ dest=d2; break; } }
+    }
+    let r=null;
+    try{
+      r=await (await fetch('/__save',{method:'POST', headers:hdrs(),
+        body:JSON.stringify({路径:dest, 正文:body, 新建:true})})).json();
+    }catch(e){ notify(TR('服务没应答')); return; }
+    if(!r || !r.ok){ notify((r&&r.错误)||TR('搬不过去')); return; }
+    dest=r.路径||dest;
+    applyRenamedPath(t2, dest);
+    try{
+      await fetch('/__trash',{method:'POST', headers:hdrs(), body:JSON.stringify({路径:rel})});
+      TRASHED.set(rel, Date.now());
+    }catch(e){}
+    refreshRawAt(t2);
+    refreshTree();
+    notify(TR('已搬到 {nb}',{nb:name}), {html: nbInText(K('已搬到 {nb}'), name)});
+  });
+}
+
+/* ── 增 / 删 / 改名 / 换色 / 设默认 / 重新定位 ──
+   全部走 POST /__notebooks（带口令）。服务端回一份新列表和一段「变化」，
+   模式翻转或改名会让存储里的路径形态变掉，那时候先迁 localStorage 再整页重来
+   ——半页用旧前缀、半页用新前缀是最难查的一类错。 */
+async function nbPost(body){
+  if(!IS_HTTP){ tell(TR('这一步要服务在跑'), TR('双击 AM·Note.app 打开就行。')); return null; }
+  let r=null;
+  try{
+    r=await (await fetch('/__notebooks',{method:'POST', headers:hdrs(),
+      body:JSON.stringify(body)})).json();
+  }catch(e){ notify(TR('服务没应答')); return null; }
+  if(!r || !r.ok){ notify((r&&r.错误)||TR('没保存成功')); return null; }
+  await nbAfterChange(r);
+  return r;
+}
+/* 改名：路径的**形态**没变（还是「名字/…」），只是头一段换了个写法。
+   这一档不整页 reload，就地把手上带路径的那几处全改掉，开着的标签接着用。
+   会漏东西的两张表（NOTEPV / TRASHED）重建，搜索缓存直接清空。 */
+function nbRenameLive(from, to){
+  const f=from+'/', t=to+'/';
+  const fix=p=>{ p=String(p||''); return p.indexOf(f)===0 ? t+p.slice(f.length)
+                                 : (p===from ? to : p); };
+  nbMapStored(fix);
+  if(ST.nb===from) ST.nb=to;
+  ST.nbGen=(+ST.nbGen||0)+1;                 // 同源别的窗口靠它知道该重来了
+  saveSTNow();
+  TABS.forEach(tb=>{
+    // nbs＝这个搜索结果页这一次的范围（存的是名字，不是路径），也得跟着改
+    if(tb.nbs===from) tb.nbs=to;
+    if(tb.ext) return;
+    if(tb.path) tb.path=fix(tb.path);
+    if(tb.folder) tb.folder=fix(tb.folder);
+    (tb.stack||[]).forEach(e=>{
+      if(e.path) e.path=fix(e.path);
+      if(e.folder) e.folder=fix(e.folder);
+    });
+  });
+  if(ckScope===from) ckScope=to;              // ⌘K 面板开着时那一行范围芯片
+  CLOSED.forEach(rec=>(rec.stack||[]).forEach(e=>{
+    if(e.path) e.path=fix(e.path);
+    if(e.folder) e.folder=fix(e.folder);
+  }));
+  items.forEach(i=>{ i.路径=fix(i.路径); if(i.本===from) i.本=to; });
+  if(TREE && TREE.文档) TREE.文档.forEach(d=>{ d.路径=fix(d.路径); if(d.本===from) d.本=to; });
+  if(TREE && TREE.目录) TREE.目录.forEach(d=>{ if(d.本===from) d.本=to; });
+  const pv=[...NOTEPV.entries()]; NOTEPV.clear(); pv.forEach(([k,v])=>NOTEPV.set(fix(k), v));
+  const tr=[...TRASHED.entries()]; TRASHED.clear(); tr.forEach(([k,v])=>TRASHED.set(fix(k), v));
+  FT={q:'', nb:'', map:new Map(), 状态:'', 总:0, timer:null};
+  if(CFG_NB===from) CFG_NB=to;
+  if(AGENT_NB===from) AGENT_NB=to;
+  lastNat='';
+}
+async function nbAfterChange(r){
+  const ch=r.变化||{};
+  const flip = ch.从 && ch.到 && ch.从!==ch.到;          // 单↔多：路径形态整个翻面
+  const renamed = !!(ch.旧名 && ch.新名);
+  if(flip){
+    // 迁移按「变化」给的主名走：单→多时老键全属于它，多→单时剥的也是它
+    nbMigrate(ch.到, ch.主名||(r.笔记本&&r.笔记本[0]&&r.笔记本[0].名字)||'');
+    ST.nbGen=(+ST.nbGen||0)+1;
+    NB.list=r.笔记本||NB.list;
+    // 存不下就不 reload（reloadForNb 自己提示并挂起），别把没落盘的字扔了
+    await reloadForNb({writeST:true});
+    return;
+  }
+  if(renamed && ST.nbMark==='multi') nbRenameLive(ch.旧名, ch.新名);
+  nbApply(r.笔记本||[], r.模式||'');
+  if(ST.nb && !NB.byName(ST.nb)){ ST.nb=''; saveST(); }
+  await loadTree();
+  if(cfgOn()) renderCfg();
+  syncHomeDot(); drawTabs(); repaintPages();
+  const at=active(); if(at) drawDocBar(at);
+}
+/* 壳选完目录之后调这两条（app_shell.m 的 addVault / relocateVault）。 */
+async function addNotebooks(paths){
+  const arr=(Array.isArray(paths)?paths:[paths]).map(String).filter(Boolean);
+  if(!arr.length) return;
+  const r=await nbPost({动作:'添加', 路径:arr});
+  // 翻面卡在「有一份没存住」上（nbHold）：那句「先把这一份存好」才是要紧的，别覆盖它
+  if(r && !nbHold) notify(TR('已添加 {n} 个笔记本',{n:((r.变化||{}).新增||arr).length}));
+}
+async function relocateNotebook(id, path){
+  if(!id || !path) return;
+  const r=await nbPost({动作:'重新定位', id, 路径:String(path)});
+  if(r && !nbHold) notify(TR('已重新定位'));
+}
+/* 浏览器模式没有 NSOpenPanel，退回一个「贴绝对路径」的输入框。 */
+function askVaultPath(title){
+  let v=null;
+  try{ v=prompt(title, ''); }catch(e){ v=null; }
+  v=String(v||'').trim();
+  return v && v[0]==='/' ? v : (v ? (notify(TR('要一个以 / 开头的绝对路径')), '') : '');
+}
+function addVaultFlow(){
+  if(SHELL){ post({type:'addVault'}); return; }
+  const p=askVaultPath(TR('把这个文件夹加成笔记本（贴绝对路径）'));
+  if(p) addNotebooks([p]);
+}
+function relocateVaultFlow(id){
+  if(SHELL){ post({type:'relocateVault', id}); return; }
+  const p=askVaultPath(TR('这个笔记本现在在哪儿？（贴绝对路径）'));
+  if(p) relocateNotebook(id, p);
+}
+
 /* ── 设置：阅读与外观 ｜ 笔记库 ｜ 高级 ｜ 关于 ─────────────────
    一个 720×600 的弹层，左边四段导航，右边一栏内容。
    两类设置在这里并排放着，存的地方完全不同，改的方式也不同：
@@ -7614,10 +8638,17 @@ function openCfg(){ closeUserPop(); $('#cfgWrap').classList.add('on'); loadCfg()
 function closeCfg(){ $('#cfgWrap').classList.remove('on'); }
 const cfgOn = () => $('#cfgWrap').classList.contains('on');
 
+/* 现在改的是哪一本的配置（每本各存各的 .amnote/config.json）。空＝主笔记本。 */
+let CFG_NB='';
+let nbPalOpen='';             // 哪一行的八色小色盘开着（id）
 async function loadCfg(){
+  const nb=(NB.multi && CFG_NB && NB.byName(CFG_NB)) ? CFG_NB : '';
+  CFG_NB = nb || (NB.multi ? ((NB.list[0]||{}).名字||'') : '');
   try{
-    const r=await fetch('/__config?lang='+LANG,{cache:'no-store'}); if(!r.ok) throw 0;
+    const r=await fetch('/__config?lang='+LANG+(nb?'&nb='+encodeURIComponent(nb):''),
+                        {cache:'no-store'}); if(!r.ok) throw 0;
     CFG=await r.json();
+    if(CFG && CFG.笔记本) CFG_NB=CFG.笔记本;
   }catch(e){ CFG=null; }
   const c=(CFG&&CFG.配置)||{};
   CFG_FORM={
@@ -7633,6 +8664,9 @@ async function loadCfg(){
 }
 /* 服务没起时六个键全是空的，那就不该拿「空」去覆盖人家配置文件。 */
 const cfgReady = () => !!(CFG && CFG.配置);
+/* 一个进程一个端口：`端口范围` 只有第一本的那一格算数（服务端 boot 时读的就是它）。
+   在别的本上，那两个输入框摆着能改、存下去也没人看——干脆禁掉，也不发这个键。 */
+const cfgPortLocked = () => !!(NB.multi && CFG_NB && CFG_NB!==((NB.list[0]||{}).名字||''));
 function cfgDirty(){ return cfgReady() && JSON.stringify(CFG_FORM)!==CFG_BASE; }
 function syncCfgDirty(){ $('#viewCfg').classList.toggle('dirty', cfgDirty()); }
 
@@ -7793,6 +8827,11 @@ function panelReading(){
   </section>`;
 }
 
+/* ── 「笔记库」段 ────────────────────────
+   一个笔记本时（P1 零变化）：还是今天那张「当前笔记库」大卡，一个像素都不动，
+   只在动作那一排多一颗「添加笔记本…」——浏览器模式下这是唯一的入口（§4.8）。
+   两本以上：整段换成一列笔记本行（§4.7），底下两段（随手记 / 整理范围）
+   前面多一个「改的是哪一本」的分段控件。 */
 function panelLibrary(){
   const st=(CFG&&CFG.状态)||{};
   const root=st.库根||LIBROOT||'';
@@ -7806,9 +8845,18 @@ function panelLibrary(){
   const swap = SHELL
     ? `<button type="button" class="btn" data-cfga="choose">${esc(TR('更换文件夹…'))}</button>`
     : '';
-  return `<section class="cfg-panel on" data-cfgpanel="library">
-    ${looseNotices()}
-    <div class="sec">
+  const head = NB.multi ? `<div class="sec">
+      <h3 class="sect">${esc(TR('笔记本##标题'))}</h3>
+      <div class="nblist">${NB.list.map(nbRowHtml).join('')}</div>
+      <button type="button" class="btn nbadd" data-cfga="addnb">${icon('plus',13)}${esc(TR('添加笔记本…'))}</button>
+      <p class="hint">${esc(TR('加进来只是登记一下：文件留在原地，不搬、不改、不删。至少留一个。'))}</p>
+      ${NB.list.length>8?`<p class="hint">${esc(TR('八本以上颜色会重复用——颜色只是提示，名字才是身份。'))}</p>`:''}
+      <div class="statusrow">
+        <span class="st ${stCls}" id="cfgStat">${stTxt}</span>
+        <button type="button" class="btn" id="cfgRescan"${cfgBusy?' disabled':''}>
+          <span class="${cfgBusy?'spin':''}">${icon('refresh',13)}</span>${esc(cfgBusy?TR('整理中…'):TR('重新整理'))}</button>
+      </div>
+    </div>` : `<div class="sec">
       <h3 class="sect">${esc(TR('当前笔记库'))}</h3>
       <div class="vault">
         <span class="fico" aria-hidden="true">${folderMark(40)}</span>
@@ -7829,9 +8877,25 @@ function panelLibrary(){
         <button type="button" class="btn" id="cfgRescan"${cfgBusy?' disabled':''}>
           <span class="${cfgBusy?'spin':''}">${icon('refresh',13)}</span>${esc(cfgBusy?TR('整理中…'):TR('重新整理'))}</button>
       </div>
-    </div>
-
+    </div>`;
+  /* 「下面两段是哪个笔记本的」。每本各存各的配置，切换前要是有没存的改动
+     先问一句（§4b.13）。 */
+  const pick = NB.multi && cfgReady() ? `<div class="sec">
+      <div class="lblrow"><span class="lbl">${esc(TR('下面两段是哪个笔记本的'))}</span>
+        <span class="ih">${esc(TR('每个笔记本各存各的，互不影响'))}</span></div>
+      <span class="seg nbseg" data-k="cfgnb">${NB.list.map(n=>
+        `<button type="button" data-v="${esc(n.名字)}" class="${n.名字===CFG_NB?'on':''}"`
+        + ` aria-pressed="${n.名字===CFG_NB?'true':'false'}">${nbDot(n.名字,{sm:true})}${esc(n.名字)}</button>`
+      ).join('')}</span>
+    </div>` : '';
+  const noteHint = NB.multi
+    ? TR('新建的随手记会放进「{nb}」里的这个文件夹。',{nb:CFG_NB})
+    : TR('新建的随手记会放进笔记库里的这个文件夹。');
+  return `<section class="cfg-panel on" data-cfgpanel="library">
+    ${looseNotices()}
+    ${head}
     ${!cfgReady() ? offlineNotice() : `
+    ${pick}
     <div class="sec">
       <h3 class="sect">${esc(TR('随手记'))}</h3>
       ${noticeFor('随手记目录')}
@@ -7839,7 +8903,7 @@ function panelLibrary(){
         <label class="lbl" for="cfgNoteDir">${esc(TR('随手记存放在'))}</label>
         <input class="tin" id="cfgNoteDir" spellcheck="false" value="${esc(CFG_FORM.随手记目录)}">
       </div>
-      <p class="hint">${esc(TR('新建的随手记会放进笔记库里的这个文件夹。'))}</p>
+      <p class="hint">${esc(noteHint)}</p>
     </div>
 
     <div class="sec">
@@ -7849,7 +8913,46 @@ function panelLibrary(){
         <span class="ih">${esc(TR('文件夹名里含有这些字样，整个文件夹就跳过'))}</span></div>
       ${chipsHtml('跳过目录关键词',TR('例如 备份、node_modules'),TR('不收录这些文件夹'))}
     </div>`}
+    ${NB.multi ? '' : `<div class="sec">
+      <h3 class="sect">${esc(TR('笔记本##标题'))}</h3>
+      <p class="hint" style="margin-top:0">${esc(TR('加进来只是登记一下：文件留在原地，不搬、不改、不删。至少留一个。'))}</p>
+      <button type="button" class="btn nbadd" data-cfga="addnb">${icon('plus',13)}${esc(TR('添加笔记本…'))}</button>
+    </div>`}
   </section>`;
+}
+/* 一行笔记本：色块（点开八色小色盘）/ 名字（就地改，失焦即存）/ 灰字路径
+   （点一下在访达里打开）/ 篇数 /「默认」标记或「设为默认」/「移除」。
+   找不到的那一本压灰、色点换空心环、路径那行换成一句话＋「重新定位…」，
+   不自动移除（P6）。 */
+function nbRowHtml(n){
+  const gone=n.状态==='离线';
+  const scanning=n.状态==='扫描中';
+  const acts = gone
+    ? `<button type="button" class="btnt" data-nbact="relocate" data-nbid="${esc(n.id)}">${esc(TR('重新定位…'))}</button>`
+      + `<button type="button" class="btnt" data-nbact="remove" data-nbid="${esc(n.id)}">${esc(TR('移除'))}</button>`
+    : (n.默认
+        ? `<span class="nbtag">${esc(TR('默认'))}</span>`
+          + `<button type="button" class="btnt" data-nbact="remove" data-nbid="${esc(n.id)}">${esc(TR('移除'))}</button>`
+        : `<button type="button" class="btnt" data-nbact="default" data-nbid="${esc(n.id)}">${esc(TR('设为默认'))}</button>`
+          + `<button type="button" class="btnt" data-nbact="remove" data-nbid="${esc(n.id)}">${esc(TR('移除'))}</button>`);
+  const pal = (nbPalOpen===n.id) ? `<div class="nbpal" role="listbox" aria-label="${esc(TR('选一个颜色'))}">`
+    + NB_COLORS.map(c=>`<span class="nb-${c}${c===n.颜色?' on':''}" role="option" data-nbcolor="${c}"`
+        + ` data-nbid="${esc(n.id)}" title="${esc(TR(NB_COLOR_NAMES[c]))}"><i class="nd"></i></span>`).join('')
+    + `</div>` : '';
+  const cnt = gone ? '—' : (scanning ? TR('扫描中…') : TR('{n} 篇',{n:n.收录||0}));
+  return `<div class="nbrow ${NB.cls(n.名字)}${gone?' gone':''}" data-nbid="${esc(n.id)}">
+    <button type="button" class="nbsw" data-nbact="palette" data-nbid="${esc(n.id)}"
+      aria-label="${esc(TR('换个颜色'))}" aria-expanded="${nbPalOpen===n.id?'true':'false'}"><i class="nd${gone?' gone':''}"></i>${pal}</button>
+    <span class="meta">
+      <span class="nm" contenteditable="true" spellcheck="false" role="textbox"
+        data-nbname="${esc(n.名字)}" data-nbid="${esc(n.id)}"
+        aria-label="${esc(TR('笔记本名字'))}">${esc(n.名字)}</span>
+      <button type="button" class="pth" data-nbact="reveal" data-nbid="${esc(n.id)}"
+        title="${esc(n.路径)}">${gone?esc(TR('找不到这个文件夹'))+' · ':''}${esc(n.路径)}</button>
+    </span>
+    <span class="n num">${esc(cnt)}</span>
+    <span class="nbacts">${acts}</span>
+  </div>`;
 }
 /* 服务没起时 /__config 是读不到的，六个键全空。这时候不摆输入框——
    摆了也存不进去，一旦让人改，「保存」就成了拿空值覆盖人家的配置。 */
@@ -7866,10 +8969,29 @@ let agentAct='';             // 正在跑的动作名：这期间四行都按不
 let agentSeq=0;              // 每发一次请求 +1：慢的那一发回来发现号变了就闭嘴
 let agentMap='';             // 预取好的库地图正文（拷贝那一拍要现成的）
 let agentMapBusy=false;
-const MAP_REL='库地图.md';   // 导出以后要在访达里选中的那一份（库相对）
+const MAP_REL='库地图.md';   // 导出以后要在访达里选中的那一份
+/* 现在这四行说的是哪一本（多本时 agents_md / 地图文件 是按本的数组）。 */
+let AGENT_NB='';
+function agentNb(){
+  if(!NB.multi) return '';
+  return (AGENT_NB && NB.byName(AGENT_NB)) ? AGENT_NB : ((NB.list[0]||{}).名字||'');
+}
+/* 服务端给的是数组（多本）或对象（单本）：按当前这一本挑一条出来。 */
+function agentOne(v){
+  if(Array.isArray(v)){
+    const nb=agentNb();
+    return v.find(x=>x && x.本===nb) || v[0] || {};
+  }
+  return v||{};
+}
 /* 服务端给的是绝对路径，/__reveal 要的是库相对——库根就在这份文件的上一级，
    取文件名就够了。服务端哪天改了名字这里也跟得上，取不到才回落到常量。 */
-const mapRel = () => (((AGENT||{}).地图文件||{}).路径||'').split('/').pop() || MAP_REL;
+/* /__reveal 要的是（多本时带笔记本名前缀的）库内路径，服务端给的是绝对路径。
+   拿它所在那一本的根去剥，剥不掉才回落到常量。 */
+const mapRel = () => {
+  const abs=(agentOne((AGENT||{}).地图文件).路径)||'';
+  return relFromAbs(abs) || (NB.multi ? agentNb()+'/'+MAP_REL : MAP_REL);
+};
 
 function panelAgent(){
   return `<section class="cfg-panel on" data-cfgpanel="agent">
@@ -7881,14 +9003,25 @@ function panelAgent(){
 function agentRowsHtml(){
   if(!AGENT) return `<p class="hint agwait">${esc(AGENT===false
     ? TR('读不到接入状态，服务可能没起。') : TR('正在检查…'))}</p>`;
-  const cli=AGENT.命令行||{}, sk=AGENT.skill||{}, am=AGENT.agents_md||{}, mp=AGENT.地图文件||{};
+  const cli=AGENT.命令行||{}, sk=AGENT.skill||{};
+  const am=agentOne(AGENT.agents_md), mp=agentOne(AGENT.地图文件);
+  /* AGENTS.md 和库地图是**写进某一本的库根**的，所以多本时先选哪一本。 */
+  const pick = NB.multi ? `<div class="frow"><span class="flab">${esc(TR('写到哪一本'))}</span>`
+    + `<div class="fctl"><span class="seg nbseg" data-k="agentnb">` + NB.list.map(n=>
+        `<button type="button" data-v="${esc(n.名字)}" class="${n.名字===agentNb()?'on':''}"`
+        + ` aria-pressed="${n.名字===agentNb()?'true':'false'}">${nbDot(n.名字,{sm:true})}${esc(n.名字)}</button>`
+      ).join('') + `</span></div></div>` : '';
   return agRow(TR('命令行工具'),
       agDo('cli', TR('安装'), cli.已链接, TR('已安装')) + agCopy('cli', TR('拷贝路径'), 1),
       cli.已链接 ? agInstalledAt(cli.链接路径||'')
                  : `<p class="hint">${esc(TR('未安装'))}</p>`)
     + agRow(TR('Claude Code'),
-      agDo('skill', TR('安装 Skill'), sk.已安装, TR('已安装')) + agCopy('mcp', TR('拷贝 MCP 命令'), 1),
-      agPath(sk.路径||''))
+      (skillStale(sk) ? agDo('skill', TR('更新 Skill'), false, '')
+                      : agDo('skill', TR('安装 Skill'), sk.已安装, TR('已安装')))
+        + agCopy('mcp', TR('拷贝 MCP 命令'), 1),
+      agPath(sk.路径||'')
+        + (skillStale(sk) ? `<p class="hint">${esc(TR('装着的是旧版，更新一下才认这一轮的新写法。'))}</p>` : ''))
+    + pick
     + agRow(TR('Codex 与其他'),
       agCopy('codex', TR('拷贝 MCP 配置'))
         + agDo('agents_md', TR('在库根生成 AGENTS.md'), am.已存在, TR('已存在'), 1),
@@ -7896,6 +9029,13 @@ function agentRowsHtml(){
     + agRow(TR('库地图'),
       agCopy('map', TR('拷贝库地图')) + agDo('map_export', TR('导出到库根'), false, '', 1),
       agPath(mp.路径||''));
+}
+/* 已经装过、但装的是旧版（服务端给 skill.版本 与 skill.最新，都是整数）：
+   按钮从按不动的「已安装」换回可按的「更新 Skill」。老服务端没有这两个字段，
+   那就当没这回事，维持原样——不拿缺字段当「旧版」。 */
+function skillStale(sk){
+  const cur=+((sk||{}).版本)||0, latest=+((sk||{}).最新)||0;
+  return !!(sk && sk.已安装 && cur && latest && cur<latest);
 }
 const agRow = (label, btns, foot) => `<div class="frow"><span class="flab">${esc(label)}</span>`
   + `<div class="fctl"><span class="btns">${btns}</span>${foot}</div></div>`;
@@ -7928,6 +9068,10 @@ function wireAgentRows(){
   const box=$('#agentRows'); if(!box) return;
   box.querySelectorAll('[data-ag]').forEach(b=>b.onclick=()=>agentDo(b.dataset.ag));
   box.querySelectorAll('[data-agc]').forEach(b=>b.onclick=()=>agentCopy(b.dataset.agc));
+  box.querySelectorAll('.seg.nbseg button').forEach(b=>b.onclick=()=>{
+    if(b.dataset.v===agentNb()) return;
+    AGENT_NB=b.dataset.v; agentMap=''; syncAgentRows(); fetchAgentMap(true);
+  });
   fetchAgentMap();             // 「拷贝库地图」按下去那一拍不能有 await，先备着
 }
 /* 浏览器模式下 navigator.clipboard.writeText 只认「用户手势那一拍」：在 await
@@ -7937,7 +9081,9 @@ function wireAgentRows(){
 function fetchAgentMap(force, loud){
   if(!IS_HTTP || agentMapBusy || (agentMap && !force)) return;
   agentMapBusy=true;
-  fetch('/__map',{cache:'no-store'}).then(r=>r.json()).then(r=>{
+  const nb=agentNb();
+  fetch('/__map'+(nb?'?nb='+encodeURIComponent(nb):''),{cache:'no-store'})
+    .then(r=>r.json()).then(r=>{
     if(r && r.ok) agentMap=String(r.地图||'');
     else if(loud) notify((r&&r.错误)||TR('读不到库地图'));
   }).catch(()=>{ if(loud) notify(TR('服务没应答')); })
@@ -7969,8 +9115,9 @@ async function agentDo(act){
   syncAgentRows();
   let r=null;
   try{
+    const nb=agentNb();
     r=await (await fetch('/__agent_setup',{method:'POST', headers:hdrs(),
-      body:JSON.stringify({动作:act})})).json();
+      body:JSON.stringify(nb?{动作:act, nb}:{动作:act})})).json();
   }catch(e){ r=null; }
   agentAct='';
   if(!r){ notify(TR('服务没应答')); syncAgentRows(); return; }
@@ -8006,7 +9153,10 @@ function panelAdvanced(){
   const forced = hasAdvProblem() && cfgReady();
   const open = (ST.cfgAdv===true || forced) && cfgReady();
   const st=(CFG&&CFG.状态)||{};
-  const cfgFile=(st.库根||LIBROOT) ? (st.库根||LIBROOT)+'/.amnote/config.json' : '';
+  /* 这一段改的也是 CFG_FORM，也就是「笔记库」段里选中的那一本的配置文件。
+     端口范围是个例外：服务端只认主笔记本那一份（一个进程一个端口）。 */
+  const cfgRoot=(NB.multi && CFG_NB) ? ((NB.byName(CFG_NB)||{}).路径||'') : (st.库根||LIBROOT);
+  const cfgFile=cfgRoot ? cfgRoot+'/.amnote/config.json' : '';
   const notes=Object.values((CFG&&CFG.说明)||{})
     .filter(v=>typeof v==='string' && v)
     .map(v=>`<p class="hint" style="margin-top:0">${esc(v)}</p>`).join('');
@@ -8033,13 +9183,16 @@ function panelAdvanced(){
     <div class="sec">
       <div class="lblrow"><span class="lbl">${esc(TR('本机服务端口'))}</span>
         <span class="ih">${esc(TR('一般不用改。改了以后要重新打开 AM·Note 才生效'))}</span></div>
+      ${NB.multi?`<p class="hint" style="margin-top:0">${esc(cfgPortLocked()
+        ? TR('一个进程一个端口：只有「{nb}」的这一格算数，这里改了不起作用。',{nb:(NB.list[0]||{}).名字||''})
+        : TR('一个进程一个端口：只有第一个笔记本的这一格算数。'))}</p>`:''}
       ${noticeFor('端口范围')}
       <div style="display:flex;align-items:center;gap:9px">
         <input class="tin n num" id="cfgPortA" inputmode="numeric" aria-label="${esc(TR('起始端口'))}"
-          value="${esc(CFG_FORM.端口范围[0])}">
+          value="${esc(CFG_FORM.端口范围[0])}"${cfgPortLocked()?' disabled':''}>
         <span style="font-size:12px;color:var(--t3)">${esc(TR('到'))}</span>
         <input class="tin n num" id="cfgPortB" inputmode="numeric" aria-label="${esc(TR('结束端口'))}"
-          value="${esc(CFG_FORM.端口范围[1])}">
+          value="${esc(CFG_FORM.端口范围[1])}"${cfgPortLocked()?' disabled':''}>
       </div>
     </div>
     <div class="sec">
@@ -8148,6 +9301,7 @@ function wireCfg(tab){
     return;
   }
   // 笔记库 / 高级：芯片、文本框、端口，改的都是 CFG_FORM
+  if(tab==='library') wireNotebooks();
   $$('#cfgBody .chipbox').forEach(box=>wireChips(box));
   const nd=$('#cfgNoteDir');
   if(nd) nd.oninput=()=>{ CFG_FORM.随手记目录=nd.value.trim(); syncCfgDirty(); };
@@ -8159,6 +9313,71 @@ function wireCfg(tab){
   if(rs) rs.onclick=cfgRescan;
   const ad=$('#cfgAdvT');
   if(ad) ad.onclick=()=>{ ST.cfgAdv = ST.cfgAdv!==true; saveST(); renderCfg(); };
+}
+
+/* ── 「笔记库」段里那一列笔记本的接线 ────── */
+function wireNotebooks(){
+  const body=$('#cfgBody'); if(!body) return;
+  body.querySelectorAll('[data-nbact]').forEach(b=>b.onclick=e=>{
+    e.stopPropagation();
+    nbRowAction(b.dataset.nbact, b.dataset.nbid, b);
+  });
+  body.querySelectorAll('[data-nbcolor]').forEach(el=>el.onclick=e=>{
+    e.stopPropagation();
+    nbPalOpen='';
+    nbPost({动作:'颜色', id:el.dataset.nbid, 颜色:el.dataset.nbcolor});
+  });
+  /* 名字就地改：失焦或按回车就存。空的、只有空白的、跟原来一样的都当没改。 */
+  body.querySelectorAll('[data-nbname]').forEach(el=>{
+    el.onkeydown=ev=>{
+      if(ev.key==='Enter'){ ev.preventDefault(); el.blur(); }
+      else if(ev.key==='Escape'){ ev.preventDefault(); el.textContent=el.dataset.nbname; el.blur(); }
+    };
+    el.onblur=()=>{
+      const v=String(el.textContent||'').replace(/\s+/g,' ').trim();
+      if(!v || v===el.dataset.nbname){ el.textContent=el.dataset.nbname; return; }
+      // 名字会一路长到 CLI 输出和 Agent 的路径里，长了不禁止，只提一句
+      if([...v].filter(c=>CJK.test(c)).length>8 || v.length>16) notify(TR('名字短一点更好用'));
+      /* 服务端拒了（名字不合法、跟别的本撞了）：把这一格写回原来的名字。
+         不写回就是格子里留着一个根本没生效的新名字，看着像已经改成了。 */
+      nbPost({动作:'改名', id:el.dataset.nbid, 名字:v}).then(r=>{
+        if(!r) el.textContent=el.dataset.nbname;
+      });
+    };
+  });
+  // 「下面两段是哪个笔记本的」：切之前先把没存的改动问一句（§4b.13）
+  body.querySelectorAll('.seg.nbseg button').forEach(b=>b.onclick=async()=>{
+    const v=b.dataset.v; if(v===CFG_NB) return;
+    if(cfgDirty()){
+      const ok=ask(TR('先保存这一本的改动？'), TR('切到别的笔记本会丢掉还没保存的那几处。'),
+                   TR('保存'), TR('放弃'));
+      if(ok) await saveCfg();
+    }
+    CFG_NB=v; nbPalOpen=''; await loadCfg();
+  });
+  // 点别处收掉色盘
+  if(nbPalOpen){
+    setTimeout(()=>{
+      const off=ev=>{ if(!ev.target.closest || !ev.target.closest('.nbpal,.nbsw')){
+        nbPalOpen=''; document.removeEventListener('click', off, true); renderCfg(); } };
+      document.addEventListener('click', off, true);
+    }, 0);
+  }
+}
+async function nbRowAction(act, id, el){
+  const n=NB.byId(id); if(!n) return;
+  if(act==='palette'){ nbPalOpen = (nbPalOpen===id) ? '' : id; renderCfg(); return; }
+  if(act==='reveal'){ revealPath(NB.multi ? n.名字+'/' : ''); return; }
+  if(act==='default'){ nbPost({动作:'默认', id}); return; }
+  if(act==='relocate'){ relocateVaultFlow(id); return; }
+  if(act==='remove'){
+    if(NB.list.length<=1){ notify(TR('至少要留一个笔记本')); return; }
+    const ok=ask(TR('移除「{name}」？',{name:n.名字}),
+      TR('只从 AM·Note 移除，文件不会动。随时可以把这个文件夹再添加回来。'),
+      TR('移除'), TR('取消'), true);
+    if(ok) nbPost({动作:'移除', id});
+    return;
+  }
 }
 
 /* 「个人」段的接线。头像三条路进来：按钮选、拖进来、粘贴；出口都是 putAvatar()。 */
@@ -8298,6 +9517,7 @@ function openLink(u){
 function cfgAction(a){
   if(a==='reveal'){ SHELL ? post({type:'revealVault'}) : revealVault(); return; }
   if(a==='choose'){ post({type:'chooseVault'}); return; }
+  if(a==='addnb'){ addVaultFlow(); return; }
   if(a==='update'){ post({type:'checkUpdate'}); return; }
   if(a==='copyroot'){
     const root=((CFG&&CFG.状态)||{}).库根||LIBROOT;
@@ -8322,6 +9542,11 @@ async function saveCfg(){
   const btn=$('#cfgSave'); if(btn) btn.disabled=true;
   const pa=parseInt(CFG_FORM.端口范围[0],10), pb=parseInt(CFG_FORM.端口范围[1],10);
   const payload=Object.assign({}, CFG_FORM, {端口范围:[pa||0, pb||0]});
+  // 存回刚才读的那一本（服务端缺省是主笔记本）
+  if(NB.multi && CFG_NB) payload.nb=CFG_NB;
+  /* 非主笔记本：端口那一格是禁着的，这个键就别发——服务端只认 req 里出现的键，
+     不发等于原样留着它自己那份，也不会写进一份没人读的数字。 */
+  if(cfgPortLocked()) delete payload.端口范围;
   try{
     const r=await (await fetch('/__config',{method:'POST', headers:hdrs(),
       body:JSON.stringify(payload)})).json();
@@ -8410,6 +9635,21 @@ async function syncStatus(){
     const s=await r.json();
     if(s.库根) LIBROOT=s.库根;
     if(s.随手记目录) NOTE_DIR = s.随手记目录;
+    /* 笔记本列表的权威来源。单库那一份也有（一条），所以「模式」由服务端说了算，
+     不用页面自己猜。列表真的变了（加了一本、改了名、某本离线）才重画。 */
+    const wasMulti=NB.multi;
+    const nbNew=nbApply(s.笔记本||[], s.模式||'');
+    /* 轮询才发现的翻面（别的窗口、CLI、壳菜单加了／移除了笔记本）：nbApply() 已经把
+       存储里的路径迁过面了，可 TABS / stack / CLOSED / NOTEPV / TRASHED 还全是旧形态，
+       自动保存那一发 POST 会带着不带前缀的路径出去。跟设置里自己改那条一样整页重来。 */
+    if(nbFlipped){ await reloadForNb({writeST:true}); return; }
+    if(nbNew || wasMulti!==NB.multi){
+      /* prunePins() 这里绝不能跑：pins 已经是新形态，items 还是上一趟 /__tree 的旧形态，
+         对不上就等于把收藏静默删光。交给下一次 setTree()。 */
+      if(wasMulti!==NB.multi) prepItems();
+      syncHomeDot(); drawTabs(); repaintPages();
+      if(cfgOn() && ST.cfgTab==='library') renderCfg();
+    }
     const scanning = busy || s.状态==='扫描中';
     const idx=s.索引||{};
     setState(scanning?'scan':'ok',
@@ -8433,7 +9673,12 @@ async function pulse(){
   }catch(e){}
   finally{ polling=false; }
 }
-function tick(){ pulse(); syncStatus(); }
+function tick(){
+  /* 上一次该整页重来、卡在「有一份没存住」上：等到一个编辑态都不剩了，悄悄补上。
+     不在这儿再喊 saveBeforeLeave——那会每三秒弹一次同样的提示。 */
+  if(nbHold && !TABS.some(t=>t.editing)){ const o=nbHold; nbHold=null; reloadForNb(o); return; }
+  pulse(); syncStatus();
+}
 $('#retry').onclick=()=>{ setState('scan'); tick(); };
 
 /* ── 边栏分隔条 ═══════════════════════════ */
@@ -8547,6 +9792,10 @@ window.AMN = {
   openRecent(){ goHome(false); },
   openPath(rel){ if(rel) openByPath(rel); },
   openExternalPath(abs){ if(abs) openExtPath(abs); },
+  /* 5.7：壳弹完 NSOpenPanel 之后调这两条，参数是绝对路径。 */
+  addNotebooks(paths){ addNotebooks(paths); },
+  relocateNotebook(id, path){ relocateNotebook(id, path); },
+  notebooks(){ return JSON.stringify({模式:NB.multi?'多':'单', 当前:NB.cur, 笔记本:NB.list}); },
   popoutWindow(){ const t=active(); if(t && !t.ext && hasDocNow(t)) openSolo(t.path); },
   quickLook(){ qlOn?closeQL():quickLook(listNow[selSeq]); },
   /* 文件 → 移到废纸篓（⌘⌫）。编辑态下菜单项是灰的（state().canTrash 为假），
@@ -8597,7 +9846,9 @@ window.AMN = {
          菜单项灰掉这一下按键才会放行给正文。 */
       canTrash:hasDocNow(t) && !t.ext && !t.editing && canTrashPath(t.path),
       /* 列表栏 5.4.1 下线，这两位恒假；键留着，壳还在读。 */
-      lists:false, sidebar:false, toc:OL_ON||olFloatOn()
+      lists:false, sidebar:false, toc:OL_ON||olFloatOn(),
+      /* 第 15 个键（5.7）：此刻聚焦的笔记本名，「全部」和单库是空串。 */
+      notebook:NB.cur, notebookCount:NB.list.length
     });
   }
 };
@@ -8670,6 +9921,11 @@ addEventListener('keydown', e=>{
   if(SHELL) return;                       // 下面几条壳里走菜单转发
   if(e.metaKey && e.altKey && e.key.toLowerCase()==='k'){ e.preventDefault(); focusSearch(); return; }
   if(e.metaKey && e.key.toLowerCase()==='k'){ e.preventDefault(); AMN.quickOpen(); return; }
+  /* ⌥⌘N 新建随手记（5.7 起，壳里由菜单转发）。按住 Option 时 e.key 可能是
+     死键或 ñ，所以先认 e.code。⌘N 仍然是「新建窗口」，这一条必须排在它前面。 */
+  if(e.metaKey && e.altKey && (e.code==='KeyN' || e.key.toLowerCase()==='n')){
+    e.preventDefault(); newNote(); return;
+  }
   if(e.metaKey && e.key.toLowerCase()==='n'){ e.preventDefault(); AMN.newWindow(); return; }
   if(e.metaKey && e.key.toLowerCase()==='e' && inReader){
     const t=active();
@@ -8698,10 +9954,22 @@ addEventListener('drop', e=>{
   e.preventDefault();
   const path=f.path || '';                       // WKWebView 给得到本地路径
   if(!path){ tell(TR('打不开'), TR('这个来源拿不到文件路径')); return; }
-  const root=LIBROOT ? LIBROOT+'/' : '';
-  if(root && path.startsWith(root)){ openByPath(path.slice(root.length)); return; }
-  if(/\.md$/i.test(path)){ openExtPath(path); return; }
-  tell(TR('打不开'), TR('库外的文件只能读 .md：{path}',{path}));
+  // 绝对路径这一段（问 /__locate、回落最长前缀、库外只读）跟访达双击是同一条
+  openByPath(path);
+});
+
+/* ═══ 同源的另一个窗口改了笔记本 ═══════════
+   那边已经把 tp-state 里的路径迁过一遍了（加前缀／剥前缀），这边手上的
+   TABS / pins / recents 就全是旧形态。半页新半页旧是最难查的一类错，
+   看到 nbMark 变了就整页重来——跟切换界面语言走的是同一条老路，重来之前先把
+   还在编辑的那几份落盘（reloadForNb），存不下就停在原地不 reload。
+   **一个字都不写 localStorage**：迁移是那边做的，这边手上还是旧形态。 */
+addEventListener('storage', e=>{
+  if(!e || e.key!=='tp-state' || !e.newValue) return;
+  let v=null; try{ v=JSON.parse(e.newValue)||{}; }catch(err){ return; }
+  const mark=(v.nbMark==='multi'?'multi':'') !== (ST.nbMark==='multi'?'multi':'');
+  const gen=(+v.nbGen||0) !== (+ST.nbGen||0);        // 改名：形态没变，但前缀的写法变了
+  if(mark || gen) reloadForNb();
 });
 
 /* ── 新用户引导 ─────────────────────────

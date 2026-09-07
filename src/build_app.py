@@ -188,6 +188,14 @@ def export_icons(dest_dir):
 
 # ───────────────────────── 后台服务脚本（LaunchAgent 调用）─────────────────────────
 NATIVE_SRC = "app_shell.m"
+# 5.7.0 = 多笔记本：一个服务同时挂 N 个文件夹，路径以笔记本名开头（单本时零变化）。
+# 壳这边新增只读启动键 `-AMNSupportDir <path>`（端口／口令／笔记本列表／个人资料／
+# 占位空根整块挪走，验收不必再动用户实例，并且不写用户的持久 defaults）与
+# 调试键 `-AMNDumpArgs`（打一遍算出来的参数就退出）；
+# 子进程参数加 `--notebooks-file`（只给 `-AMNVaultPath` 时不给，那是本次强制单库）；
+# 新桥接 addVault / relocateVault（NSOpenPanel 多选 → AMN.addNotebooks / relocateNotebook）；
+# deliverOpen 一律走 AMN.openPath 并把窗口端到前台；菜单「库 → 添加笔记本…」、
+# 「新建随手记」配 ⌥⌘N。
 # 5.6.1 = 库内 html 改成带 allow-scripts 的沙箱 iframe，壳这边补上「只认主框」两道闸：
 # amn 通道（didReceiveScriptMessage:）丢掉非主框的消息；导航策略里非主框的外链只有用户
 # 真点了（LinkActivated）才交给系统浏览器，脚本改 location.href 那种一律掐掉。
@@ -213,7 +221,7 @@ NATIVE_SRC = "app_shell.m"
 # （20260903）。有 digest 核 sha256，解开后核对 bundle id。
 # 5.0.0 = 开源首发。
 # 版本号是唯一能在「关于 AM·Note」里看出来跑的是新壳还是旧壳的地方，改了壳就要动它。
-NATIVE_VERSION = ("5.6.1", "31")
+NATIVE_VERSION = ("5.7.0", "32")
 MIN_MACOS = "12.0"
 
 

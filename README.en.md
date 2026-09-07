@@ -12,7 +12,7 @@
 
 <p align="center">
   A local Markdown note browser for macOS.<br>
-  Point it at any folder on your Mac and search, read and edit it like a notebook.<br>
+  Point it at a folder on your Mac, or at several, and search, read and edit them all in one window.<br>
   Your files stay where they are. Nothing moves, nothing is uploaded.
 </p>
 
@@ -28,15 +28,16 @@ You already have a pile of `.md` files, plus a few `.html` pages exported from s
 
 To find one sentence you first have to remember which folder it's in. To fix one paragraph you have to pick an editor and open it. A cloud notes app would happily hold all of it — but only after you move the files in, and once they're in, they aren't your files any more.
 
-AM·Note doesn't move anything. Pick a folder and you get a window as light as a browser: ⌘K searches that folder, and the tabs show the very same files. When you're done editing, they're still the same files.
+AM·Note doesn't move anything. Pick a folder and you get a window as light as a browser: ⌘K searches that folder, and the tabs show the very same files. When you're done editing, they're still the same files. If your folders are scattered, add a few of them and read them all in one window.
 
 ![Start page: folder chips, Continue reading and Recently opened](docs/en/home.png)
 
 ## How it works
 
-1. The first time you open it, pick a folder — or let it make one for you. Any folder will do, including an empty one.
+1. The first time you open it, pick a folder — or let it make one for you. Any folder will do, including an empty one. That folder is your first **notebook**.
 2. It creates one `.amnote/` folder inside for the index and edit backups. Not a single byte of your notes is touched.
 3. The window is two rows: tabs, search and settings on top; below them, where this file lives and what you can do with it. Every note gets its own **tab**. Press **⌘K** to search the whole folder.
+4. To read folders that live elsewhere as well, add another notebook. With a single notebook, the interface and the paths are exactly what they were.
 
 ## What you can do
 
@@ -45,7 +46,7 @@ AM·Note doesn't move anything. Pick a folder and you get a window as light as a
 - ⌘K is the one and only way in. Start typing and the first row reads "Search all notes for “…”" — Return searches the full text, ⌘ Return searches in a new tab.
 - Under that first row are actions and note titles. Arrow keys to choose, Return to open. It matches file names and body text, in this folder — not on the web.
 - You can also just type on the Start page; the first keystroke brings the panel up.
-- Below the greeting on the Start page is a row of folder chips: the top-level folders in your vault, with "Pinned" last. Click one to see what's inside, ⌘-click to open it in a new tab.
+- Below the greeting on the Start page is a row of folder chips: the top-level folders in your vault, with "Pinned" last. Click one to see what's inside, ⌘-click to open it in a new tab. If it has subfolders they appear on the next row, with breadcrumbs above to step back out.
 - Cards can be filtered by "All / Markdown / HTML", and switched between grid and list.
 
 **Read**
@@ -80,14 +81,23 @@ AM·Note doesn't move anything. Pick a folder and you get a window as light as a
 - A quick note you didn't mean to make: "⋯" → Move to Trash, or press ⌘⌫. You can undo from the toast for a few seconds, and it's in the system Trash either way.
 - Double-click a `.md` in Finder to open it here.
 
+**Several notebooks**
+
+- Every folder you add is a **notebook**. Add a second one and a notebook bar appears under the greeting on the Start page: `All | ● Work | ● Reading | ☆ Pinned | ＋`. Folder chips, cards, the search scope and where a new note lands all follow it.
+- Each notebook has a color, and its dot travels with it — on cards, on the path chip, on tabs and in ⌘K results — so you always know which one you're in. Purple still means "selected" and nothing else.
+- "All" is the overview: Continue reading, Recently opened and search span every notebook. Pick one notebook to get folder chips back — at that moment the page is the Start page you already know.
+- A new quick note (⌥⌘N) lands in whichever notebook the bar has selected, or in the default one while "All" is showing. The toast reads "New note in ● Work", and "Move it" sends it to another notebook.
+- With two or more, paths start with the notebook name, like `Work/Meetings/Weekly.md`. Each notebook keeps its own `.amnote/`. When a folder is missing — an external drive that isn't plugged in — its chip dims and reads "Not found"; nothing is removed for you.
+- **With a single notebook, everything is exactly as it was**: no notebook bar, no color dots, no prefix on paths.
+
 **Settings**
 
 - ⌘, opens it, or click the ⚙ in the top right. Six panes: Profile, Appearance, Vault, Agent, Advanced, About.
 - Profile: give yourself a name and a picture, and the Start page greets you by time of day (“Good morning, Lulu”). It never leaves this Mac.
 - Appearance: **interface language** (System / 简体中文 / 繁體中文（香港） / English — the menus and dialogs of the app switch with it), theme (System / Light / Dark), reading font, text size 15–21, line spacing Compact 1.6 / Comfortable 1.8 / Loose 2.0, column width Narrow 620 / Regular 690 / Wide 820, and "Show the outline when a note opens". Switch to dark and the title bar goes with it — window and page are one piece.
 - **Five reading fonts**, each previewed on its own card: System, Serif, Monospace, and new in 5.5 **PingFang HK** (with six weights, from Ultralight to Semibold) and **PMingLiU**. If PMingLiU isn't installed, AM·Note borrows it from a copy of Microsoft Office you already have; without Office it falls back to Songti TC.
-- Vault: which folder you're using, open it in Finder or change it; how many notes were indexed and when it last ran, plus a button to run it again; where quick notes go; which folders to leave out.
-- Advanced is folded away by default — skipped files and the local service port are in there. About has the version, "Check for Updates" and the automatic-update switch.
+- Vault: which folders you're using — adding, renaming, recoloring, making one the default and removing all live here; how many notes were indexed and when it last ran, plus a button to run it again; where quick notes go; which folders to leave out (those last two are kept per notebook).
+- Advanced is folded away by default — skipped files and the local service port are in there. One process, one port: only the first notebook's port setting counts. About has the version, "Check for Updates" and the automatic-update switch.
 
 ## What it doesn't do
 
@@ -118,11 +128,17 @@ An empty folder works too: you can search (0 results) and create quick notes. Ne
 
 If that folder gets moved or deleted, AM·Note doesn't quit — it just asks whether you want to "Choose Another Folder…" or "Create a Vault". Your files are fine; it simply can't find the folder.
 
+With two or more notebooks, only that one is affected: its chip dims and reads "Not found", its row in Settings offers "Relocate…", and the others carry on.
+
 Want to try it first? Point it at [`examples/demo-vault/`](examples/demo-vault) in this repo.
 
-## Switching folders
+## Managing notebooks
 
-Settings (⌘,) → Vault → "Change Folder…". The menu item Vault → Choose Folder… does the same thing. The old folder and its `.amnote/` stay untouched, so switching back picks up where you left off.
+Settings (⌘,) → Vault. With two or more notebooks, that pane is a list of them: the color square opens the eight-color palette, the name is editable in place, the gray path opens the folder in Finder, and on the right are "Make Default" and "Remove". "Add Notebook…" sits under the list, and the menu item Vault → Add Notebook… does the same thing.
+
+Removing one only unregisters it: the files stay put, `.amnote/` stays with them, and adding the folder back later picks up where you left off. At least one notebook has to remain. A notebook whose folder has moved is dimmed, and its row offers "Relocate…".
+
+With a single notebook the pane is the same "Current vault" card as before, "Change Folder…" included.
 
 ## Updates
 
@@ -138,6 +154,7 @@ If you're on an older build, you'll need to download a version with "Check for U
 | --- | --- |
 | ⌘T | New Tab (Start page) |
 | ⌘N | New Window |
+| ⌥⌘N | New Quick Note |
 | ⌘W | Close Tab (closes the window when only the Start page is left) |
 | ⌘⇧T | Reopen the tab you just closed |
 | ⌘K | Search / Quick Open |
@@ -173,7 +190,8 @@ Delete `.amnote/` and every note is still there; the next launch just scans agai
 - Quick notes go into `随手记/` ("quick notes") inside the vault. The folder name is editable in Settings → Vault.
 - Images pasted into the text land in `_图/` ("images") next to that .md file.
 - Two more files can show up in the vault root, both of them things you click for in Settings → Agent — otherwise they don't exist: `AGENTS.md` (instructions for an agent running inside this folder) and `库地图.md` ("vault map", an exported map; re-exporting overwrites the whole file, so don't hand-write in it).
-- The service's port and token live in `~/Library/Application Support/AMNote/` as `portal.port` and `portal.token` (the token file is 0600). The same folder holds `profile.json` and `avatar.img` — your name and picture, on this Mac only.
+- The list of notebooks lives in `~/Library/Application Support/AMNote/notebooks.json`: each one's name, color and path. It records which folders you use, and nothing from the notes themselves.
+- The service's port and token live in the same folder as `portal.port` and `portal.token` (the token file is 0600), along with `profile.json` and `avatar.img` — your name and picture, on this Mac only.
 
 ## A local API for agents and scripts
 
@@ -185,7 +203,7 @@ While AM·Note is open, AI assistants on this Mac can search this vault and read
 2. On the Claude Code row, click "Install Skill". For Codex or anything else, click "Copy MCP Command" or "Copy MCP Config" and paste it into that tool's own config.
 3. Back in Claude Code, just say "find me that release checklist from my notes".
 
-The skill teaches it an order: read the **vault map** to see what folders exist, then **search** to narrow down, then read **just that one section** — instead of pouring the whole vault into its context.
+The skill teaches it an order: ask **which notebooks there are**, read the **vault map** to see what folders they hold, then **search** to narrow down, then read **just that one section** — instead of pouring the whole vault into its context.
 
 For an agent that runs inside the vault folder (Codex, Cursor…), "Create AGENTS.md" puts the same rules where it will read them on startup. "Export to Vault" writes the map out as `库地图.md` ("vault map"), so it's readable even when AM·Note isn't running.
 
@@ -194,6 +212,7 @@ For an agent that runs inside the vault folder (Codex, Cursor…), "Create AGENT
 Settings → Agent → Command Line → "Install" symlinks `~/.local/bin/amnote` to `AM·Note.app/Contents/Resources/amnote` inside the app. You don't have to install it — calling that absolute path works just as well.
 
 ```bash
+amnote notebooks                              # which notebooks there are, and which one is the default
 amnote map                                    # what folders exist, what each note is about
 amnote search "报销" --dir 工作手记 --since 7   # spaces = AND; also --type md,pdf
 amnote outline 工作手记/报销.md                # the headings in one note
@@ -201,9 +220,15 @@ amnote read 工作手记/报销.md --section "发票"   # just that section
 amnote recent                                 # what changed lately
 amnote new "会议纪要 0906" < body.md           # create one, in the quick-notes folder by default
 amnote save 工作手记/报销.md < body.md          # overwrite the whole file; read it first (it remembers the version you saw), or add --based/--force
+
+# Two or more notebooks: paths start with the notebook name, and most commands take -n NAME
+amnote read 工作/会议/周会.md
+amnote map -n 读书
+amnote search "周会" --notebook 工作            # on search and recent, -n means "how many", so write it out
+amnote new "会议纪要 0906" -n 读书              # without -n it goes to the default notebook
 ```
 
-Paths are always **relative to the vault**. Every command takes `--json` for the raw JSON, and `--agent NAME` to sign the change.
+Paths are always **relative to the vault**; with two or more notebooks they start with the notebook name (`工作/会议/周会.md`), and `amnote notebooks` lists the names. Every command takes `--json` for the raw JSON, and `--agent NAME` to sign the change.
 
 When AM·Note isn't running, the read-only commands answer from the last index in `.amnote/` (with a note on stderr). Writes need the app open.
 
@@ -223,7 +248,7 @@ command = "/path/to/amnote"
 args = ["mcp"]
 ```
 
-Eight tools: `search_notes`, `note_map`, `read_note`, `note_outline`, `recent_notes`, `note_links`, `create_note`, `save_note`. The two "Copy" buttons in Settings → Agent already have the path filled in.
+Nine tools: `list_notebooks`, `search_notes`, `note_map`, `read_note`, `note_outline`, `recent_notes`, `note_links`, `create_note`, `save_note`. Call `list_notebooks` first when there is more than one; `search_notes`, `note_map`, `recent_notes` and `create_note` each take an optional `notebook`. The two "Copy" buttons in Settings → Agent already have the path filled in.
 
 **Straight HTTP**
 
@@ -238,7 +263,11 @@ T=$(cat "$D/portal.token")
 
 # Check the service is alive first. Anything but 200 means don't retry —
 # call `amnote` instead, which falls back to the last index.
+# In /__status, "模式" is "单" (one) or "多" (several), and "笔记本" is the list.
 curl -s -m 3 -o /dev/null -w '%{http_code}\n' "http://127.0.0.1:$P/__status"
+
+# Which notebooks there are: name, color, path, note count, which is the default
+curl -s "http://127.0.0.1:$P/__notebooks"
 
 # The vault map: one Markdown page of "what's in here". Start with this.
 # dir= draws one folder, max= notes per folder (default 20), depth= folder depth
@@ -288,6 +317,8 @@ curl -s -X POST "http://127.0.0.1:$P/__untrash" -H "X-AMN-Token: $T" \
 
 Every `/__search` hit carries `路径`, `标题`, `类型`, `改于`, `大小` and `分数`, with a few `片段` (excerpts) under it. Each excerpt has a `行` (line number) and a `小节` (the heading it falls under) — follow the `小节` to `/__raw?section=` instead of reading the whole file back.
 
+With two or more notebooks every path starts with the notebook name, and `/__search`, `/__recent`, `/__changes`, `/__map`, `/__config` and `/__archive` all take `nb=NAME` (comma-separated for several) to narrow the scope; `dir=工作/会议` carries the prefix, so it narrows too. The sequence numbers in `/__changes` are counted per notebook, so an incremental `since=` pull has to ask about one notebook at a time.
+
 `X-AMN-Agent` works on every POST: the change log records it as "来源 Agent · 代理 <your name>", and the card picks up a `✦ <your name>` line.
 
 `/__save` is the only route that changes a file's contents. It writes `.md` files inside the vault only, and backs one up before writing. The other two, `/__trash` and `/__untrash`, just move files in and out of the system Trash byte for byte. Backup folders, cache folders and hidden folders are all off limits.
@@ -300,13 +331,13 @@ Every `/__search` hit carries `路径`, `标题`, `类型`, `改于`, `大小` a
 
 **What happens if I delete `.amnote/`?** Every note is still there. The next launch scans again; edit backups and the change log are gone.
 
-**Can I keep several vaults?** One vault per window. Settings → Vault → "Change Folder…" switches over; each folder keeps its own `.amnote/`, so switching back resumes where you were.
+**Can I use several folders at once?** Yes. Settings → Vault → "Add Notebook…" — every folder you add becomes a notebook, and one window shows them all. Each keeps its own `.amnote/`; removing one only unregisters it, and the files stay put.
 
 **Will it fight with Obsidian or another editor?** It won't overwrite. When you save, if the file was changed elsewhere, a bar appears at the top and you choose "Keep Mine" or "Use Theirs".
 
 **How do I know when an agent edited my notes?** The card picks up a `✦ Claude Code` line — which assistant on this Mac last wrote that note, kept for seven days. For the details, read `.amnote/changes.jsonl`; every entry records its `来源` (source) and `代理` (agent).
 
-**Where do my name and picture live?** In `~/Library/Application Support/AMNote/`, as `profile.json` and `avatar.img`. They belong to this Mac, not to the vault: nothing is uploaded, and switching vaults doesn't reset them. To stop being greeted, turn off "Greet me on the start page" in Settings → Profile.
+**Where do my name and picture live?** In `~/Library/Application Support/AMNote/`, as `profile.json` and `avatar.img`. They belong to this Mac, not to any notebook: nothing is uploaded, and adding or switching notebooks doesn't reset them. To stop being greeted, turn off "Greet me on the start page" in Settings → Profile.
 
 **Does it need the internet?** No. Only checking for updates reaches out to GitHub.
 
