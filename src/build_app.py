@@ -188,6 +188,8 @@ def export_icons(dest_dir):
 
 # ───────────────────────── 后台服务脚本（LaunchAgent 调用）─────────────────────────
 NATIVE_SRC = "app_shell.m"
+# 5.8.1 = 框架色跟网页一起压深一档：chromeColorForTheme 浅 #f7f8fa → #eef0f4、
+# 深 #22262d → #1e2127，红绿灯那 80px 才不会跟标签条差色（surface/--win 不动）。
 # 5.7.0 = 多笔记本：一个服务同时挂 N 个文件夹，路径以笔记本名开头（单本时零变化）。
 # 壳这边新增只读启动键 `-AMNSupportDir <path>`（端口／口令／笔记本列表／个人资料／
 # 占位空根整块挪走，验收不必再动用户实例，并且不写用户的持久 defaults）与
@@ -221,7 +223,7 @@ NATIVE_SRC = "app_shell.m"
 # （20260903）。有 digest 核 sha256，解开后核对 bundle id。
 # 5.0.0 = 开源首发。
 # 版本号是唯一能在「关于 AM·Note」里看出来跑的是新壳还是旧壳的地方，改了壳就要动它。
-NATIVE_VERSION = ("5.8.0", "33")
+NATIVE_VERSION = ("5.8.1", "34")
 MIN_MACOS = "12.0"
 
 

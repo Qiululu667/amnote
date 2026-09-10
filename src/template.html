@@ -88,8 +88,8 @@
   --shadow:0 3px 7px rgba(58,48,80,.025),0 14px 32px rgba(58,48,80,.045);
   --float:0 5px 10px rgba(58,48,80,.035),0 20px 40px rgba(58,48,80,.09);
   --selshadow:0 2px 9px rgba(58,48,80,.08);
-  /* 当前标签浮起、开始页那颗白按钮：浅色下几乎看不见的一层，深色要换成实的 */
-  --tab-shadow:0 2px 8px rgba(58,48,80,.05);
+  /* --tab-shadow 5.8.1 退役：当前标签不再「浮」在框架上，而是接进下一行，
+     任何一层外投阴影都会在接缝处画出一条暗线。 */
   --btn-shadow:0 2px 4px rgba(58,48,80,.02);
   --btn-shadow-h:0 4px 12px rgba(58,48,80,.06);
   --segshadow:0 1px 4px rgba(38,51,75,.09);
@@ -154,10 +154,16 @@
   --paper-edge:rgba(138,99,180,.14); --paper-shadow:rgba(60,81,106,.04);
   --paper-b:#cdbbe3; --paper-line:#e7ecf0;
 
-  /* 标签条底色，跟工具条/正文的 --win 分开：当前标签才能「浮」在工具条之上。
-     必须和 app_shell.m 里 chromeColorForTheme 同步。 */
-  --chrome:#f7f8fa;
-  --tab-r:9px;
+  /* 标签条底色，跟工具条/正文的 --win 分开：当前标签是从这块框架色里「挖」出来的
+     一张卡，底边直接淌进下一行的白。5.8.1 起加深一档（#f7f8fa→#eef0f4 / #22262d→#1e2127），
+     色差本身就是分界线，不再靠阴影把当前标签托起来。
+     必须和 app_shell.m 里 chromeColorForTheme 同步（浅 #eef0f4 / 深 #1e2127）。 */
+  --chrome:#eef0f4;
+  /* 顶栏当前标签的几何（5.8.1）：标签贴住条底，上两角圆 --tab-r2，下两角靠
+     --flare 那两枚外翻角接进下一行。旧的 --tab-r（四角 9px 药丸）随之退役。 */
+  --tab-h:36px;
+  --tab-r2:10px;
+  --flare:8px;
   --tab-left:12px;
   /* 顶部横幅占掉的高度，bnr() 按实际条数写进来。没横幅就是 0——
      body.bnr-on 的两条规则只在挂着横幅时生效，那时这个值已经被 bnr() 改写过了。 */
@@ -204,7 +210,7 @@
 
 /* ── 样张色板（深）── */
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --canvas:#1b1e24; --win:#252931; --side:#1b1e24; --chrome:#22262d; --list:#1f232a;
+  --canvas:#1b1e24; --win:#252931; --side:#1b1e24; --chrome:#1e2127; --list:#1f232a;
   --win-blur:rgba(37,41,49,.94); --quote-b:#5f7d74;
   --hover:#303640; --sel:#303640;
   --t1:#e9edf3; --t2:#a4acb9; --t3:#929bab; --t4:#7d8593; --recent:#a4acb9; --accent:#c6a3e0;
@@ -224,7 +230,6 @@
   --shadow:0 3px 10px rgba(0,0,0,.13),0 14px 32px rgba(0,0,0,.13);
   --float:0 16px 45px rgba(0,0,0,.33);
   --selshadow:0 2px 9px rgba(0,0,0,.30);
-  --tab-shadow:0 2px 10px rgba(0,0,0,.34);
   --btn-shadow:0 2px 5px rgba(0,0,0,.22);
   --btn-shadow-h:0 5px 14px rgba(0,0,0,.34);
   --segshadow:0 1px 4px rgba(0,0,0,.35);
@@ -250,7 +255,7 @@
   --nb-slate:#a3adbb;  --nb-slate-soft:#333944;
 }}
 :root[data-theme="dark"]{
-  --canvas:#1b1e24; --win:#252931; --side:#1b1e24; --chrome:#22262d; --list:#1f232a;
+  --canvas:#1b1e24; --win:#252931; --side:#1b1e24; --chrome:#1e2127; --list:#1f232a;
   --win-blur:rgba(37,41,49,.94); --quote-b:#5f7d74;
   --hover:#303640; --sel:#303640;
   --t1:#e9edf3; --t2:#a4acb9; --t3:#929bab; --t4:#7d8593; --recent:#a4acb9; --accent:#c6a3e0;
@@ -270,7 +275,6 @@
   --shadow:0 3px 10px rgba(0,0,0,.13),0 14px 32px rgba(0,0,0,.13);
   --float:0 16px 45px rgba(0,0,0,.33);
   --selshadow:0 2px 9px rgba(0,0,0,.30);
-  --tab-shadow:0 2px 10px rgba(0,0,0,.34);
   --btn-shadow:0 2px 5px rgba(0,0,0,.22);
   --btn-shadow-h:0 5px 14px rgba(0,0,0,.34);
   --segshadow:0 1px 4px rgba(0,0,0,.35);
@@ -351,8 +355,11 @@ svg{fill:none;stroke:currentColor}
 /* ═══ 浏览器壳：只剩一条标签条 ═══════════
    42px 一行装下全部窗口层控件：左 ☁ ‹ ›（壳里从红绿灯右缘 80px 起，云就是 ⌂），
    中间标签，右边搜索胶囊 ＋ ⚙。空处可拖窗口，控件一律 no-drag。
-   当前标签是一枚 9px 圆角白卡片，浮在 --chrome 灰底上。 */
-/* 5.4 起顶栏与正文之间不画线：--chrome（#f7f8fa）和 --win（#fff）本来就差一档，
+   5.8.1 起整条改成 align-items:flex-end：所有标签一样高、底边贴住条底，当前那张
+   点亮成 --win 并在左右下角长出外翻角，直接接进下一行（首页是 .pagebox 的白，
+   阅读页是 .doc-toolbar 那层压在白上的毛玻璃，合成结果同样是 --win）。
+   导航组／＋／右侧组因此各自 margin-bottom:4px 垫回标签的中线。 */
+/* 5.4 起顶栏与正文之间不画线：--chrome（#eef0f4）和 --win（#fff）本来就差一档，
    色差就是分界。要加回来的话记得用 inset 阴影，不要用 border——border 会额外
    占 1px，而 --chrome-h 只算了标签条的高度，正文顶上就会被压掉一行的头。 */
 #chrome{position:fixed;top:0;left:0;right:0;z-index:20;background:var(--chrome);
@@ -361,17 +368,19 @@ body.solo #chrome{display:none!important}
 #tabstrip{
   height:var(--tabstrip-h);flex:none;position:relative;
   background:var(--chrome);
-  display:flex;align-items:center;
+  display:flex;align-items:flex-end;
   width:100%;box-sizing:border-box;
   padding:0 12px 0 var(--tab-left);gap:5px;
   user-select:none;-webkit-user-select:none;
   -webkit-app-region:drag;
+  /* overflow:hidden 不能删：外翻角是溢出标签盒的绝对定位块，靠它裁掉
+     最左那一枚多出条外的部分。 */
   overflow:hidden;
 }
 /* 标签＋加号是一组：加号贴在最后一个标签后面。栏本身可以收缩，
    多出来的标签由 layoutTabs 整颗藏进 ▾，不要被 overflow 切成半个。 */
 #tabcluster{
-  display:flex;align-items:center;gap:5px;
+  display:flex;align-items:flex-end;gap:5px;
   flex:0 1 auto;min-width:0;
   /* 右边那簇（搜索胶囊 ＋ ⚙ ＋ 26px 头像）加左边那三颗导航钮大概 316px，
      给标签留出上限，剩下的交给 flex 收缩和 layoutTabs 的 ▾ 收纳。 */
@@ -380,7 +389,7 @@ body.solo #chrome{display:none!important}
 }
 #tabstrip .tabbar{
   position:relative;top:auto;left:auto;right:auto;z-index:auto;
-  display:flex;align-items:center;gap:4px;
+  display:flex;align-items:flex-end;gap:4px;
   padding:0;overflow:visible;background:transparent;
   flex:1 1 auto;min-width:0;max-width:none;height:auto;
 }
@@ -389,18 +398,45 @@ body.solo #chrome{display:none!important}
   position:relative;z-index:1;
   display:flex;align-items:center;gap:9px;
   min-width:96px;max-width:210px;flex:1 1 180px;
-  height:34px;margin:0;
+  height:var(--tab-h);margin:0;
   padding:0 26px 0 12px;
-  border-radius:var(--tab-r);background:transparent;box-shadow:none;
+  border-radius:var(--tab-r2) var(--tab-r2) 0 0;background:transparent;box-shadow:none;
   color:var(--t2);font-weight:400;
-  overflow:hidden;
+  /* 不能 overflow:hidden —— 外翻角要溢出到标签左右两侧去。
+     标题的省略号由 .tt/.tt .h 自己的 overflow 管，不靠这里。 */
+  overflow:visible;
   transition:background-color .16s ease,color .16s ease,box-shadow .18s ease;
 }
 #tabstrip .tab:hover{background:var(--hover);color:var(--t1)}
+/* 当前标签：Chrome 式外翻角。
+   ① 上两角 --tab-r2 圆、下两角方，底色 = --win（下一行的实色）；
+   ② ::before/::after 各一枚贴在左下/右下外侧，用 radial-gradient 把靠内的
+      那个角抠成框架色，剩下填 --win —— 抠出来的那一勾就是外翻角；
+   ③ 两端色标都得是不透明色。transparent 在 sRGB 里插值会经过「透明黑」，
+      弧线上会烧出一条暗边；
+   ④ 方块宽 --flare + 1px，多出来的 1px 压进标签本体（同色，看不出），
+      标签宽是 flex 算出来的、会落在半像素上，整宽会在接缝漏出一条框架色细线；
+   ⑤ 渐变在 --flare 处收尾（--flare - .7px 起坡），抗锯齿的过渡像素全部落在
+      标签外侧，不糊进标签边上；
+   ⑥ 一层 box-shadow 都不能留 —— 外投阴影会在下一行上画出暗线，前功尽弃。 */
 #tabstrip .tab.on{
   z-index:3;
   background:var(--win);color:var(--t1);font-weight:500;
-  box-shadow:var(--tab-shadow);
+  box-shadow:none;
+}
+#tabstrip .tab.on::before,#tabstrip .tab.on::after{
+  content:'';position:absolute;bottom:0;
+  width:calc(var(--flare) + 1px);height:var(--flare);pointer-events:none;
+}
+#tabstrip .tab.on::before{
+  left:calc(var(--flare) * -1);
+  background:radial-gradient(circle at 0 0, var(--chrome) calc(var(--flare) - .7px),
+             var(--win) var(--flare));
+}
+#tabstrip .tab.on::after{
+  right:calc(var(--flare) * -1);
+  background:radial-gradient(circle at 100% 0, var(--chrome) calc(var(--flare) - .7px),
+             var(--win) var(--flare));
 }
 #tabstrip .tab .fav{
   width:14px;height:14px;flex:none;display:flex;align-items:center;justify-content:center;
@@ -416,13 +452,15 @@ body.solo #chrome{display:none!important}
 #tabstrip .tab .tx svg{width:11px;height:11px}
 #tabstrip .tab .tx:hover{background:var(--hover);color:var(--t1)}
 #tabstrip .tab.on .tx:hover{background:var(--canvas)}
+/* 条改成 flex-end 之后，这几颗 28 高的控件各自垫 4px 回到标签的中线上
+   （42 - 36 = 6，标签中线在 24，28 高的钮 bottom 留 4 正好也落在 24）。 */
 #tabstrip .tabmore{
-  height:28px;align-self:center;margin:0 2px;z-index:4;
+  height:28px;align-self:flex-end;margin:0 2px 4px;z-index:4;
   -webkit-app-region:no-drag;
 }
 #tabplus{
-  width:28px;height:28px;border-radius:8px;flex:none;align-self:center;
-  margin:0;color:var(--t2);position:relative;z-index:5;
+  width:28px;height:28px;border-radius:8px;flex:none;align-self:flex-end;
+  margin:0 0 4px;color:var(--t2);position:relative;z-index:5;
   display:flex;align-items:center;justify-content:center;
   -webkit-app-region:no-drag;
 }
@@ -437,7 +475,7 @@ body.solo #chrome{display:none!important}
 
 /* 导航钮：☁ ‹ › 三颗，5.4 起搬进标签条左端（壳里贴红绿灯右缘，浏览器里贴左缘）。 */
 .navgrp{
-  display:flex;align-items:center;gap:2px;flex:none;margin-right:10px;
+  display:flex;align-items:center;gap:2px;flex:none;margin:0 10px 4px 0;
   -webkit-app-region:no-drag;
 }
 .navb{
@@ -465,7 +503,7 @@ body.solo #chrome{display:none!important}
 
 /* 标签条右端：搜索胶囊（⌘K 的唯一入口）＋ ⚙。品牌标 5.5 起挪去了左端当 ⌂。 */
 .rightgrp{
-  display:flex;align-items:center;gap:6px;flex:none;
+  display:flex;align-items:center;gap:6px;flex:none;margin-bottom:4px;
   -webkit-app-region:no-drag;
 }
 /* 搜索胶囊：不描边（无线条规则），--field 底靠色差立住，hover 抬 1px 加 --el-1。 */
@@ -1393,13 +1431,21 @@ body.focus-mode .relpanel{opacity:0;pointer-events:none}
 .md .flash{animation:hitflash 1.4s ease-out 1;border-radius:6px}
 
 /* 文档历史折叠：纯显示层的一层包装，进编辑与存盘对比前整个拆掉。
-   包装盒自己带状态，被包住的那张表一个属性都不动。 */
+   包装盒自己带状态，被包住的那张表一个属性都不动。
+   5.8.1 起默认是展开的（.open 由 decorateHistory 直接挂上），点芯片收起；
+   收起只记在本标签页的内存里（HIST_FOLD），不进 ST、不落盘。
+   两枚 chevron 都画进 DOM，靠 CSS 切显示——JS 不换 innerHTML，
+   undecorateHistory 拆盒子时它们跟着盒子一起没，正文一个属性都不留。 */
 .histbox{margin:0 0 1.5em}
 .histbox>.tw{display:none;margin:10px 0 0}
 .histbox.open>.tw{display:block}
-.histpill{font-size:11px;color:var(--t2);background:var(--field);border-radius:9px;
+.histpill{display:inline-flex;align-items:center;gap:5px;
+  font-size:11px;color:var(--t2);background:var(--field);border-radius:9px;
   padding:3px 9px;white-space:nowrap;transition:background-color .15s ease}
 .histpill:hover{background:var(--hover)}
+.histpill .cv{display:flex;align-items:center;color:var(--t3);margin-right:-1px}
+.histbox.open .histpill .cv-dn{display:none}
+.histbox:not(.open) .histpill .cv-up{display:none}
 
 /* 编辑态 */
 .pane.edit .md>[data-lock]{position:relative;background:var(--field);border-radius:6px;
@@ -2082,13 +2128,13 @@ body.solo #chrome{display:none!important}
 /* ── 标签页 ──
    两案，用 .tabbar 上的修饰类切：(a) .nb-dot 标题前一枚 6px 色点；
    (b) .nb-bar 顶部 2px 色条（单条标签窄于 110px 时整条退到这一案）。
-   .nb-bar 的当前标签要把 --tab-shadow 一起写回去，只写 inset 会把「浮起来」那层丢掉。 */
+   5.8.1 起当前标签不再有 --tab-shadow，这条色条是 inset、跟着上两角的圆走，
+   当前标签那条由下面这一条一起管，不必再单写一遍。 */
 #tabstrip .tabbar.nb-dot .tab .nd{margin-right:-3px}
 #tabstrip .tabbar.nb-bar .tab .nd{display:none}
 /* --nb 得给个兜底值：没挂色点的标签（库外只读、别的来源）上 var(--nb) 解不出来，
-   整条 box-shadow 声明会被丢掉——连 .tab.on 的 --tab-shadow 一起没了。 */
+   整条 box-shadow 声明会被丢掉，色条就不画了。 */
 #tabstrip .tabbar.nb-bar .tab{box-shadow:inset 0 2px 0 var(--nb, transparent)}
-#tabstrip .tabbar.nb-bar .tab.on{box-shadow:inset 0 2px 0 var(--nb, transparent),var(--tab-shadow)}
 #tabpick .tprow .nd{flex:none;margin-right:6px}
 
 /* ── 左上那颗云 ──
@@ -4762,6 +4808,10 @@ async function closeTab(id, opt){
   const p=paneOf(t); if(p) p.remove();
   if(t.blobs) t.blobs.forEach(u=>{ try{ URL.revokeObjectURL(u); }catch(e){} });
   REL_OPEN.delete(t.id);                     // 关联面板的展开态跟着这个标签一起走
+  /* 文档历史同理，只是键带了路径：一个标签开过几篇就有几个键，前缀扫一遍全删。
+     tabSeq 只增不减、id 不回收，不扫也不会串味，但一个长会话里会越攒越多。 */
+  const pre=t.id+'\n';
+  for(const k of [...HIST_FOLD.keys()]) if(k.startsWith(pre)) HIST_FOLD.delete(k);
   TABS.splice(i,1);
   if(!TABS.length){
     curTab=null;
@@ -5350,8 +5400,19 @@ function newPane(t){
   // [[题名]] 按标题 / 文件名解析，多个候选弹一列挑。编辑态不拦——点击是在放光标。
   md0.addEventListener('click', e=>{
     if(t.editing) return;
+    /* 文档历史：默认展开，点芯片收起。收起只记在本标签页的内存里，
+       重画（paintWork / 重新加载）时 decorateHistory 会读回来。 */
     const hp=e.target.closest('.histpill');
-    if(hp){ const box=hp.closest('.histbox'); if(box) box.classList.toggle('open'); return; }
+    if(hp){
+      const box=hp.closest('.histbox');
+      if(box){
+        const open=box.classList.toggle('open');
+        hp.setAttribute('aria-expanded', open ? 'true' : 'false');
+        const k=histKey(t);
+        if(open) HIST_FOLD.delete(k); else HIST_FOLD.set(k, true);
+      }
+      return;
+    }
     const a=e.target.closest('a'); if(!a || !md0.contains(a)) return;
     if(a.dataset.wl!==undefined){ e.preventDefault(); openWiki(a.dataset.wl, e, t.path); return; }
     const rel=libRel(a.dataset.u||'', dirOf(t.path));
@@ -5642,7 +5703,7 @@ async function loadMd(t){
     const r=await fetch(url(t.path)); if(!r.ok) throw 0;
     t.raw=await r.text();
     renderMd(md, t.raw, dirOf(t.path));
-    decorateHistory(md);
+    decorateHistory(md, t);
   }catch(err){
     md.textContent='';
     tell(TR('读不出这一份'), IS_HTTP ? TR('服务没应答。') :
@@ -5707,7 +5768,7 @@ async function loadExt(t){
         im.replaceWith(s);
       }
     });
-    decorateHistory(md);
+    decorateHistory(md, t);
   }catch(e){
     md.textContent='';
     tell(TR('读不出这一份'), TR('库外文件读取失败'));
@@ -5721,8 +5782,16 @@ async function loadExt(t){
    正文第一张「版本 / 日期 / 修改人」表折成一颗胶囊，点了展开。
    **纯显示层**：被折的那张表一个属性都不动，只是被搬进一个包装盒；
    进编辑与存盘对比前先 undecorate 拆回去，DOM 跟渲染出来时一模一样。
-   （0827 v27 的教训：undecorate 擦不干净，一个 style="" 都过不了自检。） */
+   （0827 v27 的教训：undecorate 擦不干净，一个 style="" 都过不了自检。）
+   5.8.1 起默认展开：这张表是「这份文档是什么」的一部分，进来就该看见。
+   点芯片收起，只在本标签页内记住——HIST_FOLD 是模块级 Map，键是「标签 id +
+   文档路径」：同一标签里换一篇文档就回到默认的展开，换回原来那篇仍记得收起。
+   不进 ST、不落盘：换一台机器、下次开 app，回到默认的展开。 */
 const HISTHEAD=[/版本/, /日期/, /修改人|修改者|变更人/];
+const HIST_FOLD=new Map();     // histKey(t) → true（这一标签的这一篇把历史收起来了）
+/* 键里的 \n 是分隔符：标签 id 形如 t12、路径里也不会有换行，
+   't1' 和 't12' 不会串味。库外文档／EMBED 有可能没有 path，兜个空串。 */
+const histKey = t => t ? t.id + '\n' + (t.path||'') : '';
 function isHistTable(tw){
   const tb=tw.querySelector('table'); if(!tb) return 0;
   const th=[...tb.querySelectorAll('thead th')].map(x=>(x.textContent||'').trim());
@@ -5731,18 +5800,24 @@ function isHistTable(tw){
   if(!HISTHEAD.every(re=>re.test(line))) return 0;
   return (tb.tBodies[0]||tb).rows.length;
 }
-function decorateHistory(md){
+function decorateHistory(md, t){
   if(!md || md.getAttribute('contenteditable')==='true') return;
+  const folded = !!(t && HIST_FOLD.get(histKey(t)));
   for(const el of [...md.children]){
     if(el.nodeType!==1 || !el.classList.contains('tw')) continue;
     const n=isHistTable(el);
     if(!n) continue;
     const box=document.createElement('div');
-    box.className='histbox';
+    box.className=folded ? 'histbox' : 'histbox open';
     box.setAttribute('data-hist-deco','1');
     const pill=document.createElement('button');
     pill.className='histpill num';
+    pill.type='button';
+    pill.setAttribute('aria-expanded', folded ? 'false' : 'true');
     pill.textContent=TR('文档历史 · {n} 版',{n});
+    pill.insertAdjacentHTML('beforeend',
+      `<i class="cv cv-up">${icon('chevron-up',11)}</i>`
+      +`<i class="cv cv-dn">${icon('chevron-down',11)}</i>`);
     el.replaceWith(box);
     box.appendChild(pill);
     box.appendChild(el);
@@ -6529,7 +6604,7 @@ function paintWork(t){
   const md=p.querySelector('.md');
   undecorateHistory(md);
   renderMd(md, t.editing ? t.work : t.raw, dirOf(t.path));
-  if(!t.editing) decorateHistory(md);
+  if(!t.editing) decorateHistory(md, t);
   applyPref();
   drawDocMeta(t);
   p.scrollTop=top;
@@ -10712,7 +10787,7 @@ if(EMBED){
   t.raw=EMBED.正文;
   const md=paneOf(t).querySelector('.md');
   renderMd(md, EMBED.正文, dirOf(EMBED.路径));
-  decorateHistory(md);
+  decorateHistory(md, t);
   drawDocMeta(t);
   enterReader(); showTab(t.id);
 }else{

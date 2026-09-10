@@ -43,7 +43,7 @@ import urllib.parse
 import urllib.request
 from datetime import datetime
 
-VERSION = "5.8.0"
+VERSION = "5.8.1"
 HERE = os.path.dirname(os.path.abspath(__file__))
 
 # 发现服务时要扫的端口段。跟 config.json 的默认「端口范围」对齐。

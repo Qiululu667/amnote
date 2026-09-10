@@ -735,10 +735,11 @@ static NSColor *surfaceColorForTheme(NSString *theme, NSWindow *window) {
 
 /// 标题栏 / 交通灯背后那一层，对应 template.html 的 --chrome。
 /// 标签条是灰的，这里必须跟着灰，不然红绿灯周围会露出一块白。
+/// 5.8.1 跟网页一起把标签条压深了一档：浅 #f7f8fa → #eef0f4，深 #22262d → #1e2127。
 static NSColor *chromeColorForTheme(NSString *theme, NSWindow *window) {
     return themeIsDark(theme, window)
-        ? [NSColor colorWithSRGBRed:34.0/255.0 green:38.0/255.0 blue:45.0/255.0 alpha:1.0]
-        : [NSColor colorWithSRGBRed:247.0/255.0 green:248.0/255.0 blue:250.0/255.0 alpha:1.0];
+        ? [NSColor colorWithSRGBRed:30.0/255.0 green:33.0/255.0 blue:39.0/255.0 alpha:1.0]   // #1e2127
+        : [NSColor colorWithSRGBRed:238.0/255.0 green:240.0/255.0 blue:244.0/255.0 alpha:1.0]; // #eef0f4
 }
 
 /// 把标题栏里那层 vibrancy 收掉，露出底下的网页。
