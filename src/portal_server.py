@@ -2206,7 +2206,7 @@ def tree_one(v):
     另一张表上，两批合起来才是「文件夹里有什么可读的」。索引没有这道门槛，
     收的就是全部，少一层账。
 
-    只给 md 和 html。每条带 路径 / 标题 / 类型 / 改于 / 预览。
+    只给 md 和 html。每条带 路径 / 标题 / 类型 / 改于 / 预览 / 骨架。
     「附件」那个键留着但恒为空数组：pdf / xlsx / csv 的文字
     照旧进索引搜得到，只是不在门户里列、也不在门户里渲染。
 
@@ -2228,9 +2228,15 @@ def tree_one(v):
 
     try:
         con = fulltext.connect()
+        # 骨架是索引时算好存下来的一列（fulltext.skeleton_of），这儿**只带出来、
+        # 不现算**：文件夹页一次要画上千张卡，现算等于把整本库的正文再跑一遍。
+        # 列可能不在——老库还没迁移、或者这是只读连接（迁移不许在只读上跑）。
+        # 探一下，没有就取空串，卡片画一张白纸，不至于整棵树读不出来。
+        sk_col = "骨架" if "骨架" in {r[1] for r in
+                                      con.execute("PRAGMA table_info(文档)")} else "''"
         # 只取正文开头：标题在第一个 `# ` 里，整份 md 拉出来白读几 MB
-        rows = con.execute("SELECT 路径,类型,mtime,substr(正文,1,4000) FROM 文档 "
-                           "WHERE 类型 IN ('md','html')").fetchall()
+        rows = con.execute("SELECT 路径,类型,mtime,substr(正文,1,4000),%s FROM 文档 "
+                           "WHERE 类型 IN ('md','html')" % sk_col).fetchall()
         synced = fulltext.meta_get(con, "上次同步")
         con.close()
     except Exception as e:
@@ -2240,8 +2246,8 @@ def tree_one(v):
     marks = agent_marks()
     docs = [{"路径": rel, "标题": title_of(rel, head or "", kind, generic),
              "类型": kind, "改于": round(mt or 0, 1),
-             "预览": list_preview(head or "", kind)}
-            for rel, kind, mt, head in rows]
+             "预览": list_preview(head or "", kind), "骨架": sk or ""}
+            for rel, kind, mt, head, sk in rows]
     for d in docs:
         if marks.get(d["路径"]):
             d["代理"] = marks[d["路径"]]

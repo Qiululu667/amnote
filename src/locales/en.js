@@ -43,8 +43,6 @@ window.AMN_I18N["en"] = {
   "双击正文即可编辑，边写边存": "Double-click to edit — it saves as you write",
   "专注模式，屏幕上只剩正文": "Focus mode: nothing on screen but the text",
   "全部": "All",
-  "换成卡片": "Switch to cards",
-  "换成列表": "Switch to list",
   "{n} 篇": {
     "one": "{n} note",
     "other": "{n} notes"
@@ -67,6 +65,10 @@ window.AMN_I18N["en"] = {
   "看全部 {n} 篇": {
     "one": "See all {n} note",
     "other": "See all {n} notes"
+  },
+  "再看 {n} 篇": {
+    "one": "Show {n} more note",
+    "other": "Show {n} more notes"
   },
   "最近打开": "Recently opened",
   "这一类还没有": "Nothing of this type yet",

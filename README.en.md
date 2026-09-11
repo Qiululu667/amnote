@@ -47,7 +47,7 @@ AM·Note doesn't move anything. Pick a folder and you get a window as light as a
 - Under that first row are actions and note titles. Arrow keys to choose, Return to open. It matches file names and body text, in this folder — not on the web.
 - You can also just type on the Start page; the first keystroke brings the panel up.
 - Below the greeting on the Start page is a row of folder chips: the top-level folders in your vault, with "Pinned" last. Click one to see what's inside, ⌘-click to open it in a new tab. If it has subfolders they appear on the next row, with breadcrumbs above to step back out.
-- Cards can be filtered by "All / Markdown / HTML", and switched between grid and list.
+- Cards can be filtered by "All / Markdown / HTML". Each card is a picture of the note itself: a .md becomes a sheet of paper with the real title on it and the shape of the note below — where the headings are, where the paragraphs, lists and tables are; an .html becomes a small browser window. The same note always looks the same, so you recognize it without reading a word.
 
 **Read**
 
@@ -80,7 +80,7 @@ AM·Note doesn't move anything. Pick a folder and you get a window as light as a
 - ⌘⇧T brings back the tab you just closed.
 - Reveal in Finder, Share and Open in New Window are the small icons on the right of the document header; to copy the path, just click the path. Print and "Open Enclosing Folder" live under "⋯".
 - A quick note you didn't mean to make: "⋯" → Move to Trash, or press ⌘⌫. You can undo from the toast for a few seconds, and it's in the system Trash either way.
-- Double-click a `.md` in Finder to open it here.
+- Double-click a `.md` in Finder to open it here. It opens in a new tab, so whatever you were reading stays where it was.
 
 **Several notebooks**
 

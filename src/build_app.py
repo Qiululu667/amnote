@@ -188,6 +188,11 @@ def export_icons(dest_dir):
 
 # ───────────────────────── 后台服务脚本（LaunchAgent 调用）─────────────────────────
 NATIVE_SRC = "app_shell.m"
+# 5.9.0 = 开始页卡片改成内容预览（Markdown 一张纸页 + 按文档结构生成的骨架条、HTML 一扇
+# 浏览器窗，摘录退役），骨架在索引时算好存进 fulltext.db 的「骨架」列、/__tree 带出；
+# 文件夹页/收藏页 60 张一批；筛选段与「新建随手记」改胶囊，网格/列表切换撤掉；
+# 访达双击 / 打开方式 / 拖到 Dock 递进来的文件开新标签（AMN.openPath 带 shell:true）。
+# 壳本身一行没改，只跟版本号。
 # 5.8.1 = 框架色跟网页一起压深一档：chromeColorForTheme 浅 #f7f8fa → #eef0f4、
 # 深 #22262d → #1e2127，红绿灯那 80px 才不会跟标签条差色（surface/--win 不动）。
 # 5.7.0 = 多笔记本：一个服务同时挂 N 个文件夹，路径以笔记本名开头（单本时零变化）。
@@ -223,7 +228,7 @@ NATIVE_SRC = "app_shell.m"
 # （20260903）。有 digest 核 sha256，解开后核对 bundle id。
 # 5.0.0 = 开源首发。
 # 版本号是唯一能在「关于 AM·Note」里看出来跑的是新壳还是旧壳的地方，改了壳就要动它。
-NATIVE_VERSION = ("5.8.1", "34")
+NATIVE_VERSION = ("5.9.0", "35")
 MIN_MACOS = "12.0"
 
 

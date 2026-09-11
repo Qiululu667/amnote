@@ -12,7 +12,7 @@ support-dir、token 文件、notebooks.json、AMNOTE_HOME 全指到临时目录�
 
 十组：
     1 单库零变化   同一个库先用 HEAD 那版服务跑一遍，再用工作区这版跑一遍，
-                   十二条路由的响应逐键比对（只许多出 模式 / 笔记本 / 接口版本）
+                   十二条路由的响应逐键比对（只许多出 NEW_KEYS 里那几个）
     2 多库路由     前缀、扇出归并、隐含 nb、同名文件互不串、/__locate、nb= 写错
     3 写与流水     新建 / 冲突 / 废纸篓撤销按本隔离 / 门户认领不串库
     4 /__notebooks 添加、撞名默认名、嵌套、改名、颜色、默认、移除、模式翻转
@@ -49,8 +49,11 @@ PORT_FROM, PORT_TO = 8948, 8950
 # 每次跑都会变的键，比对时跳过（值变了不说明坏了）
 VOLATILE = {"生成时间", "上次扫描", "上次同步", "端口", "秒前", "耗时", "耗时秒",
             "地图"}
-# 新版只许多出这三个键（接口版本 2 → 3 也放行）
-NEW_KEYS = {"模式", "笔记本", "接口版本"}
+# 新版只许多出这几个键（接口版本 2 → 3 也放行）
+# 5.9 添 骨架：/__tree 的每条 文档[] 多一列「骨架」（md 的结构缩影，
+# fulltext.skeleton_of 索引时算好存在库里，首页卡片照它画一张纸）。是新增字段，
+# 旧键一个没动、值也没变，所以按 NEW_KEYS 放行，不是「单库有变化」。
+NEW_KEYS = {"模式", "笔记本", "接口版本", "骨架"}
 
 PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")

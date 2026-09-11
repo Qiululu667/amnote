@@ -51,6 +51,10 @@ html 那一改要对已经进库的 html 补一次重抽（只重写 正文 列�
       要恢复就把这两个数调回去，再跑一次 `--compact`。
     · db 和 jsonl 都是派生物加软状态：删掉 db 只是全文索引重建一次；
       删掉 jsonl 只是历史流水没了。业务文件一根毛不掉。
+    · **5.9 起「文档」表多一列 `骨架`**（v3 的表头那句「schema 没变」到此为止）：
+      md 的结构缩影，索引时算一次存下来，首页卡片照它画一张「纸」。老库开库时
+      自动 ALTER ＋ 回填一次，**只在可写连接上**（见 _add_skeleton_col）；
+      规则在 skeleton_of，跟页面上的 skeletonOf() 是同一套，改要一起改。
 
 用法（都能单独跑，不用起服务；--root 可写在任意位置）：
     python3 fulltext.py --root /path --sync
@@ -1085,6 +1089,44 @@ def _connect_ro():
     return con
 
 
+def _add_skeleton_col(con):
+    """老库补「骨架」那一列，并把已经在库里的 md 一次性回填。
+
+    **只能拿可写连接调。** 只读那条线（命令行离线：`mode=ro` / `immutable=1`）
+    一个字节都不许往库里写，所以 connect() 的只读分支不经过这儿；那边读到的
+    老库没有这一列，读侧自己容错（见 portal_server.tree_one）。
+
+    回填从已经存着的 正文 现算，不碰磁盘、不动 mtime／大小——动了下一趟 sync
+    会把整本库当成「全改过」，往流水里灌一屏假的「修改」。
+
+    门户是多线程的，两条连接可能同时看到「没有这一列」。抢输的那条会吃一个
+    `duplicate column name`，直接退出就是了：赢的那条接着回填，慢的那几秒里
+    卡片上的纸是空的，下一次刷新就有了。
+
+    （`skeleton_of` 和 `SK_SCAN` 在文件下半截，跟 `list_preview` 挨着。）
+    """
+    try:
+        cols = {r[1] for r in con.execute("PRAGMA table_info(文档)")}
+    except sqlite3.Error:
+        return
+    if not cols or "骨架" in cols:
+        return
+    try:
+        con.execute("ALTER TABLE 文档 ADD COLUMN 骨架 TEXT DEFAULT ''")
+        con.commit()
+    except sqlite3.OperationalError:
+        return
+    rels = [r for r, in con.execute("SELECT 路径 FROM 文档 WHERE 类型='md'")]
+    for i in range(0, len(rels), 200):        # 一次 200 份：正文有 4 MB 一份的
+        chunk = rels[i:i + 200]
+        rows = con.execute(
+            "SELECT 路径,substr(正文,1,%d) FROM 文档 WHERE 路径 IN (%s)"
+            % (SK_SCAN, ",".join("?" * len(chunk))), chunk).fetchall()
+        con.executemany("UPDATE 文档 SET 骨架=? WHERE 路径=?",
+                        [(skeleton_of(b or ""), r) for r, b in rows])
+        con.commit()
+
+
 def connect():
     """开索引库。configure(readonly=True) 之后是**纯读**：URI 的 mode=ro，
     不改 journal_mode（那一句会写主库文件的头）、不建表。库不在就直接抛，
@@ -1098,13 +1140,15 @@ def connect():
     con.executescript("""
     CREATE TABLE IF NOT EXISTS 文档(
       路径 TEXT PRIMARY KEY, 类型 TEXT, mtime REAL, 大小 INTEGER,
-      正文 TEXT DEFAULT '', 原文 TEXT, 备注 TEXT DEFAULT '');
+      正文 TEXT DEFAULT '', 原文 TEXT, 备注 TEXT DEFAULT '',
+      骨架 TEXT DEFAULT '');
     CREATE TABLE IF NOT EXISTS 链接(
       源 TEXT, 类型 TEXT, 目标 TEXT, 文本 TEXT);
     CREATE INDEX IF NOT EXISTS 链接_目标 ON 链接(目标);
     CREATE INDEX IF NOT EXISTS 链接_源 ON 链接(源);
     CREATE TABLE IF NOT EXISTS 元(键 TEXT PRIMARY KEY, 值 TEXT);
     """)
+    _add_skeleton_col(con)
     return con
 
 
@@ -1615,9 +1659,11 @@ def _sync_once(log):
             body, raw, note = _extract_sheet(full, kind)
         else:                                      # xls / docx / pptx：只记不抽
             body, raw, note = "", None, "没有抽取器"
-        con.execute("INSERT OR REPLACE INTO 文档(路径,类型,mtime,大小,正文,原文,备注) "
-                    "VALUES(?,?,?,?,?,?,?)",
-                    (r, kind, cur[r][0], cur[r][1], body, raw, note))
+        # 骨架只有 md 有（html 的卡片画的是一扇窗，pdf／表格不在门户里列）
+        con.execute("INSERT OR REPLACE INTO 文档(路径,类型,mtime,大小,正文,原文,备注,骨架) "
+                    "VALUES(?,?,?,?,?,?,?,?)",
+                    (r, kind, cur[r][0], cur[r][1], body, raw, note,
+                     skeleton_of(body) if kind == "md" else ""))
         if kind == "md":
             con.execute("DELETE FROM 链接 WHERE 源=?", (r,))
             con.executemany("INSERT INTO 链接(源,类型,目标,文本) VALUES(?,?,?,?)",
@@ -1634,9 +1680,9 @@ def _sync_once(log):
             t = got.get(_full(r))
             body = t or ""
             note = "读不了" if t is None else ("无文本层" if not t.strip() else "")
-            con.execute("INSERT OR REPLACE INTO 文档(路径,类型,mtime,大小,正文,原文,备注) "
-                        "VALUES(?,?,?,?,?,?,?)",
-                        (r, "pdf", cur[r][0], cur[r][1], body, None, note))
+            con.execute("INSERT OR REPLACE INTO 文档(路径,类型,mtime,大小,正文,原文,备注,骨架) "
+                        "VALUES(?,?,?,?,?,?,?,?)",
+                        (r, "pdf", cur[r][0], cur[r][1], body, None, note, ""))
         con.commit()
 
     meta_set(con, "上次同步", now_iso)
@@ -1884,6 +1930,104 @@ def list_preview(head, kind):
         s = re.sub(r"^#+\s*", "", s, flags=re.M)
         s = re.sub(r"!\[[^\]]*\]\([^)]*\)", " ", s)
     return re.sub(r"\s+", " ", s).strip()[:240]
+
+
+# ── 骨架：一份 md 的结构缩影，索引时算一次 ───────────────────
+#
+# 输出是一串字母，一个字母一个块：h 标题 · p 段落 · l 列表 · t 表格 · c 代码 ·
+# i 图片 · q 引用，最多 SK_MAX 个。首页的卡片照这串字画一张「纸」，所以同一份
+# md 必须永远算出同一串——规则里没有一处随机，也不看文件名、时间、长度。
+#
+# 规则与页面上的 skeletonOf() **逐条相同**（5.9 需求轮 B-report §2.1，源码在
+# _工作区/20260911_需求迭代_v1/cards/parts/app.js）。两边哪天改，得一起改：
+# 骨架是存在库里的，页面只是把它画出来，对不上就是卡片上的纸跟文档长得不一样。
+#
+# 判断顺序是硬要求：围栏 → 分隔线 → 标题 → 图片 → 引用 → 表格 → 列表 → 段落。
+# 围栏必须最先（代码块里可能有 `#` `|` `-`），分隔线必须排在标题之前（`---`
+# 否则会被别的规则误伤）。第一个一级标题吞掉不计——那是文档标题，卡片的纸上
+# 已经单写了一行，再画一根横条就是写了两遍。
+SK_MAX = 14
+SK_SCAN = 8000          # 只看开头这些字。14 个块之前早到了，别拿 4 MB 跑正则
+SK_FM = re.compile(r"^\ufeff?\s*---[ \t]*\n[\s\S]*?\n---[ \t]*(?:\n|$)")
+SK_FENCE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
+SK_HR = re.compile(r"^ {0,3}([-*_])[ \t]*(?:\1[ \t]*){2,}$")
+SK_H = re.compile(r"^ {0,3}(#{1,6})[ \t]+\S")
+SK_IMG = re.compile(r"^ {0,3}!\[[^\]]*\]\([^)]*\)[ \t]*$")
+SK_QUOTE = re.compile(r"^ {0,3}>")
+SK_TABLE = re.compile(r"^ {0,3}\|")
+SK_LIST = re.compile(r"^[ \t]*(?:[-*+]|\d+[.)])[ \t]+")
+SK_CONT = re.compile(r"^[ \t]+\S")     # 列表项的缩进续行，跟着上一条一起吃
+SK_CLOSE = {"`": re.compile(r"^ {0,3}`{3,}"),
+            "~": re.compile(r"^ {0,3}~{3,}")}
+
+
+def skeleton_of(text):
+    """md 原文 → 骨架串。**只对 md 调**，别的类型一律存空串。"""
+    # 超长的只看开头一截。**末尾那半行照留**：切在行首反而会把整段丢掉
+    # （开头就是一整段 9000 字的文档，切到行边界就只剩标题、骨架成了空串）。
+    # 半行最多让最后一个块判错一次类型，比少一个块轻。
+    s = re.sub(r"\r\n?", "\n", str(text or "")[:SK_SCAN])
+    s = SK_FM.sub("", s, count=1)      # 只剥开头那一块 frontmatter
+    lines = s.split("\n")
+    n = len(lines)
+    out = []
+    i = 0
+    h1done = False
+    while i < n and len(out) < SK_MAX:
+        ln = lines[i]
+        if not ln.strip():
+            i += 1
+            continue
+        f = SK_FENCE.match(ln)         # 围栏代码块：一路吃到收尾围栏
+        if f:
+            close = SK_CLOSE[f.group(1)[0]]
+            i += 1
+            while i < n and not close.match(lines[i]):
+                i += 1
+            i += 1
+            out.append("c")
+            continue
+        if SK_HR.match(ln):            # 分隔线：不是块
+            i += 1
+            continue
+        h = SK_H.match(ln)             # 标题：第一个一级标题吞掉不计
+        if h:
+            i += 1
+            if len(h.group(1)) == 1 and not h1done:
+                h1done = True
+                continue
+            out.append("h")
+            continue
+        if SK_IMG.match(ln):           # 单独一行的图片
+            i += 1
+            out.append("i")
+            continue
+        if SK_QUOTE.match(ln):         # 引用 / 表格 / 列表：连着的几行算一个块
+            while i < n and SK_QUOTE.match(lines[i]):
+                i += 1
+            out.append("q")
+            continue
+        if SK_TABLE.match(ln):
+            while i < n and SK_TABLE.match(lines[i]):
+                i += 1
+            out.append("t")
+            continue
+        if SK_LIST.match(ln):
+            while i < n and (SK_LIST.match(lines[i]) or SK_CONT.match(lines[i])):
+                i += 1
+            out.append("l")
+            continue
+        while i < n:                   # 剩下的都是段落：吃到空行或下一个块起头
+            x = lines[i]
+            if not x.strip():
+                break
+            if (SK_FENCE.match(x) or SK_HR.match(x) or SK_H.match(x)
+                    or SK_QUOTE.match(x) or SK_TABLE.match(x)
+                    or SK_LIST.match(x) or SK_IMG.match(x)):
+                break
+            i += 1
+        out.append("p")
+    return "".join(out)
 
 
 def lines_of(text):

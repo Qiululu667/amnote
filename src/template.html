@@ -147,6 +147,10 @@
      不然白底方块直接砸在深色卡片上。 */
   --ico-md:#91a1b5;   --ico-md-bg:#f4f6f9;
   --ico-html:#9a91b5; --ico-html-bg:#f3f1f7;
+  /* 5.9 卡片预览区（.card-stage）：台面比卡面深一档，纸页/浏览器窗用 --paper。
+     两枚都得在下面深色的**两块**里逐字再写一遍，漏一块就是系统深色时卡片发白。 */
+  --card-stage:#f5f6f9;
+  --paper:#ffffff;
   /* 分段控件的凹槽底 */
   --seg-track:rgba(39,43,49,.03);
   /* 大卡右边那叠纸的配色。5.8 起并进淡紫系，跟贴在纸角的应用图标是一家人 */
@@ -238,6 +242,9 @@
   --scrim:rgba(10,14,22,.45);
   --ico-md:#9aa8bb;   --ico-md-bg:#303640;
   --ico-html:#aaa0c8; --ico-html-bg:#343044;
+  /* 5.9 卡片预览区：台面 ＋ 纸。这两行跟 :root 那两行一一对应（共三处）。 */
+  --card-stage:#23262d;
+  --paper:#2b2f37;
   --seg-track:rgba(215,226,250,.05);
   /* 书签栏那排小文件夹和收藏星：浅色那对压在深底上发闷，各提亮一档 */
   --bm-ico:#c9b48f; --pin:#d6c07e;
@@ -283,6 +290,9 @@
   --scrim:rgba(10,14,22,.45);
   --ico-md:#9aa8bb;   --ico-md-bg:#303640;
   --ico-html:#aaa0c8; --ico-html-bg:#343044;
+  /* 5.9 卡片预览区：台面 ＋ 纸。这两行跟 :root 那两行一一对应（共三处）。 */
+  --card-stage:#23262d;
+  --paper:#2b2f37;
   --seg-track:rgba(215,226,250,.05);
   /* 书签栏那排小文件夹和收藏星：浅色那对压在深底上发闷，各提亮一档 */
   --bm-ico:#c9b48f; --pin:#d6c07e;
@@ -303,8 +313,9 @@
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation:none!important;
     transition-duration:.001ms!important;scroll-behavior:auto!important}
-  /* 卡片上浮、按钮回弹、芯片抬起、箭头右移、浮层落场、翻页淡入，全部按住不动 */
-  .note-card:hover,.note-card:active,.resume:hover,.resume:active,
+  /* 按钮回弹、芯片抬起、箭头右移、浮层落场、翻页淡入，全部按住不动。
+     卡片和续读大卡 5.9 起悬停本来就不位移，不必再按。 */
+  .resume:active,
   .hbtn:hover,.hbtn:active,.btn:hover,.btn:active,.dt-btn:hover,.dt-btn:active,
   .dirchip:hover,.card-pin:hover,.resume:hover .continue svg,
   #navHome:hover img{transform:none}
@@ -666,7 +677,8 @@ kbd{
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .hbtn{
   background:linear-gradient(#323843,#2c313a)}}
 /* 首屏那颗是全页第一动作，紧挨 29px 标题，比通用次级按钮再大一档 */
-.hbtn.hero-new{height:34px;padding:0 16px;border-radius:10px;font-size:14px}
+/* 5.9：这一颗走纯圆角胶囊（.hbtn 基类和别处的按钮不动） */
+.hbtn.hero-new{height:34px;padding:0 16px;border-radius:999px;font-size:14px}
 .hbtn.hero-new svg{width:16px;height:16px}
 /* 主按钮：淡紫底板 ＋ 强调色字，同样不描边 */
 .hbtn.key{background:var(--accent-soft);color:var(--accent)}
@@ -684,8 +696,9 @@ kbd{
 .resume::before{content:'';position:absolute;inset:0;pointer-events:none;
   background:linear-gradient(132deg,var(--accent-soft) 0%,transparent 62%);opacity:.85}
 .resume > *{position:relative;z-index:1}
-.resume:hover{transform:translateY(-2px);box-shadow:var(--el-3);
-  transition:transform var(--d-slow) var(--ease-out),box-shadow var(--d-slow) var(--ease-out)}
+/* 5.9：跟新卡片一样只升阴影、不位移——页面上只剩一种悬停语言。 */
+.resume:hover{box-shadow:var(--el-3);
+  transition:box-shadow var(--d-slow) var(--ease-out)}
 .resume:active:not([disabled]){transform:translateY(0) scale(.995);transition-duration:80ms}
 .resume .rs-text{min-width:0;flex:1}
 .resume .overline{font-size:10px;color:var(--t3);display:flex;align-items:center;gap:6px;
@@ -750,55 +763,161 @@ kbd{
 .chipfold svg{flex:none;color:currentColor}
 .chipfold .ar{font-size:12.5px;line-height:1;margin-left:-1px}
 
-/* ── 分区标题：计数 + 类型筛选 + 网格/列表 ── */
+/* ── 分区标题：计数 + 类型筛选 ── */
 .section-head{display:flex;align-items:center;gap:15px;margin:28px 1px 14px}
 .section-head h2{font-size:13px;font-weight:570;margin:0}
 .section-head .section-meta{font-size:10px;color:var(--t3)}
 .section-head .fill{flex:1}
-.filters{display:flex;gap:3px;background:var(--seg-track);padding:3px;border-radius:var(--r-sm);flex:none}
-.filters button{font-size:10px;border-radius:var(--r-xs);color:var(--t2);padding:4px 9px;
+/* 纯圆角胶囊。设置页那套 .setting .filters 和 .seg 还是方角小圆（要统一是
+   一行的事），这里只管首页/文件夹页/已收藏页的段头。 */
+.filters{display:flex;gap:3px;background:var(--seg-track);padding:3px;border-radius:999px;flex:none}
+.filters button{font-size:10px;border-radius:999px;color:var(--t2);padding:4px 9px;
   transition:background-color var(--d-base) var(--ease-out),color var(--d-base) ease,
              box-shadow var(--d-base) var(--ease-out)}
 .filters button:hover{color:var(--t1)}
 .filters button.on{background:var(--segon);color:var(--t1);box-shadow:var(--segshadow)}
-.view-toggle{width:28px;height:28px;border-radius:7px;flex:none;color:var(--t2);
-  display:flex;align-items:center;justify-content:center}
-.view-toggle:hover{background:var(--hover);color:var(--t1)}
-.view-toggle:active:not([disabled]){transform:scale(.96)}
-.view-toggle svg{width:14px;height:14px}
 
-/* ── 卡片网格 ───────────────────────────── */
-.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}
+/* ── 卡片网格 ─────────────────────────────
+   5.9：卡片正面是一张**内容预览**——md 一张纸页、html 一扇浏览器窗，纸／窗上
+   第一行写真标题，下面是由 /__tree 的「骨架」串摆出来的纯 CSS 条。摘录整段退役
+   （`cardText()` 只留给续读大卡）。全页零 1px 描边，悬停只升一档阴影、不位移
+   （续读大卡也跟着改，页面上只剩一种悬停语言）。
+   兼容线：build_app.py MIN_MACOS = "12.0"（Safari 15），所以这一段
+   **不用 color-mix、不用容器查询、不用 content-visibility**——透明色一律写死
+   rgba（浅深各一份，靠下面那几枚组件作用域局部变量切换），预览区的缩放单位
+   --u 在三档断点上各写死一次。 */
+.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
 .note-card{
-  position:relative;min-width:0;border:1px solid transparent;border-radius:13px;
+  position:relative;min-width:0;border:0;border-radius:14px;
   background:var(--card-face);box-shadow:var(--el-1);
-  transition:transform var(--d-base) var(--ease-out),box-shadow var(--d-base) var(--ease-out);
+  /* 芯片／收藏星的毛玻璃底＝--win 80%，写死成 rgba（深色那份在文件末尾）。
+     它挂在 .note-card 上而不是 .card-stage 上：收藏星在预览区外面。 */
+  --chip-bg:rgba(255,255,255,.80);
+  transition:box-shadow var(--d-base) var(--ease-out);
 }
-/* 进来慢一点（--d-slow）、出去快一点（--d-base）：抬起有分量，放下利索 */
-.note-card:hover{transform:translateY(-2px);box-shadow:var(--el-3);
-  transition:transform var(--d-slow) var(--ease-out),box-shadow var(--d-slow) var(--ease-out)}
-.note-card:active{transform:translateY(0) scale(.99);transition-duration:80ms}
-/* 卡片自己在动，里面那颗全尺寸按钮就别跟着 scale(.98) 了 */
+/* 进来慢一点（--d-slow）、出去快一点（--d-base）：浮起来有分量，落下利索 */
+.note-card:hover{box-shadow:var(--el-3);transition-duration:var(--d-slow)}
+/* 卡片自己不动了，里面那颗全尺寸按钮就别跟着 scale(.98) 了 */
 .note-card .card-open:active:not([disabled]){transform:none}
-.card-open{padding:19px 20px 17px;text-align:left;width:100%;height:100%;
-  display:flex;flex-direction:column;align-items:flex-start}
+.card-open{padding:6px;text-align:left;width:100%;height:100%;display:block;
+  border-radius:14px}
 .card-open>*{max-width:100%}
-.card-top{display:flex;align-items:center;gap:7px;margin-bottom:12px}
-.file-icon{width:28px;height:30px;border-radius:7px;flex:none;
-  display:flex;align-items:center;justify-content:center;
-  background:var(--ico-md-bg);color:var(--ico-md);
-  transition:background-color var(--d-base) ease,color var(--d-base) ease}
-.file-icon svg{width:15px;height:15px}
-.file-icon.html{background:var(--ico-html-bg);color:var(--ico-html)}
-.note-card:hover .file-icon{background:var(--accent-soft);color:var(--accent)}
-.kind-label{font-size:9px;color:var(--t3);letter-spacing:.04em}
-.note-card h3{font-size:14px;font-weight:550;line-height:1.65;margin:0;min-height:23px;
+
+/* ── 预览区 ───────────────────────────────
+   满宽、1.76:1、内缩 6px（＝ .card-open 的 padding）、圆角 10。
+   区内一切尺寸都写成 var(--u) 的倍数：卡变宽时纸页、骨架条、三颗灯一起等比
+   长大，两列／单列下不会出现「一张大纸上几根细线」。1440 三列时卡宽正好 314，
+   所以 --u 默认 1px，两列和单列那两档各 1.4px（封顶：再大纸上的字就比界面还大）。
+   芯片和收藏星不跟着缩——它们是界面，不是预览。
+   下面这几枚 --skel* / --paper-* / --win-* 是**组件作用域的局部变量**，不是新增
+   全局 token；深色只要把这一条重写一遍，其余规则一个字都不用重复。 */
+.card-stage{display:block;position:relative;overflow:hidden;border-radius:10px;
+  background:var(--card-stage);aspect-ratio:1.76 / 1;
+  --u:1px;
+  --skel:rgba(144,150,160,.35);        /* 正文条：--t3 35% */
+  --skel-h:rgba(114,120,129,.45);      /* 标题条：--t2 45%，更粗更深 */
+  --skel-fill:rgba(144,150,160,.12);   /* 代码块／小卡的淡底 */
+  --skel-line:rgba(144,150,160,.38);   /* 图片占位那圈虚线 */
+  --skel-bar:rgba(144,150,160,.42);    /* 引用左边那根竖线 */
+  --paper-0:rgba(255,255,255,0);       /* 纸色的全透明版，给下缘那段淡出 */
+  --paper-dog:#e2e4e6;                 /* 右上折角翻过来的背面 */
+  --win-bar:#f1f1f3;                   /* 浏览器窗标题栏 */
+  --win-addr:#edeef0;                  /* 地址条 */
+  --wb-bar:rgba(138,99,180,.30)}       /* 窗内大块里那两根条 */
+
+/* ── md：一张纸页 ─────────────────────────
+   宽 40%、居中略偏上，下缘停在类型芯片之上；右上折角 12 用 clip-path 切掉，
+   再补一枚深一点的三角当「翻过来的背面」。阴影不能直接给带 clip-path 的元素
+   （会被一起裁掉），所以外面套一层只负责 drop-shadow 的 .sheetwrap。 */
+.sheetwrap{display:block;position:absolute;left:50%;transform:translateX(-50%);
+  top:calc(12*var(--u));bottom:calc(30*var(--u));width:40%;
+  filter:drop-shadow(0 4px 12px rgba(30,24,50,.10))}
+.sheet{display:block;position:relative;width:100%;height:100%;overflow:hidden;
+  background:var(--paper);border-radius:calc(2*var(--u));
+  padding:calc(9*var(--u)) calc(10*var(--u)) 0;
+  clip-path:polygon(0 0, calc(100% - 12*var(--u)) 0, 100% calc(12*var(--u)),
+                    100% 100%, 0 100%)}
+/* 纸的下缘：内容被裁在半截会像画坏了，一段淡出让「这一页还没完」成为一句话
+   而不是一道刀口。 */
+.sheet::after,.winlet .body::after{content:'';position:absolute;left:0;right:0;bottom:0;
+  height:calc(11*var(--u));background:linear-gradient(var(--paper-0),var(--paper));
+  pointer-events:none}
+.sheet .dog{display:block;position:absolute;right:0;top:0;z-index:2;
+  width:calc(12*var(--u));height:calc(12*var(--u));background:var(--paper-dog);
+  clip-path:polygon(0 0, 100% 100%, 0 100%)}
+/* 纸上／窗里第一行是真标题 */
+.sheet .st,.winlet .st{display:block;font-size:calc(7.5*var(--u));font-weight:600;
+  line-height:1.35;color:var(--t1);white-space:nowrap;overflow:hidden;
+  text-overflow:ellipsis;margin-bottom:calc(6*var(--u))}
+
+/* ── html：一扇浏览器窗 ───────────────────
+   窗内的图形是通用的：服务端只给 html 的标题，不抽结构（骨架串是空的）。 */
+.winlet{position:absolute;left:50%;transform:translateX(-50%);
+  top:calc(12*var(--u));bottom:calc(28*var(--u));width:82%;
+  filter:drop-shadow(0 4px 12px rgba(30,24,50,.10));
+  display:flex;flex-direction:column;border-radius:calc(5*var(--u));overflow:hidden;
+  background:var(--paper)}
+.winlet .bar{flex:none;height:calc(15*var(--u));display:flex;align-items:center;
+  gap:calc(8*var(--u));padding:0 calc(6*var(--u));background:var(--win-bar)}
+.winlet .bar>*{flex:none}
+.winlet .dots{display:flex;gap:calc(3*var(--u));flex:none}
+.winlet .dots i{width:calc(5*var(--u));height:calc(5*var(--u));border-radius:50%;display:block}
+.winlet .dots i:nth-child(1){background:#ff5f57}
+.winlet .dots i:nth-child(2){background:#febc2e}
+.winlet .dots i:nth-child(3){background:#28c840}
+.winlet .addr{display:block;flex:1 1 auto;height:calc(7*var(--u));
+  border-radius:calc(4*var(--u));background:var(--win-addr)}
+.winlet .body{display:block;position:relative;flex:1;min-height:0;overflow:hidden;
+  padding:calc(8*var(--u)) calc(9*var(--u)) 0}
+.winlet .st{margin-bottom:calc(7*var(--u))}
+.wblock{display:block;border-radius:calc(3*var(--u));background:var(--accent-soft);
+  padding:calc(6*var(--u)) calc(7*var(--u));margin-bottom:calc(6*var(--u))}
+.wblock .b{background:var(--wb-bar)}
+.wcards{display:grid;grid-template-columns:repeat(3,1fr);gap:calc(5*var(--u))}
+.wcards>span{display:block;border-radius:calc(3*var(--u));background:var(--skel-fill);
+  padding:calc(5*var(--u))}
+.sk-tail{margin-top:calc(7*var(--u))}
+
+/* ── 骨架块：h 标题 / p 段落 / l 列表 / t 表格 / c 代码 / i 图片 / q 引用 ──
+   块与块之间 6，块内的条之间 5。同一份 md 永远画出同一张：所有「随机感」
+   都是块序号的函数，没有 Math.random。 */
+.card-stage .b{display:block;height:calc(3*var(--u));border-radius:calc(2*var(--u));
+  background:var(--skel);margin-bottom:calc(5*var(--u))}
+.card-stage .b:last-child{margin-bottom:0}
+.sk{display:block;margin-bottom:calc(6*var(--u))}
+.sk:last-child{margin-bottom:0}
+.sk-h .b{height:calc(4*var(--u));background:var(--skel-h);margin-top:calc(2*var(--u))}
+.sk-l .li{display:flex;align-items:center;gap:calc(4*var(--u));margin-bottom:calc(5*var(--u))}
+.sk-l .li:last-child{margin-bottom:0}
+.sk-l .li i.dot{display:block;flex:none;width:calc(3*var(--u));height:calc(3*var(--u));
+  border-radius:50%;background:var(--skel)}
+.sk-l .li .b{flex:none;margin-bottom:0}
+.sk-t{display:grid;grid-template-columns:repeat(3,1fr);gap:calc(1*var(--u));
+  background:var(--skel);padding:calc(1*var(--u));border-radius:calc(2*var(--u))}
+.sk-t>span{display:block;height:calc(7*var(--u));background:var(--paper)}
+.sk-c{height:calc(16*var(--u));border-radius:calc(3*var(--u));background:var(--skel-fill)}
+/* 全页唯一一处虚线：它表示「这儿是一张图」 */
+.sk-i{height:calc(20*var(--u));border-radius:calc(3*var(--u));
+  border:calc(1*var(--u)) dashed var(--skel-line)}
+.sk-q{border-left:calc(2*var(--u)) solid var(--skel-bar);padding-left:calc(5*var(--u))}
+
+/* ── 类型芯片：左下角，浮在预览区里（原来卡顶那一行退役） ── */
+.kindchip{position:absolute;left:7px;bottom:7px;display:inline-flex;align-items:center;
+  gap:4px;height:21px;padding:0 8px 0 6px;border-radius:6px;background:var(--chip-bg);
+  -webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);
+  font-size:11px;color:var(--t2);line-height:1}
+.kindchip svg{width:14px;height:14px;flex:none;color:var(--ico-md)}
+.kindchip.html svg{color:var(--ico-html)}
+
+/* ── 标题 / 页脚 ──────────────────────────
+   标题 14px / 400：不要太大、也不加粗——预览区已经把「这是哪一篇」说了大半，
+   标题只负责认名字。两行写死 min-height，页脚才在一排卡片上对得齐。 */
+.card-body{display:block;padding:14px 12px 12px}   /* 6 + 12 ＝ 卡内边距 18 */
+.note-card h3{font-size:14px;font-weight:400;line-height:1.5;margin:0;min-height:42px;
   display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
-.card-excerpt{font-size:11px;color:var(--t2);line-height:1.75;margin:5px 0 0;min-height:38px;
-  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
-.card-footer{margin-top:17px;display:flex;align-items:center;gap:5px;width:100%;
-  color:var(--t3);font-size:9px}
-.card-footer svg{width:11px;height:11px;flex:none}
+.card-footer{margin-top:12px;display:flex;align-items:center;gap:6px;width:100%;
+  color:var(--t3);font-size:12px}
+.card-footer svg{width:12px;height:12px;flex:none}
 .card-footer .fdr{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .card-footer .when{margin-left:auto;flex:none;padding-left:8px}
 /* 5.6：这一篇最近一次是本机某个 AI 助手改的。页脚时间前挂一枚 ✦ ＋ 它的名字，
@@ -810,35 +929,61 @@ kbd{
 .card-footer .agentmark{flex:none;margin-left:auto;padding-left:8px;max-width:56%}
 .card-footer .agentmark+.when{margin-left:0}
 .card-pin{
-  position:absolute;right:10px;top:12px;width:25px;height:25px;border-radius:var(--r-xs);
+  position:absolute;right:12px;top:12px;width:26px;height:26px;border-radius:8px;
   color:var(--t3);opacity:0;display:flex;align-items:center;justify-content:center;
+  background:var(--chip-bg);
+  -webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);
   transition:opacity .15s ease,background-color .16s ease,color .16s ease;
 }
-.card-pin:hover{background:var(--hover);color:var(--t1)}
+.card-pin:hover{background:var(--win);color:var(--t1)}
 .card-pin.pinned,.note-card:hover .card-pin{opacity:1}
 /* :focus-visible 单开一条：Safari 15.0 不认它，写进逗号组会把整条规则一起丢掉 */
 .card-pin:focus-visible{opacity:1}
 .card-pin.pinned{color:var(--pin)}
-.card-pin svg{width:13px;height:13px}
+.card-pin svg{width:14px;height:14px}
 
-/* 列表模式：单列，图标 ｜ 标题＋一行摘录 ｜ 文件夹＋时间 */
-.cards.list{grid-template-columns:minmax(0,1fr);gap:7px}
-.cards.list .card-open{display:grid;grid-template-columns:40px minmax(0,1fr) 180px;
-  gap:0 10px;align-items:center;padding:13px 20px}
-.cards.list .card-top{margin:0;grid-row:span 2}
-.cards.list .kind-label{display:none}
-.cards.list h3{min-height:0;-webkit-line-clamp:1}
-.cards.list .card-excerpt{min-height:0;-webkit-line-clamp:1;margin:0;grid-column:2}
-.cards.list .card-footer{grid-column:3;grid-row:1 / 3;margin:0;padding-right:15px;
-  justify-content:flex-end}
-/* 换行只给挂了署名的那几张。整列都 wrap 的话，没署名的卡片上文件夹名一长
-   也会被折成两行——列表模式的右列本来就是一行装完的。:has 在 Safari 15.4
-   以前不认，认不出来就是老样子：一行摆不下时署名自己省略号收尾。 */
-.cards.list .card-footer:has(.agentmark){flex-wrap:wrap;row-gap:2px}
-.cards.list .card-footer .agentmark{max-width:100%}
-.cards.list .card-pin{top:19px;right:6px}
-.cards.list .note-card:hover{transform:translateY(-1px)}
-.cards.list .note-card:active{transform:translateY(0) scale(.997)}
+/* ── 预览区的深色补丁 ─────────────────────
+   ① 骨架条淡一档；② 纸页／窗身加 1px 亮边模拟纸；③ 纸的投影换成黑的；
+   ④ 三颗灯降饱和（不降的话深色下会亮成三颗灯泡）。
+   两块逐字相同（媒体查询版 ＋ 属性版），跟 HEAD 上那两块色板一个道理。 */
+:root[data-theme="dark"] .note-card{--chip-bg:rgba(37,41,49,.80)}
+:root[data-theme="dark"] .card-stage{
+  --skel:rgba(146,155,171,.25);
+  --skel-h:rgba(164,172,185,.38);
+  --skel-fill:rgba(146,155,171,.15);
+  --skel-line:rgba(146,155,171,.38);
+  --skel-bar:rgba(146,155,171,.42);
+  --paper-0:rgba(43,47,55,0);
+  --paper-dog:#474a51;
+  --win-bar:#3a3e45;
+  --win-addr:#3b404a;
+  --wb-bar:rgba(198,163,224,.30)}
+:root[data-theme="dark"] .sheetwrap,:root[data-theme="dark"] .winlet{
+  filter:drop-shadow(0 4px 12px rgba(0,0,0,.42))}
+:root[data-theme="dark"] .sheet,:root[data-theme="dark"] .winlet{
+  box-shadow:inset 0 0 0 1px rgba(255,255,255,.07)}
+:root[data-theme="dark"] .winlet .dots i{filter:saturate(.6) brightness(.85)}
+@media (prefers-color-scheme:dark){
+  :root:not([data-theme="light"]) .note-card{--chip-bg:rgba(37,41,49,.80)}
+  :root:not([data-theme="light"]) .card-stage{
+    --skel:rgba(146,155,171,.25);
+    --skel-h:rgba(164,172,185,.38);
+    --skel-fill:rgba(146,155,171,.15);
+    --skel-line:rgba(146,155,171,.38);
+    --skel-bar:rgba(146,155,171,.42);
+    --paper-0:rgba(43,47,55,0);
+    --paper-dog:#474a51;
+    --win-bar:#3a3e45;
+    --win-addr:#3b404a;
+    --wb-bar:rgba(198,163,224,.30)}
+  :root:not([data-theme="light"]) .sheetwrap,
+  :root:not([data-theme="light"]) .winlet{
+    filter:drop-shadow(0 4px 12px rgba(0,0,0,.42))}
+  :root:not([data-theme="light"]) .sheet,
+  :root:not([data-theme="light"]) .winlet{
+    box-shadow:inset 0 0 0 1px rgba(255,255,255,.07)}
+  :root:not([data-theme="light"]) .winlet .dots i{filter:saturate(.6) brightness(.85)}
+}
 
 /* ── 首次提示卡（只在全新的档案第一次进来时出一次）────── */
 .tipcard{margin:0 0 20px;padding:15px 20px 16px;border:0;
@@ -884,7 +1029,9 @@ kbd{
   .home h1{font-size:25px}
   .home-greeting{margin-bottom:21px}
   .cards{grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}
-  .card-open{padding:16px}
+  /* 两列：卡片一下子宽了一半，预览区跟着等比长大（容器查询要 Safari 16，
+     这里靠断点写死，效果跟 min(calc(100cqw/314),1.4px) 一样）。 */
+  .card-stage{--u:1.4px}
   .paper-art{margin-right:0;width:110px}
   .resume .excerpt{max-width:390px}
 }
@@ -892,12 +1039,11 @@ kbd{
   .home{padding:24px 18px 40px}
   .home h1{font-size:23px}
   .cards{grid-template-columns:minmax(0,1fr)}
+  .card-stage{--u:1.4px}   /* 单列：封顶，再大纸上的字就比界面字还大 */
   .paper-art{display:none}
   .card-pin{opacity:1}
   .home-greeting .hbtn .lbl{display:none}
   .tc-cols{grid-template-columns:minmax(0,1fr);gap:10px}
-  .cards.list .card-open{grid-template-columns:40px minmax(0,1fr)}
-  .cards.list .card-footer{grid-column:2;grid-row:auto;margin-top:6px;padding-right:0}
 }
 
 /* 分隔条：不画线，只留一条看不见的拖动区 */
@@ -2106,13 +2252,14 @@ body.solo #chrome{display:none!important}
 .home-greeting .here .nd{width:7px;height:7px}
 
 /* ── 卡片页脚 ──
-   「全部」模式：色点 ＋ 笔记本名 ＋ › ＋ 目录。色点接管了原来那枚黄夹子的位置
-   （一行 9px 的页脚里塞不下四样东西），聚焦模式和单库模式照旧还是黄夹子。 */
-.card-footer .nbname{flex:none;color:var(--t3)}
+   5.9：多笔记本时页脚左边**只有**色点 ＋ 笔记本名（不再 › 文件夹，文件夹去了
+   右键菜单和关联面板）；单库照旧是黄夹子 ＋ 目录，一枚色点都不出现（P1）。
+   名字长了打省略号——这一段现在是页脚里唯一会长的东西。
+   色点 7px：页脚从 9px 长到 12px，6px 的 .sm 在这一行里太小了。 */
+.card-footer .nbname{min-width:0;overflow:hidden;text-overflow:ellipsis;
+  white-space:nowrap;color:var(--t3)}
 .card-footer .csep{flex:none;color:var(--t4)}
-.card-footer .nd{margin-right:1px}
-.cards.list .card-footer .nbname{max-width:88px;overflow:hidden;
-  text-overflow:ellipsis;white-space:nowrap}
+.card-footer .nd{width:7px;height:7px;margin-right:1px}
 
 /* ── 继续阅读大卡 ──
    这一行是普通文字流不是 flex，色点得自己带右边距。 */
@@ -2456,7 +2603,7 @@ const withKbd = (label, kbd, wide) => kbd ? label + (wide ? KBDSEP : ' ') + kbd 
    界面原来一个图标都没有，全靠文字。这里是一套 24×24、描边 1.6 的内联 SVG，
    跟 SF Symbols 同一种视觉语言（自己画的，不是苹果的路径数据）。
    用法：markup 里写 <i data-ic="inbox"></i>，paintIcons() 换成真 SVG。 */
-const ICONS = /*__ICONS__*/{"inbox":{"d":["M4,8 L4,17 A1.5,1.5 0 0 0 5.5,18.5 L18.5,18.5 A1.5,1.5 0 0 0 20,17 L20,8","M4,8 L9.5,8 L12,11.5 L14.5,8 L20,8"],"fill":false},"inbox-full":{"d":["M4,8 L4,17 A1.5,1.5 0 0 0 5.5,18.5 L18.5,18.5 A1.5,1.5 0 0 0 20,17 L20,8","M4,8 L9.5,8 L12,11.5 L14.5,8 L20,8","M7,4.5 L17,4.5 L17,8 L7,8 Z"],"fill":false},"checklist":{"d":["M2.2,7.03 L4.8,9.63 L9.48,3.91","M9,8.8 L20.5,8.8","M2.2,15.23 L4.8,17.83 L9.48,12.11","M9,17 L20.5,17"],"fill":false},"clock":{"d":["M3.5,12 A8.5,8.5 0 1,0 20.5,12 A8.5,8.5 0 1,0 3.5,12","M12,12 L12,7","M12,12 L15.8,13.6"],"fill":false},"docs":{"d":["M8,3 L19,3 L19,14 L8,14 Z","M5,8 L14,8 L17,11 L17,21 L5,21 Z","M14,8 L14,11 L17,11"],"fill":false},"gear":{"d":["M12,2.8 L14.45,6.09 L18.51,5.49 L17.91,9.55 L21.2,12 L17.91,14.45 L18.51,18.51 L14.45,17.91 L12,21.2 L9.55,17.91 L5.49,18.51 L6.09,14.45 L2.8,12 L6.09,9.55 L5.49,5.49 L9.55,6.09 Z","M8.9,12 A3.1,3.1 0 1,0 15.1,12 A3.1,3.1 0 1,0 8.9,12"],"fill":false},"tag":{"d":["M3,12 L9,4.5 L20,4.5 L20,19.5 L9,19.5 Z","M6.6,12 A1.4,1.4 0 1,0 9.4,12 A1.4,1.4 0 1,0 6.6,12"],"fill":false},"folder":{"d":["M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10H3Z"],"fill":false},"doc-text":{"d":["M6,3 L15,3 L18,6 L18,21 L6,21 Z","M15,3 L15,6 L18,6","M8.5,10 L15.5,10","M8.5,13.5 L15.5,13.5","M8.5,17 L13,17"],"fill":false},"globe":{"d":["M3.5,12 A8.5,8.5 0 1,0 20.5,12 A8.5,8.5 0 1,0 3.5,12","M3.5,12 L20.5,12","M12,3.5 L12,20.5","M12,3.5 A4.2,8.5 0 0,0 12,20.5","M12,3.5 A4.2,8.5 0 0,1 12,20.5"],"fill":false},"doc-rich":{"d":["M6,3 L15,3 L18,6 L18,21 L6,21 Z","M15,3 L15,6 L18,6","M8,9 L16,9 L16,13 L8,13 Z","M8,15.5 L16,15.5","M8,18 L13,18"],"fill":false},"table":{"d":["M3,5 L21,5 L21,19 L3,19 Z","M3,10 L21,10","M3,14.5 L21,14.5","M9,5 L9,19","M15,5 L15,19"],"fill":false},"pencil":{"d":["M4,21 L16.59,5.59 L19.41,8.41 Z","M14.07,8.67 L16.33,10.93"],"fill":false},"text-size":{"d":["M3,18 L7,4 L11,18","M4.43,13 L9.57,13","M14,18 L17,9 L20,18","M15.2,14.4 L18.8,14.4"],"fill":false},"search":{"d":["M4,10.5 A6.5,6.5 0 1,0 17,10.5 A6.5,6.5 0 1,0 4,10.5","M15.1,15.1 L21,21"],"fill":false},"refresh":{"d":["M16.3,5.86 A7.5,7.5 0 1,1 7.7,5.86","M5.79,9.6 L7.7,5.86 L3.53,6.37"],"fill":false},"new-note":{"d":["M11,15 L3,15 L3,3 L15,3 L15,10","M9.5,16.5 L16.87,6.87 L19.13,9.13 Z"],"fill":false},"sidebar":{"d":["M5,5 L19,5 A2.4,2.4 0 0 1 21.4,7.4 L21.4,16.6 A2.4,2.4 0 0 1 19,19 L5,19 A2.4,2.4 0 0 1 2.6,16.6 L2.6,7.4 A2.4,2.4 0 0 1 5,5","M9,5 L9,19"],"fill":false},"share":{"d":["M14.5,4 L19,4 L19,19 L5,19 L5,4 L9.5,4","M12,16 L12,3","M8.7,6.3 L12,3 L15.3,6.3"],"fill":false},"chevron-left":{"d":["M14.5,5 L8,12 L14.5,19"],"fill":false},"chevron-right":{"d":["M9.5,5 L16,12 L9.5,19"],"fill":false},"chevron-down":{"d":["M5,9.5 L12,16 L19,9.5"],"fill":false},"chevron-up":{"d":["M5,14.5 L12,8 L19,14.5"],"fill":false},"close":{"d":["M5.5,5.5 L18.5,18.5","M18.5,5.5 L5.5,18.5"],"fill":false},"check":{"d":["M5,12.5 L10,17.5 L19,6.5"],"fill":false},"list":{"d":["M4,6.5 L20,6.5","M4,12 L20,12","M4,17.5 L20,17.5"],"fill":false},"grid":{"d":["M3.5,3.5 L11,3.5 L11,11 L3.5,11 Z","M13,3.5 L20.5,3.5 L20.5,11 L13,11 Z","M3.5,13 L11,13 L11,20.5 L3.5,20.5 Z","M13,13 L20.5,13 L20.5,20.5 L13,20.5 Z"],"fill":false},"info":{"d":["M3.5,12 A8.5,8.5 0 1,0 20.5,12 A8.5,8.5 0 1,0 3.5,12","M12,10.5 L12,16.5","M12,7.2 L12,7.32"],"fill":false},"newwin":{"d":["M12.5,4 L4,4 L4,20 L20,20 L20,11.5","M11,13 L20,4","M14,4 L20,4 L20,10"],"fill":false},"copy":{"d":["M9,9 L20,9 L20,20 L9,20 Z","M15,9 L15,6 A1.5,1.5 0 0 0 13.5,4.5 L5.5,4.5 A1.5,1.5 0 0 0 4,6 L4,14 A1.5,1.5 0 0 0 5.5,15.5 L9,15.5"],"fill":false},"plus":{"d":["M12 5v14","M5 12h14"],"fill":false},"left":{"d":["M14 5l-7 7 7 7"],"fill":false},"right":{"d":["M10 5l7 7-7 7"],"fill":false},"home":{"d":["M3 10l9-7 9 7","M5 9v11h14V9","M9 20v-7h6v7"],"fill":false},"star":{"d":["M12 3l2.7 5.8 6.3.9-4.5 4.4 1.1 6.3L12 17.4l-5.6 3 1.1-6.3L3 9.7l6.3-.9Z"],"fill":false},"sliders":{"d":["M4 6h7","M15 6h5","M4 12h2","M10 12h10","M4 18h9","M17 18h3","M11 6a2 2 0 1 0 4 0 2 2 0 1 0-4 0","M6 12a2 2 0 1 0 4 0 2 2 0 1 0-4 0","M13 18a2 2 0 1 0 4 0 2 2 0 1 0-4 0"],"fill":false},"doc":{"d":["M6 3h8l4 4v14H6Z","M14 3v5h4","M9 12h6","M9 16h5"],"fill":false},"leaf":{"d":["M20 4C5 1 1 11 7 17c7 5 14-1 13-13Z","M7 17l9-9","M7 17l-3 3"],"fill":false},"arrow":{"d":["M4 12h15","M14 7l5 5-5 5"],"fill":false},"focus":{"d":["M8 3H3v5","M16 3h5v5","M21 16v5h-5","M8 21H3v-5"],"fill":false},"source":{"d":["M8 7L3 12L8 17","M16 7L21 12L16 17","M14 4L10 20"],"fill":false},"edit":{"d":["M15 4l5 5","M4 20l4-1L20 7a2 2 0 0 0-4-4L4 15Z"],"fill":false},"more":{"d":["M4.5,12 A1.3,1.3 0 1,0 7.1,12 A1.3,1.3 0 1,0 4.5,12","M10.7,12 A1.3,1.3 0 1,0 13.3,12 A1.3,1.3 0 1,0 10.7,12","M16.9,12 A1.3,1.3 0 1,0 19.5,12 A1.3,1.3 0 1,0 16.9,12"],"fill":false},"undo":{"d":["M5 5v6h6","M5 11a8 8 0 1 1 2 8"],"fill":false},"redo":{"d":["M19 5v6h-6","M19 11a8 8 0 1 0-2 8"],"fill":false},"quote":{"d":["M5 7h5v6H5m0-6v7c0 3 2 4 4 4","M14 7h5v6h-5m0-6v7c0 3 2 4 4 4"],"fill":false},"link":{"d":["M10 13l4-4","M8 15l-2 2a3 3 0 0 1-4-4l5-5a3 3 0 0 1 4 0","M13 16a3 3 0 0 0 4 0l5-5a3 3 0 0 0-4-4l-2 2"],"fill":false},"user":{"d":["M8.6,8.2 A3.4,3.4 0 1,0 15.4,8.2 A3.4,3.4 0 1,0 8.6,8.2","M4.6,19.8 C5.3,16.1 8.3,13.9 12,13.9 C15.7,13.9 18.7,16.1 19.4,19.8"],"fill":false},"sparkle":{"d":["M10.5,3 C10.5,7.6 11.9,9.4 16.5,10.5 C11.9,11.6 10.5,13.4 10.5,18 C10.5,13.4 9.1,11.6 4.5,10.5 C9.1,9.4 10.5,7.6 10.5,3 Z","M17.6,14.5 C17.6,16.6 18.1,17.2 20.1,17.5 C18.1,17.8 17.6,18.4 17.6,20.5 C17.6,18.4 17.1,17.8 15.1,17.5 C17.1,17.2 17.6,16.6 17.6,14.5 Z"],"fill":false}}/*__ICONS__*/;
+const ICONS = /*__ICONS__*/{"inbox":{"d":["M4,8 L4,17 A1.5,1.5 0 0 0 5.5,18.5 L18.5,18.5 A1.5,1.5 0 0 0 20,17 L20,8","M4,8 L9.5,8 L12,11.5 L14.5,8 L20,8"],"fill":false},"inbox-full":{"d":["M4,8 L4,17 A1.5,1.5 0 0 0 5.5,18.5 L18.5,18.5 A1.5,1.5 0 0 0 20,17 L20,8","M4,8 L9.5,8 L12,11.5 L14.5,8 L20,8","M7,4.5 L17,4.5 L17,8 L7,8 Z"],"fill":false},"checklist":{"d":["M2.2,7.03 L4.8,9.63 L9.48,3.91","M9,8.8 L20.5,8.8","M2.2,15.23 L4.8,17.83 L9.48,12.11","M9,17 L20.5,17"],"fill":false},"clock":{"d":["M3.5,12 A8.5,8.5 0 1,0 20.5,12 A8.5,8.5 0 1,0 3.5,12","M12,12 L12,7","M12,12 L15.8,13.6"],"fill":false},"docs":{"d":["M8,3 L19,3 L19,14 L8,14 Z","M5,8 L14,8 L17,11 L17,21 L5,21 Z","M14,8 L14,11 L17,11"],"fill":false},"gear":{"d":["M12,2.8 L14.45,6.09 L18.51,5.49 L17.91,9.55 L21.2,12 L17.91,14.45 L18.51,18.51 L14.45,17.91 L12,21.2 L9.55,17.91 L5.49,18.51 L6.09,14.45 L2.8,12 L6.09,9.55 L5.49,5.49 L9.55,6.09 Z","M8.9,12 A3.1,3.1 0 1,0 15.1,12 A3.1,3.1 0 1,0 8.9,12"],"fill":false},"tag":{"d":["M3,12 L9,4.5 L20,4.5 L20,19.5 L9,19.5 Z","M6.6,12 A1.4,1.4 0 1,0 9.4,12 A1.4,1.4 0 1,0 6.6,12"],"fill":false},"folder":{"d":["M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v10H3Z"],"fill":false},"doc-text":{"d":["M6,3 L15,3 L18,6 L18,21 L6,21 Z","M15,3 L15,6 L18,6","M8.5,10 L15.5,10","M8.5,13.5 L15.5,13.5","M8.5,17 L13,17"],"fill":false},"globe":{"d":["M3.5,12 A8.5,8.5 0 1,0 20.5,12 A8.5,8.5 0 1,0 3.5,12","M3.5,12 L20.5,12","M12,3.5 L12,20.5","M12,3.5 A4.2,8.5 0 0,0 12,20.5","M12,3.5 A4.2,8.5 0 0,1 12,20.5"],"fill":false},"doc-rich":{"d":["M6,3 L15,3 L18,6 L18,21 L6,21 Z","M15,3 L15,6 L18,6","M8,9 L16,9 L16,13 L8,13 Z","M8,15.5 L16,15.5","M8,18 L13,18"],"fill":false},"table":{"d":["M3,5 L21,5 L21,19 L3,19 Z","M3,10 L21,10","M3,14.5 L21,14.5","M9,5 L9,19","M15,5 L15,19"],"fill":false},"pencil":{"d":["M4,21 L16.59,5.59 L19.41,8.41 Z","M14.07,8.67 L16.33,10.93"],"fill":false},"text-size":{"d":["M3,18 L7,4 L11,18","M4.43,13 L9.57,13","M14,18 L17,9 L20,18","M15.2,14.4 L18.8,14.4"],"fill":false},"search":{"d":["M4,10.5 A6.5,6.5 0 1,0 17,10.5 A6.5,6.5 0 1,0 4,10.5","M15.1,15.1 L21,21"],"fill":false},"refresh":{"d":["M16.3,5.86 A7.5,7.5 0 1,1 7.7,5.86","M5.79,9.6 L7.7,5.86 L3.53,6.37"],"fill":false},"new-note":{"d":["M11,15 L3,15 L3,3 L15,3 L15,10","M9.5,16.5 L16.87,6.87 L19.13,9.13 Z"],"fill":false},"sidebar":{"d":["M5,5 L19,5 A2.4,2.4 0 0 1 21.4,7.4 L21.4,16.6 A2.4,2.4 0 0 1 19,19 L5,19 A2.4,2.4 0 0 1 2.6,16.6 L2.6,7.4 A2.4,2.4 0 0 1 5,5","M9,5 L9,19"],"fill":false},"share":{"d":["M14.5,4 L19,4 L19,19 L5,19 L5,4 L9.5,4","M12,16 L12,3","M8.7,6.3 L12,3 L15.3,6.3"],"fill":false},"chevron-left":{"d":["M14.5,5 L8,12 L14.5,19"],"fill":false},"chevron-right":{"d":["M9.5,5 L16,12 L9.5,19"],"fill":false},"chevron-down":{"d":["M5,9.5 L12,16 L19,9.5"],"fill":false},"chevron-up":{"d":["M5,14.5 L12,8 L19,14.5"],"fill":false},"close":{"d":["M5.5,5.5 L18.5,18.5","M18.5,5.5 L5.5,18.5"],"fill":false},"check":{"d":["M5,12.5 L10,17.5 L19,6.5"],"fill":false},"list":{"d":["M4,6.5 L20,6.5","M4,12 L20,12","M4,17.5 L20,17.5"],"fill":false},"info":{"d":["M3.5,12 A8.5,8.5 0 1,0 20.5,12 A8.5,8.5 0 1,0 3.5,12","M12,10.5 L12,16.5","M12,7.2 L12,7.32"],"fill":false},"newwin":{"d":["M12.5,4 L4,4 L4,20 L20,20 L20,11.5","M11,13 L20,4","M14,4 L20,4 L20,10"],"fill":false},"copy":{"d":["M9,9 L20,9 L20,20 L9,20 Z","M15,9 L15,6 A1.5,1.5 0 0 0 13.5,4.5 L5.5,4.5 A1.5,1.5 0 0 0 4,6 L4,14 A1.5,1.5 0 0 0 5.5,15.5 L9,15.5"],"fill":false},"plus":{"d":["M12 5v14","M5 12h14"],"fill":false},"left":{"d":["M14 5l-7 7 7 7"],"fill":false},"right":{"d":["M10 5l7 7-7 7"],"fill":false},"home":{"d":["M3 10l9-7 9 7","M5 9v11h14V9","M9 20v-7h6v7"],"fill":false},"star":{"d":["M12 3l2.7 5.8 6.3.9-4.5 4.4 1.1 6.3L12 17.4l-5.6 3 1.1-6.3L3 9.7l6.3-.9Z"],"fill":false},"sliders":{"d":["M4 6h7","M15 6h5","M4 12h2","M10 12h10","M4 18h9","M17 18h3","M11 6a2 2 0 1 0 4 0 2 2 0 1 0-4 0","M6 12a2 2 0 1 0 4 0 2 2 0 1 0-4 0","M13 18a2 2 0 1 0 4 0 2 2 0 1 0-4 0"],"fill":false},"doc":{"d":["M6 3h8l4 4v14H6Z","M14 3v5h4","M9 12h6","M9 16h5"],"fill":false},"leaf":{"d":["M20 4C5 1 1 11 7 17c7 5 14-1 13-13Z","M7 17l9-9","M7 17l-3 3"],"fill":false},"arrow":{"d":["M4 12h15","M14 7l5 5-5 5"],"fill":false},"focus":{"d":["M8 3H3v5","M16 3h5v5","M21 16v5h-5","M8 21H3v-5"],"fill":false},"source":{"d":["M8 7L3 12L8 17","M16 7L21 12L16 17","M14 4L10 20"],"fill":false},"edit":{"d":["M15 4l5 5","M4 20l4-1L20 7a2 2 0 0 0-4-4L4 15Z"],"fill":false},"more":{"d":["M4.5,12 A1.3,1.3 0 1,0 7.1,12 A1.3,1.3 0 1,0 4.5,12","M10.7,12 A1.3,1.3 0 1,0 13.3,12 A1.3,1.3 0 1,0 10.7,12","M16.9,12 A1.3,1.3 0 1,0 19.5,12 A1.3,1.3 0 1,0 16.9,12"],"fill":false},"undo":{"d":["M5 5v6h6","M5 11a8 8 0 1 1 2 8"],"fill":false},"redo":{"d":["M19 5v6h-6","M19 11a8 8 0 1 0-2 8"],"fill":false},"quote":{"d":["M5 7h5v6H5m0-6v7c0 3 2 4 4 4","M14 7h5v6h-5m0-6v7c0 3 2 4 4 4"],"fill":false},"link":{"d":["M10 13l4-4","M8 15l-2 2a3 3 0 0 1-4-4l5-5a3 3 0 0 1 4 0","M13 16a3 3 0 0 0 4 0l5-5a3 3 0 0 0-4-4l-2 2"],"fill":false},"user":{"d":["M8.6,8.2 A3.4,3.4 0 1,0 15.4,8.2 A3.4,3.4 0 1,0 8.6,8.2","M4.6,19.8 C5.3,16.1 8.3,13.9 12,13.9 C15.7,13.9 18.7,16.1 19.4,19.8"],"fill":false},"sparkle":{"d":["M10.5,3 C10.5,7.6 11.9,9.4 16.5,10.5 C11.9,11.6 10.5,13.4 10.5,18 C10.5,13.4 9.1,11.6 4.5,10.5 C9.1,9.4 10.5,7.6 10.5,3 Z","M17.6,14.5 C17.6,16.6 18.1,17.2 20.1,17.5 C18.1,17.8 17.6,18.4 17.6,20.5 C17.6,18.4 17.1,17.8 15.1,17.5 C17.1,17.2 17.6,16.6 17.6,14.5 Z"],"fill":false}}/*__ICONS__*/;
 const ICON_FALLBACK={d:['M4 6h16','M4 12h16','M4 18h10'],fill:false};
 function icon(name, size){
   const s=ICONS[name]||ICON_FALLBACK, px=size||16;
@@ -2573,11 +2720,11 @@ function bootI18n(){
 
 /* ═══ 会话状态 ═══════════════════════════
    Mac 的约定是重开就回到离开时的样子。存储键名沿用 tp-state，不改。
-   老档案里的 lists / lcw（列表栏，5.4.1 下线）读到也不用，静默忽略。 */
+   老档案里的 lists / lcw（列表栏，5.4.1 下线）、homeView（开始页的网格 ⇄
+   列表切换，后来撤掉）读到也不用，静默忽略。 */
 const DEF_ST={sbw:224, side:true, toc:true, bookmarks:false, recents:[],
   pins:[],              /* 已收藏：库根相对路径。文件没了就在 setTree 里剔掉 */
   homeFilter:'all',     /* 开始页/文件夹页/已收藏页的类型筛：all | md | html */
-  homeView:'grid',      /* 卡片网格 grid ｜ 单列列表 list */
   tips:false,           /* 开始页那张「第一次来？」提示卡，只有全新档案才为 true */
   chipsOpen:true,       /* 开始页那行文件夹芯片展着还是收着，收起只剩「已收藏」＋一枚计数 */
   cfgTab:'reading',     /* 设置弹层上次停在哪一段 */
@@ -3929,6 +4076,19 @@ function openPins(newTab){
 
 /* ── 卡片清单 ────────────────────────────
    排序：先按「最近打开」的次序，剩下的按改动时间倒序。再过一遍类型筛。 */
+/* 文件夹页 / 已收藏页一批画几张。开始页是 12 张的硬上限，不走这条。
+   5.9 起每张卡多一张预览（≈20 个 CSS 条），一个 2000 篇的文件夹一次拼完会卡死，
+   所以先画一批，末尾挂一枚「再看 {n} 篇」。content-visibility 要 Safari 18，
+   MIN_MACOS 是 12，那条路走不通，只能靠 JS 分批。 */
+const CARDS_BATCH=60;
+/* 这一屏画了几张记在标签对象上（t.cardsN），换文件夹／换筛选就归零：
+   key 变了＝换了一屏，重新从一批开始；key 没变（收藏、就地重画）＝原样留住，
+   repaintPages 因此是幂等的，滚动位置也不会跳。 */
+function cardsBatch(t, key){
+  if(!t) return CARDS_BATCH;
+  if(t.cardsKey!==key){ t.cardsKey=key; t.cardsN=CARDS_BATCH; }
+  return t.cardsN||CARDS_BATCH;
+}
 function pageDocs(kind, folder){
   let pool;
   if(kind==='pins'){ const set=pinSet(); pool=items.filter(i=>set.has(i.路径)); }
@@ -3947,7 +4107,6 @@ function pageDocs(kind, folder){
   return pool.sort((a,b)=>(at(a)-at(b)) || ((b.修改时间||0)-(a.修改时间||0)));
 }
 function homeFilter(){ return (ST.homeFilter==='md'||ST.homeFilter==='html') ? ST.homeFilter : 'all'; }
-function homeList(){ return ST.homeView==='list'; }
 /* 上次读的那一篇：只认 ST.recents，没有就不画「继续阅读」。 */
 function resumeDoc(){
   const rec=(ST.recents||[]);
@@ -4176,40 +4335,102 @@ function tipsCardHtml(){
   </div>`;
 }
 function sectionHead(label, n){
-  const f=homeFilter(), list=homeList();
+  const f=homeFilter();
   const segs=[['all',TR('全部')],['md','Markdown'],['html','HTML']].map(x=>
     `<button type="button" data-filter="${x[0]}" class="${f===x[0]?'on':''}" aria-pressed="${f===x[0]?'true':'false'}">${x[1]}</button>`
   ).join('');
-  const swap=list?TR('换成卡片'):TR('换成列表');
+  /* .fill 把筛选段顶到最右：它是段头最后一个孩子，右缘就是卡片网格的右缘。 */
   return `<div class="section-head">
     <h2>${esc(label)}</h2><span class="section-meta num">${esc(TR('{n} 篇',{n}))}</span><span class="fill"></span>
     <div class="filters" role="group" aria-label="${esc(TR('文件类型'))}">${segs}</div>
-    <button type="button" class="view-toggle" data-view="1" title="${esc(swap)}" aria-label="${esc(swap)}">${icon(list?'grid':'list',14)}</button>
   </div>`;
 }
 /* 署名：这一篇最近一次是本机某个 AI 助手写的（/__tree 带回来的「代理」）。
    ✦ ＋ 名字，摆在时间前面；没有这一笔就一个字都不多。 */
 const agentMark = i => (i && i.代理)
   ? `<span class="agentmark">✦ ${esc(i.代理)}</span>` : '';
+/* ── 卡片正面的那张预览（5.9）────────────────────────────────
+   md：一张纸页，第一行是真标题，下面按「骨架」串摆条。骨架串由服务端在索引时
+   算好一次带在 /__tree 里（h 标题 p 段落 l 列表 t 表格 c 代码 i 图片 q 引用，
+   最多 14 个字符），页面只负责画——一个 2000 篇的文件夹不能在这里现算结构。
+   老服务端没有这个键（或者这一篇还没轮到索引）：md 退回一张通用骨架，不报错。
+   html：一扇浏览器窗，窗内是通用图形（服务端不抽 html 结构）。
+   两样都是**纯字符串拼接 ＋ 纯 CSS 条**：不建 DOM、不发请求、不用 SVG。 */
+const SKEL_FALLBACK='php';
+function renderSkeleton(sk){
+  const bar=w=>`<i class="b" style="width:${w}%"></i>`;
+  return Array.from(String(sk||'')).map((c,ix)=>{
+    switch(c){
+      case 'h': return `<span class="sk sk-h">${bar(ix%2?55:42)}</span>`;
+      case 'p': return `<span class="sk">${bar(100)}${bar(92)}`
+                     + ((ix%3)!==1 ? bar(60) : '') + `</span>`;
+      case 'l': return `<span class="sk sk-l">`
+                     + [88,76,66].map(w=>`<span class="li"><i class="dot"></i>${bar(w)}</span>`).join('')
+                     + `</span>`;
+      case 't': return `<span class="sk sk-t">` + '<span></span>'.repeat(6) + `</span>`;
+      case 'c': return `<span class="sk sk-c"></span>`;
+      case 'i': return `<span class="sk sk-i"></span>`;
+      case 'q': return `<span class="sk sk-q">${bar(94)}${bar(70)}</span>`;
+      default : return '';
+    }
+  }).join('');
+}
+function stageHtml(i, html, title){
+  const bar=w=>`<i class="b" style="width:${w}%"></i>`;
+  if(html){
+    const wc=`<span>${bar(80)}${bar(55)}</span>`;
+    return `<span class="winlet">`
+      +   `<span class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="addr"></span></span>`
+      +   `<span class="body"><span class="st">${esc(title)}</span>`
+      +     `<span class="wblock">${bar(72)}${bar(46)}</span>`
+      +     `<span class="wcards">${wc}${wc}${wc}</span>`
+      +     `<span class="sk sk-tail">${bar(100)}${bar(64)}</span>`
+      +   `</span></span>`;
+  }
+  return `<span class="sheetwrap"><span class="sheet">`
+    +   `<span class="st">${esc(title)}</span>`
+    +   renderSkeleton(String((i&&i.骨架)||'') || SKEL_FALLBACK)
+    +   `<i class="dog"></i>`
+    + `</span></span>`;
+}
+/* 卡片页脚左边那一段。多本时只留「● 笔记本名」（brief §4.5 第 3 条，用户拍板：
+   文件夹去右键菜单和关联面板）；单库照旧走 whereHtml 的黄夹子 ＋ 目录，
+   一枚色点都不出现（P1 单库零变化）。 */
+function cardWhereHtml(rel){
+  if(!NB.multi) return whereHtml(rel,{fdr:1, icon:1});
+  const book=NB.of(rel);
+  return book ? nbDot(book,{sm:true})+`<span class="nbname">${esc(book)}</span>` : '';
+}
 function cardHtml(i){
   const rel=i.路径, html=kindOf(i)==='html', pinned=isPinned(rel);
-  const title=cleanTitle(i), ex=cardText(i);
+  const title=cleanTitle(i);
   const pinTip=pinned?TR('取消收藏'):TR('收藏');
   const mark=agentMark(i);
+  /* 「Markdown」「HTML」两个串不含 CJK，不进词典（i18n_check 同一条规则）。 */
   return `<div class="note-card">
     <button type="button" class="card-open" data-open="${esc(rel)}" data-kind="${html?'html':'md'}" aria-label="${esc(TR('打开 {title}',{title}))}">
-      <span class="card-top"><span class="file-icon${html?' html':''}">${icon(html?'globe':'doc',15)}</span><span class="kind-label">${html?'HTML':'MD'}</span></span>
-      <h3>${esc(title)}</h3>
-      <p class="card-excerpt">${esc(ex)}</p>
-      <span class="card-footer">${whereHtml(rel,{fdr:1, icon:1})}${mark}<span class="when num">${esc(fmtWhen(i.修改时间))}</span></span>
+      <span class="card-stage">${stageHtml(i, html, title)}<span class="kindchip${html?' html':''}">${icon(html?'globe':'doc',14)}<span>${html?'HTML':'Markdown'}</span></span></span>
+      <span class="card-body">
+        <h3>${esc(title)}</h3>
+        <span class="card-footer">${cardWhereHtml(rel)}${mark}<span class="when num">${esc(fmtWhen(i.修改时间))}</span></span>
+      </span>
     </button>
     <button type="button" class="card-pin${pinned?' pinned':''}" data-pin="${esc(rel)}"
-      title="${esc(pinTip)}" aria-label="${esc(pinTip+' '+title)}" aria-pressed="${pinned?'true':'false'}">${icon('star',13)}</button>
+      title="${esc(pinTip)}" aria-label="${esc(pinTip+' '+title)}" aria-pressed="${pinned?'true':'false'}">${icon('star',14)}</button>
   </div>`;
 }
-function cardsHtml(list, fallback){
+/* opt.n＝这一屏先画几张（文件夹页 / 已收藏页分批，见 CARDS_BATCH）。
+   剩下的挂一枚「再看 {n} 篇」在网格下面——样式跟开始页那条「看全部」同一枚。
+   不给 opt 就是全画（开始页自己已经切到 12 张）。 */
+function cardsHtml(list, fallback, opt){
   if(!list.length) return fallback;
-  return `<div class="cards${homeList()?' list':''}">${list.map(cardHtml).join('')}</div>`;
+  const n=(opt && opt.n>0) ? Math.min(opt.n, list.length) : list.length;
+  const rest=list.length-n;
+  /* 数报的是「按一下会多出来几张」，不是「还剩几张」——段头那一枚已经说了总数。 */
+  const more = rest>0
+    ? `<button type="button" class="see-all" data-act="morecards">${icon('chevron-down',14)}<span>${esc(TR('再看 {n} 篇',{n:Math.min(CARDS_BATCH, rest)}))}</span></button>`
+    : '';
+  return `<div class="cards">${list.slice(0,n).map(cardHtml).join('')}</div>${more}`;
 }
 /* opts.big＝空库那一版，占满问候区以下整片空白并居中；opts.buttons＝换掉默认那颗按钮。 */
 function emptyHtml(title, text, opts){
@@ -4284,10 +4505,11 @@ function paintPins(t, box){
   box=box||(paneOf(t)&&paneOf(t).querySelector('.pagebox'));
   if(!box) return;
   const list=pageDocs('pins');
+  const n=cardsBatch(t, 'pins|'+homeFilter());
   withNbCtx('', ()=>{ box.innerHTML=`<div class="home">
     ${greetingHtml(icon('star',13),TR('收藏##eyebrow'),TR('已收藏'),TR('把常看的、喜欢的，留在手边。'))}
     ${sectionHead(TR('收藏的笔记'), list.length)}
-    ${cardsHtml(list, emptyHtml(TR('还没有收藏'),esc(TR('在卡片右上角点一下 ★，它就放进这里了。'))))}
+    ${cardsHtml(list, emptyHtml(TR('还没有收藏'),esc(TR('在卡片右上角点一下 ★，它就放进这里了。'))), {n})}
   </div>`; });
 }
 function paintSerp(t, box){
@@ -4417,13 +4639,14 @@ function paintFolder(t, box){
   // 在某一层里面：上面先摆这一本的顶层芯片（当前那枚点亮），子文件夹在下一行
   const sibChips=inner.length ? startChipsHtml({drill:true, on:top, book:d?book:undefined}) : '';
   const sub=TR('{n} 篇',{n:list.length})+(inner.length?' · '+inner.join('/'):'');
+  const n=cardsBatch(t, 'folder|'+folder+'|'+homeFilter());
   box.innerHTML=`<div class="home">
     ${greetingHtml(folderMark(14),TR('文件夹'), name, sub, {here:book})}
     ${crumbsHtml(folder)}
     ${sibChips}
     ${subChips}
     ${sectionHead(TR('这个文件夹里'), list.length)}
-    ${cardsHtml(list, emptyHtml(subs.length?TR('这一层还没有文件'):TR('空文件夹'), esc(subs.length?TR('点上面的子文件夹看看。'):TR('这里还没有 md 或 html。'))))}
+    ${cardsHtml(list, emptyHtml(subs.length?TR('这一层还没有文件'):TR('空文件夹'), esc(subs.length?TR('点上面的子文件夹看看。'):TR('这里还没有 md 或 html。'))), {n})}
   </div>`;
 }
 /* wait＝一个 Promise：标签照样立刻建（标签条、前进后退都指着它），只把第一次
@@ -5349,6 +5572,13 @@ function newPane(t){
       if(act.dataset.act==='revealvault'){ revealVault(); return; }
       if(act.dataset.act==='tipsok'){ ST.tips=false; saveST(); repaintPages(); return; }
       if(act.dataset.act==='chipsfold'){ setChipsOpen(!chipsOpen()); return; }
+      /* 文件夹页 / 已收藏页再来一批（60 张）。就地重画，滚动位置留住，
+         所以按完之后眼睛还停在原来那一行上，新的接在下面。 */
+      if(act.dataset.act==='morecards'){
+        t.cardsN=(t.cardsN||CARDS_BATCH)+CARDS_BATCH;
+        paintPage(t, {quiet:true});
+        return;
+      }
       if(act.dataset.act==='addnb'){ addVaultFlow(); return; }
       // 收放两个方向都走这一颗：默认（undefined）＝收着，按一下展开，再按一下收回
       if(act.dataset.act==='nbfold'){ ST.nbFold=(ST.nbFold===false); saveST(); repaintPages(); return; }
@@ -5364,9 +5594,6 @@ function newPane(t){
     if(pin){ e.preventDefault(); e.stopPropagation(); togglePin(pin.dataset.pin); return; }
     const flt=e.target.closest('[data-filter]');
     if(flt){ ST.homeFilter=flt.dataset.filter; saveST(); repaintPages(); return; }
-    if(e.target.closest('[data-view]')){
-      ST.homeView = homeList() ? 'grid' : 'list'; saveST(); repaintPages(); return;
-    }
     const row=e.target.closest('[data-open]');
     if(row){
       const rel=row.dataset.open;
@@ -5550,6 +5777,16 @@ async function openDoc(it, opt){
   if(!html && !md){ openExternal(it.路径); return; }
   const kind=html?'html':'md';
   touchRecent(it);
+  /* 壳递进来的那一条（AMN.openPath）：已经开着就切过去，否则开新标签——把正在
+     读的那一篇顶掉体感太差。唯一的例外是「整个窗口只剩一个标签、它还停在开始
+     页」（冷启动双击文件就是这样），复用它，免得留一个空开始页；跟
+     openFreshNote 的 newTab:!isStartTab(active()) 是同一个惯例。标签多的时候
+     哪怕当前停在开始页也开新的——用户会把开始页当一个标签留着。 */
+  if(opt.shell){
+    const old=TABS.find(t=>t.path===it.路径 && !t.ext);
+    if(old){ enterReader(); showTab(old.id); return; }
+    opt=Object.assign({}, opt, {newTab: !(TABS.length===1 && isStartTab(active()))});
+  }
   if(!opt.newTab){
     const old=TABS.find(t=>t.path===it.路径 && !t.ext);
     if(old){ enterReader(); showTab(old.id); if(opt.jump && kind==='md') flashHit(old, opt.jump); return; }
@@ -5582,7 +5819,8 @@ async function locateAbs(abs){
 async function openByPath(rel, opt){
   if(!rel) return;
   /* 壳递进来的一律是绝对路径（访达双击、拖进来、-AMNOpenAtLaunch）：折成前缀
-     路径；一个都不沾边的 .md 走库外只读那条路。 */
+     路径；一个都不沾边的 .md 走库外只读那条路。opt（newTab / jump / shell）
+     一路原样透传，折完路径递归自己那一次也得带上。 */
   if(rel[0]==='/' ){
     const hit=await locateAbs(rel);
     if(hit.rel) return openByPath(hit.rel, opt);
@@ -7939,6 +8177,7 @@ function setTree(t){
   items=docs.map(d=>({
     路径:d.路径, 标题:d.标题||'', 类型:d.类型||'md',
     修改时间:d.改于||0, 日期:ymd(d.改于), 预览:d.预览||'',
+    骨架:d.骨架||'',                          // 卡片预览那几根条（索引时算好的块序列）
     本:d.本||'',                              // 多本时服务端标好了这一条属于哪一本
     代理:d.代理||''}));                       // 有名字＝最近一次是本机 AI 助手改的
   prepItems(); syncNotePv(); prunePins();
@@ -10411,7 +10650,10 @@ window.AMN = {
   rescan(){ doRescan(); },
   openNotes(){ openNotesFolder(); },
   openRecent(){ goHome(false); },
-  openPath(rel){ if(rel) openByPath(rel); },
+  /* 壳递进来的文件（访达双击、拖到 Dock、amnote://open、-AMNOpenAtLaunch）：
+     shell:true ＝「别顶掉正在读的那一篇」，见 openDoc。页面自己的拖放和
+     链接点击不带这一笔，照旧复用当前标签。 */
+  openPath(rel){ if(rel) openByPath(rel, {shell:true}); },
   openExternalPath(abs){ if(abs) openExtPath(abs); },
   /* 5.7：壳弹完 NSOpenPanel 之后调这两条，参数是绝对路径。 */
   addNotebooks(paths){ addNotebooks(paths); },
