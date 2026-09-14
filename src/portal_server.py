@@ -1043,6 +1043,113 @@ def save_md(req: dict):
             "改于": _mtime_str(full)}             # 落盘后的 mtime，见函数上方那段
 
 
+# ── 待办勾选：只翻方括号里那一个字符 ──────────────────────────
+#
+# 阅读态点一下勾选框走的是这条，不走 /__save。整篇覆写在这件事上是过量的：
+# 页面要把整张列表反解一遍，`* ` 会变成 `- `、`[X]` 变 `[x]`、四空格缩进变两空格、
+# 有序号从 start 起重排、行尾两个空格丢掉——勾一条待办看见一次大 diff。
+# 这条路只动一个字节，其余字节（CRLF 换行、行尾空格、frontmatter、缩进）原样落回。
+#
+# **行号口径**：「整份文件按 \n 切开之后的 0 基下标」，跟页面渲染时贴在块上的
+# data-l0 是同一个口径。md2html 进门第一句就是 \r\n → \n，一行换一行，下标不变；
+# 所以这里也按 '\n' 切、按 '\n' 拼，CRLF 文件行尾那个 \r 留在行里一起搬，
+# 不要用 splitlines()——它还会在 \x0b \x0c   这些字符上断行，下标当场就错位。
+#
+# 判据跟渲染器逐条对齐（template.html:3494 的 LIRE ＋ 3624 的 /^\[([ xX])\]\s+/）：
+# 方括号后面必须还有一个空白，`- [ ]` 这种光秃秃的在页面上是字面文字不是勾选框。
+TASK_RE = re.compile(r"^[ \t]*(?:[-*+]|\d+[.)])[ \t]+\[([ xX])\][ \t]")
+
+
+def task_toggle(req: dict):
+    """把某一行的 `[ ]` ↔ `[x]` 翻过来，只改方括号里那一个字符。
+
+    请求：{路径, 行, 勾: true|false, 基于: "YYYY-MM-DD HH:MM:SS"}
+    回：{ok, 路径, 行, 现在:" "|"x", 行文, 改于, 留档}
+
+    两道校验缺一不可：
+      · **基于** ＝ 页面读这份时的 mtime。对不上说明别处改过，让页面重取。
+        页面永远不许空着发——`/__save` 那边「基于缺席就不查冲突」是给
+        「新建之后第一次存」留的口子，行级写没有那种场面，空着一律拒。
+      · **那一行现在确实是待办行，而且当前状态正好是要翻之前的那个**。
+        防的是行号飘了（别处在前面插删过行）：mtime 防「别人改过」，
+        这一条防「我算错了」，两个都要。对不上就拒，绝不盲写。
+    """
+    v, rel, err = resolve((req.get("路径") or "").strip())
+    if err:
+        return _bad(err)
+    full, err = _edit_full(rel, must_exist=True)
+    if err:
+        return _bad(err)
+    want = bool(req.get("勾"))
+    n = req.get("行")
+    if isinstance(n, bool) or not isinstance(n, int) or n < 0:
+        return _bad(T("行号超出这份的范围"))
+
+    # 二进制读 ＋ 自己 decode：文本模式会把 CRLF 悄悄换成 LF，
+    # 一次勾选就把整份文件的换行符改了（save_md 那条路上本来就是这样，行级写不行）
+    try:
+        with open(full, "rb") as f:
+            old = f.read().decode("utf-8")
+    except (OSError, UnicodeDecodeError) as e:
+        return _bad(T("读不了原文：{e}", e=e))
+
+    lines = old.split("\n")
+    now = _mtime_str(full)
+    based = (req.get("基于") or "").strip()
+    if not based or based != now:
+        return _task_stale(now)
+    if n >= len(lines):
+        return _bad(T("行号超出这份的范围"))
+
+    m = TASK_RE.match(lines[n])
+    # 现在这一格必须还是「翻之前」的样子：要勾就得原来没勾，要去勾就得原来勾着
+    if not m or (m.group(1) == " ") != want:
+        return _task_stale(now)
+
+    i = m.start(1)
+    ch = "x" if want else " "                    # 去勾一律回空格，原来是 [X] 也一样
+    lines[n] = lines[n][:i] + ch + lines[n][i + 1:]
+    body = "\n".join(lines)
+
+    bak = _backup(rel, old)                      # 自带 10 分钟节流，连点不会刷爆留档
+    tmp = full + ".amnote-tmp"
+    try:
+        with open(tmp, "wb") as f:
+            f.write(body.encode("utf-8"))
+            f.flush()
+            os.fsync(f.fileno())
+        os.chmod(tmp, os.stat(full).st_mode & 0o7777)
+        # 同 save_md：记账要赶在文件露出新 mtime 之前，晚一步这次勾选就被同步
+        # 判成「外部改动」——流水上外部改动一条都不合并，连勾几下会冲成一片
+        note_portal_write(rel)
+        os.replace(tmp, full)                    # 同盘改名是原子的
+    except OSError as e:
+        try:
+            os.remove(tmp)
+        except OSError:
+            pass
+        return _bad(T("写失败：{e}", e=e))
+
+    return {"ok": True, "路径": out(v, rel), "行": n, "现在": ch,
+            "行文": lines[n],                     # 页面拿它就地换掉 t.raw 的那一行
+            "留档": bak,                          # 空串＝按节流跳过了
+            "改于": _mtime_str(full)}             # 下一次的「基于」
+
+
+def _task_stale(now: str):
+    """页面手上那份过期了：mtime 对不上，或者那一行已经不是它以为的样子。
+
+    两种都让页面重新载入这一份，所以合成一条回执。借 /__save 那句已经三语齐了的
+    「在别处被改过」，页面按「代码」分支，不显示这句话本身。
+    """
+    out2 = _bad(T("你打开编辑之后，这份在别处被改过（{now}）。继续保存会盖掉那次改动。",
+                  now=now))
+    out2["代码"] = "conflict"                     # T() 给的就是 conflict，这里写明白
+    out2["需确认"] = True
+    out2["改于"] = now
+    return out2
+
+
 def save_route(req: dict):
     """/__save 一条路上的三件事，按请求里的字段分派。
 
@@ -3764,7 +3871,7 @@ class Handler(SimpleHTTPRequestHandler):
             return
         route = self.path.split("?")[0]
         if route not in ("/__config", "/__reveal", "/__external",
-                         "/__save", "/__trash", "/__untrash",
+                         "/__save", "/__task", "/__trash", "/__untrash",
                          "/__state", "/__rescan", "/__extopen",
                          "/__profile", "/__agent_setup", "/__notebooks"):
             self.send_error(404, "not found")
@@ -3812,7 +3919,8 @@ class Handler(SimpleHTTPRequestHandler):
         try:
             out = {"/__config": write_config, "/__reveal": reveal,
                    "/__external": open_external, "/__extopen": ext_open,
-                   "/__save": save_route, "/__state": state_set,
+                   "/__save": save_route, "/__task": task_toggle,
+                   "/__state": state_set,
                    "/__trash": trash, "/__untrash": untrash,
                    "/__profile": profile_write,
                    "/__agent_setup": agent_setup_do,
@@ -3824,7 +3932,7 @@ class Handler(SimpleHTTPRequestHandler):
         # 而且这一趟同步就是这两条路由记流水的地方（trash / untrash 只记活表）。
         # **记账不在这儿**：save_md / new_md / trash / untrash 在真正动文件之前
         # 就记了，见那四处注释
-        if (route in ("/__save", "/__trash", "/__untrash")
+        if (route in ("/__save", "/__task", "/__trash", "/__untrash")
                 and isinstance(out, dict) and out.get("ok")):
             kick_sync(V())                       # 只补动过的那一本
         self._json(json.dumps(out, ensure_ascii=False))

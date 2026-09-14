@@ -77,7 +77,7 @@ window.AMN_I18N["en"] = {
   "把常看的、喜欢的，留在手边。": "The ones you read often, kept within reach.",
   "收藏的笔记": "Pinned notes",
   "还没有收藏": "Nothing pinned yet",
-  "在卡片右上角点一下 ★，它就放进这里了。": "Click the ★ in the top-right corner of a card and it lands here.",
+  "在笔记的右键菜单里点一下「收藏」，它就放进这里了。": "Right-click a note and choose Pin — it lands here.",
   "在库中搜索": "Vault search",
   "没有找到「{q}」": "Nothing found for “{q}”",
   "换个词，或点书签栏里的文件夹看看。": "Try another word, or open a folder from the Start page.",
@@ -568,5 +568,8 @@ window.AMN_I18N["en"] = {
   "链接##关联": "Links",
   "链到": "Links to",
   "被链": "Linked from",
-  "还有 {n} 项，打开文件夹页": "{n} more — open folder"
+  "还有 {n} 项，打开文件夹页": "{n} more — open folder",
+  "这篇刚在别处改过，已重新载入": "This note just changed elsewhere — reloaded",
+  "没存上，这一下不算数": "Couldn’t save — that tick didn’t count",
+  "这一份是只读的，勾不动": "This one is read-only — the box won’t stick"
 };

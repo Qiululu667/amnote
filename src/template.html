@@ -147,10 +147,13 @@
      不然白底方块直接砸在深色卡片上。 */
   --ico-md:#91a1b5;   --ico-md-bg:#f4f6f9;
   --ico-html:#9a91b5; --ico-html-bg:#f3f1f7;
-  /* 5.9 卡片预览区（.card-stage）：台面比卡面深一档，纸页/浏览器窗用 --paper。
-     两枚都得在下面深色的**两块**里逐字再写一遍，漏一块就是系统深色时卡片发白。 */
-  --card-stage:#f5f6f9;
+  /* 纸页 / 浏览器窗的纸色。5.9 给卡片预览区用，5.10 卡片退役后由列表的缩略图
+     接着用（卡片专用的 --card-stage 跟着退役）。它得在下面深色的**两块**里逐字
+     再写一遍，漏一块就是系统深色时缩略图发白。 */
   --paper:#ffffff;
+  /* 5.10 目录式列表：标题牵到日期那串点的颜色。比 --t4 再淡一档——它是牵引
+     视线的，不是信息。（缩略图的边与投影是组件作用域的 --tw-*，不在这里。） */
+  --leader:#bcc4cf;
   /* 分段控件的凹槽底 */
   --seg-track:rgba(39,43,49,.03);
   /* 大卡右边那叠纸的配色。5.8 起并进淡紫系，跟贴在纸角的应用图标是一家人 */
@@ -242,9 +245,9 @@
   --scrim:rgba(10,14,22,.45);
   --ico-md:#9aa8bb;   --ico-md-bg:#303640;
   --ico-html:#aaa0c8; --ico-html-bg:#343044;
-  /* 5.9 卡片预览区：台面 ＋ 纸。这两行跟 :root 那两行一一对应（共三处）。 */
-  --card-stage:#23262d;
+  /* 纸色。这一行跟 :root 那一行一一对应（共三处）。5.10 起是列表缩略图的纸。 */
   --paper:#2b2f37;
+  --leader:#545c6a;
   --seg-track:rgba(215,226,250,.05);
   /* 书签栏那排小文件夹和收藏星：浅色那对压在深底上发闷，各提亮一档 */
   --bm-ico:#c9b48f; --pin:#d6c07e;
@@ -290,9 +293,9 @@
   --scrim:rgba(10,14,22,.45);
   --ico-md:#9aa8bb;   --ico-md-bg:#303640;
   --ico-html:#aaa0c8; --ico-html-bg:#343044;
-  /* 5.9 卡片预览区：台面 ＋ 纸。这两行跟 :root 那两行一一对应（共三处）。 */
-  --card-stage:#23262d;
+  /* 纸色。这一行跟 :root 那一行一一对应（共三处）。5.10 起是列表缩略图的纸。 */
   --paper:#2b2f37;
+  --leader:#545c6a;
   --seg-track:rgba(215,226,250,.05);
   /* 书签栏那排小文件夹和收藏星：浅色那对压在深底上发闷，各提亮一档 */
   --bm-ico:#c9b48f; --pin:#d6c07e;
@@ -317,7 +320,7 @@
      卡片和续读大卡 5.9 起悬停本来就不位移，不必再按。 */
   .resume:active,
   .hbtn:hover,.hbtn:active,.btn:hover,.btn:active,.dt-btn:hover,.dt-btn:active,
-  .dirchip:hover,.card-pin:hover,.resume:hover .continue svg,
+  .dirchip:hover,.resume:hover .continue svg,
   #navHome:hover img{transform:none}
   button:active:not([disabled]){transform:none}
 }
@@ -764,7 +767,7 @@ kbd{
 .chipfold .ar{font-size:12.5px;line-height:1;margin-left:-1px}
 
 /* ── 分区标题：计数 + 类型筛选 ── */
-.section-head{display:flex;align-items:center;gap:15px;margin:28px 1px 14px}
+.section-head{display:flex;align-items:center;gap:15px;margin:20px 1px 9px}
 .section-head h2{font-size:13px;font-weight:570;margin:0}
 .section-head .section-meta{font-size:10px;color:var(--t3)}
 .section-head .fill{flex:1}
@@ -777,212 +780,200 @@ kbd{
 .filters button:hover{color:var(--t1)}
 .filters button.on{background:var(--segon);color:var(--t1);box-shadow:var(--segshadow)}
 
-/* ── 卡片网格 ─────────────────────────────
-   5.9：卡片正面是一张**内容预览**——md 一张纸页、html 一扇浏览器窗，纸／窗上
-   第一行写真标题，下面是由 /__tree 的「骨架」串摆出来的纯 CSS 条。摘录整段退役
-   （`cardText()` 只留给续读大卡）。全页零 1px 描边，悬停只升一档阴影、不位移
-   （续读大卡也跟着改，页面上只剩一种悬停语言）。
+/* ── 目录式列表 ───────────────────────────
+   5.10：首页「最近打开」、已收藏页、文件夹页从三列卡片网格换成一行一篇的目录
+   （brief §1）。一行 ＝ 缩略图｜标题 ···· 日期｜副行：无分割线、无卡片、无类型
+   芯片、无星标 —— 目录的安静全靠留白。类型「画」出来不「标」出来（md 一张小
+   纸页、html 一扇小浏览器窗），笔记本是日期左边一枚 6px 色点（单库一枚都没有）。
+   5.9 的投入没有浪费：卡片退役了，`骨架` 索引原样当缩略图的底稿，服务端零改动。
    兼容线：build_app.py MIN_MACOS = "12.0"（Safari 15），所以这一段
    **不用 color-mix、不用容器查询、不用 content-visibility**——透明色一律写死
-   rgba（浅深各一份，靠下面那几枚组件作用域局部变量切换），预览区的缩放单位
-   --u 在三档断点上各写死一次。 */
-.cards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:16px}
-.note-card{
-  position:relative;min-width:0;border:0;border-radius:14px;
-  background:var(--card-face);box-shadow:var(--el-1);
-  /* 芯片／收藏星的毛玻璃底＝--win 80%，写死成 rgba（深色那份在文件末尾）。
-     它挂在 .note-card 上而不是 .card-stage 上：收藏星在预览区外面。 */
-  --chip-bg:rgba(255,255,255,.80);
-  transition:box-shadow var(--d-base) var(--ease-out);
-}
-/* 进来慢一点（--d-slow）、出去快一点（--d-base）：浮起来有分量，落下利索 */
-.note-card:hover{box-shadow:var(--el-3);transition-duration:var(--d-slow)}
-/* 卡片自己不动了，里面那颗全尺寸按钮就别跟着 scale(.98) 了 */
-.note-card .card-open:active:not([disabled]){transform:none}
-.card-open{padding:6px;text-align:left;width:100%;height:100%;display:block;
-  border-radius:14px}
-.card-open>*{max-width:100%}
+   rgba（浅深各一份，靠下面那几枚组件作用域局部变量切换），缩略图的缩放单位
+   --v 在两档断点上各写死一次。 */
+.notelist{display:block;margin:0 -12px}
+.nrow{display:flex;align-items:center;gap:14px;width:100%;text-align:left;
+  padding:6px 12px;border-radius:12px;
+  transition:background-color var(--d-fast) ease}
+/* 悬停只铺淡底：无 transform、无位移、无阴影变化（5.9 决策，全页一种悬停语言） */
+.nrow:hover{background:var(--hover)}
+/* 按下去也不缩。全局那条 button:active{transform:scale(.98)} 是给按钮尺度的控件写的，
+   一整条 72px 的行跟着缩是另一回事（5.9 的卡片专门压过同一条，卡片退役时一起没了）。
+   一行只做一件事：铺底。 */
+.nrow:active:not([disabled]){transform:none}
 
-/* ── 预览区 ───────────────────────────────
-   满宽、1.76:1、内缩 6px（＝ .card-open 的 padding）、圆角 10。
-   区内一切尺寸都写成 var(--u) 的倍数：卡变宽时纸页、骨架条、三颗灯一起等比
-   长大，两列／单列下不会出现「一张大纸上几根细线」。1440 三列时卡宽正好 314，
-   所以 --u 默认 1px，两列和单列那两档各 1.4px（封顶：再大纸上的字就比界面还大）。
-   芯片和收藏星不跟着缩——它们是界面，不是预览。
-   下面这几枚 --skel* / --paper-* / --win-* 是**组件作用域的局部变量**，不是新增
-   全局 token；深色只要把这一条重写一遍，其余规则一个字都不用重复。 */
-.card-stage{display:block;position:relative;overflow:hidden;border-radius:10px;
-  background:var(--card-stage);aspect-ratio:1.76 / 1;
-  --u:1px;
-  --skel:rgba(144,150,160,.35);        /* 正文条：--t3 35% */
-  --skel-h:rgba(114,120,129,.45);      /* 标题条：--t2 45%，更粗更深 */
-  --skel-fill:rgba(144,150,160,.12);   /* 代码块／小卡的淡底 */
-  --skel-line:rgba(144,150,160,.38);   /* 图片占位那圈虚线 */
-  --skel-bar:rgba(144,150,160,.42);    /* 引用左边那根竖线 */
-  --paper-0:rgba(255,255,255,0);       /* 纸色的全透明版，给下缘那段淡出 */
-  --paper-dog:#e2e4e6;                 /* 右上折角翻过来的背面 */
-  --win-bar:#f1f1f3;                   /* 浏览器窗标题栏 */
-  --win-addr:#edeef0;                  /* 地址条 */
-  --wb-bar:rgba(138,99,180,.30)}       /* 窗内大块里那两根条 */
+/* ── 缩略图：60×60 的格子里，md 一张竖纸、html 一扇横窗 ──
+   长宽比本身就是类型标签：md 48×60 竖、html 60×46 横，不用读内容就知道点开的
+   是什么（demo 三版里的 B 版，用户拍板）。
+   下面这 12 枚 --tw-* 是**组件作用域的局部变量**，不是新增全局 token：深色只要
+   把这一条重写一遍，其余规则一个字都不用重复。
+   retina 口径：DPR 2 下 .5px ＝ 1 个设备像素，所以条高、间距、内边距一律取 .5
+   的整数倍，笔画永远落在设备像素边界上，不会一半灰一半更灰。 */
+.nthumb{flex:none;display:flex;align-items:center;justify-content:center;
+  width:60px;height:60px;
+  --tw-edge:rgba(40,54,74,.10);              /* 纸/窗那圈「边」：阴影，不是 border */
+  --tw-shadow:0 1px 2px rgba(58,48,80,.07);  /* 窗的落地投影（box-shadow 口径） */
+  --tw-drop:0 1px 1.5px rgba(58,48,80,.13);  /* 纸的落地投影（drop-shadow 口径，
+                                                blur 约为 box 的一半） */
+  --tw-fold:#e4e6ea;                         /* 折面：翻过来的纸背，比纸略深 */
+  --tw-foldhi:rgba(255,255,255,.92);         /* 折边那条 .5px 高光 */
+  --tw-skel:rgba(144,150,160,.42);           /* 段落条 / 列表条 / 表格底 */
+  --tw-skelh:rgba(108,115,126,.62);          /* 标题条：更粗更深 */
+  --tw-fill:rgba(144,150,160,.14);           /* 代码块 */
+  --tw-dash:rgba(144,150,160,.46);           /* 图片占位那圈虚线 */
+  --tw-winbar:#ecedf1;                       /* 窗头那条极浅灰带 */
+  --tw-hero:rgba(138,99,180,.10);            /* 窗里第一块＝ --accent 10% */
+  --tw-fade:rgba(255,255,255,0)}             /* 纸色的全透明版，给下缘淡出 */
 
-/* ── md：一张纸页 ─────────────────────────
-   宽 40%、居中略偏上，下缘停在类型芯片之上；右上折角 12 用 clip-path 切掉，
-   再补一枚深一点的三角当「翻过来的背面」。阴影不能直接给带 clip-path 的元素
-   （会被一起裁掉），所以外面套一层只负责 drop-shadow 的 .sheetwrap。 */
-.sheetwrap{display:block;position:absolute;left:50%;transform:translateX(-50%);
-  top:calc(12*var(--u));bottom:calc(30*var(--u));width:40%;
-  filter:drop-shadow(0 4px 12px rgba(30,24,50,.10))}
-.sheet{display:block;position:relative;width:100%;height:100%;overflow:hidden;
-  background:var(--paper);border-radius:calc(2*var(--u));
-  padding:calc(9*var(--u)) calc(10*var(--u)) 0;
-  clip-path:polygon(0 0, calc(100% - 12*var(--u)) 0, 100% calc(12*var(--u)),
-                    100% 100%, 0 100%)}
-/* 纸的下缘：内容被裁在半截会像画坏了，一段淡出让「这一页还没完」成为一句话
-   而不是一道刀口。 */
-.sheet::after,.winlet .body::after{content:'';position:absolute;left:0;right:0;bottom:0;
-  height:calc(11*var(--u));background:linear-gradient(var(--paper-0),var(--paper));
-  pointer-events:none}
-.sheet .dog{display:block;position:absolute;right:0;top:0;z-index:2;
-  width:calc(12*var(--u));height:calc(12*var(--u));background:var(--paper-dog);
-  clip-path:polygon(0 0, 100% 100%, 0 100%)}
-/* 纸上／窗里第一行是真标题 */
-.sheet .st,.winlet .st{display:block;font-size:calc(7.5*var(--u));font-weight:600;
-  line-height:1.35;color:var(--t1);white-space:nowrap;overflow:hidden;
-  text-overflow:ellipsis;margin-bottom:calc(6*var(--u))}
+/* md：48×60 的小纸片，右上一个 9px 真折角。
+   折角要读成折角，靠的不是那块深三角，而是**边跟着切口走**，三件事缺一不可
+   （demo 实现者踩过：H-report §7.5-1）：
+     ① .tp 自己不能有 background —— 否则被切掉的那半三角又被填回来了；
+     ② 「边」写成 .body 上的 inset 阴影 —— 外投的 box-shadow 会绕着完整圆角矩形
+        走一圈，切口那条斜边就没有边，怎么看都是「圆角」不是「折角」；
+     ③ 投影换成 .tp 上的 filter:drop-shadow —— 它跟着裁出来的真实轮廓走
+        （5.9 大卡那张纸用的是同一手法，那套 CSS 随卡片一起退役了）。 */
+.nthumb .tp{position:relative;display:block;width:48px;height:60px;
+  filter:drop-shadow(var(--tw-drop))}
+.nthumb .tp .body{position:absolute;left:0;right:0;top:0;bottom:0;overflow:hidden;
+  border-radius:6px;padding:7px 6px 0;background:var(--paper);
+  box-shadow:inset 0 0 0 1px var(--tw-edge);
+  clip-path:polygon(0 0, calc(100% - 9px) 0, 100% 9px, 100% 100%, 0 100%)}
+/* 下缘淡出：条不是被切断的，是「写到这儿就看不见了」 */
+.nthumb .tp .body::after{content:'';position:absolute;left:0;right:0;bottom:0;height:11px;
+  pointer-events:none;background:linear-gradient(var(--tw-fade),var(--paper))}
+.nthumb .fold{position:absolute;right:0;top:0;width:9px;height:9px;
+  background:var(--tw-fold);clip-path:polygon(0 0, 100% 100%, 0 100%)}
+.nthumb .foldhi{position:absolute;right:0;top:0;width:9px;height:9px;overflow:hidden}
+.nthumb .foldhi::before{content:'';position:absolute;left:50%;top:50%;width:15px;height:.5px;
+  background:var(--tw-foldhi);transform:translate(-50%,-50%) rotate(45deg)}
 
-/* ── html：一扇浏览器窗 ───────────────────
-   窗内的图形是通用的：服务端只给 html 的标题，不抽结构（骨架串是空的）。 */
-.winlet{position:absolute;left:50%;transform:translateX(-50%);
-  top:calc(12*var(--u));bottom:calc(28*var(--u));width:82%;
-  filter:drop-shadow(0 4px 12px rgba(30,24,50,.10));
-  display:flex;flex-direction:column;border-radius:calc(5*var(--u));overflow:hidden;
-  background:var(--paper)}
-.winlet .bar{flex:none;height:calc(15*var(--u));display:flex;align-items:center;
-  gap:calc(8*var(--u));padding:0 calc(6*var(--u));background:var(--win-bar)}
-.winlet .bar>*{flex:none}
-.winlet .dots{display:flex;gap:calc(3*var(--u));flex:none}
-.winlet .dots i{width:calc(5*var(--u));height:calc(5*var(--u));border-radius:50%;display:block}
-.winlet .dots i:nth-child(1){background:#ff5f57}
-.winlet .dots i:nth-child(2){background:#febc2e}
-.winlet .dots i:nth-child(3){background:#28c840}
-.winlet .addr{display:block;flex:1 1 auto;height:calc(7*var(--u));
-  border-radius:calc(4*var(--u));background:var(--win-addr)}
-.winlet .body{display:block;position:relative;flex:1;min-height:0;overflow:hidden;
-  padding:calc(8*var(--u)) calc(9*var(--u)) 0}
-.winlet .st{margin-bottom:calc(7*var(--u))}
-.wblock{display:block;border-radius:calc(3*var(--u));background:var(--accent-soft);
-  padding:calc(6*var(--u)) calc(7*var(--u));margin-bottom:calc(6*var(--u))}
-.wblock .b{background:var(--wb-bar)}
-.wcards{display:grid;grid-template-columns:repeat(3,1fr);gap:calc(5*var(--u))}
-.wcards>span{display:block;border-radius:calc(3*var(--u));background:var(--skel-fill);
-  padding:calc(5*var(--u))}
-.sk-tail{margin-top:calc(7*var(--u))}
+/* 条的像素表（纸与窗共用）
+   文档标题条 2px / 62% / --tw-skelh        块间 6px
+   标题块条   2px / 46% 或 54%（按块序号交替）
+   段落条     1.5px / 100% ＋ 84%（第 3n+1 块换 72%）  块内 4px
+   列表行     3px 圆点 ＋ 1.5px 条，行距 4px
+   表格       3×2，格高 5px，缝 1px       图片 14px 虚线框   代码 10px 淡底 */
+.nthumb .b{display:block;height:1.5px;border-radius:.25px;background:var(--tw-skel);
+  margin-bottom:4px}
+.nthumb .b:last-child{margin-bottom:0}
+.nthumb .blk{display:block;margin-bottom:6px}
+.nthumb .blk:last-child{margin-bottom:0}
+.nthumb .blk.doct .b{height:2px;width:62%;background:var(--tw-skelh)}
+.nthumb .blk.h .b{height:2px;background:var(--tw-skelh)}
+.nthumb .blk.l .li{display:flex;align-items:center;gap:3px;margin-bottom:4px}
+.nthumb .blk.l .li:last-child{margin-bottom:0}
+/* 一定要写 i.dot 而不是 i：列表行里的条也是 <i>，`.li i`（0,4,1）会盖过
+   `.nthumb .b`（0,2,0），把 1.5px 的条变成 3px 的正圆 ＝ 一条条椭圆（§7.5-2）。 */
+.nthumb .blk.l .li i.dot{display:block;flex:none;width:3px;height:3px;border-radius:50%;
+  background:var(--tw-skel)}
+/* flex:none ＋ calc(% - 6px)：flex:1 会把两行拉成一样长，列表那点
+   「一行长一行短」的节奏就没了（6px ＝ 圆点 3 ＋ 间隙 3）。 */
+.nthumb .blk.l .li .b{flex:none;margin-bottom:0}
+.nthumb .blk.t{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;padding:1px;
+  border-radius:2px;background:var(--tw-skel)}
+.nthumb .blk.t > span{display:block;height:5px;background:var(--paper)}
+/* 全稿唯一一处虚线：它表示「这儿是一张图」 */
+.nthumb .blk.i{height:14px;border-radius:2px;border:1px dashed var(--tw-dash)}
+.nthumb .blk.c{height:10px;border-radius:2px;background:var(--tw-fill)}
 
-/* ── 骨架块：h 标题 / p 段落 / l 列表 / t 表格 / c 代码 / i 图片 / q 引用 ──
-   块与块之间 6，块内的条之间 5。同一份 md 永远画出同一张：所有「随机感」
-   都是块序号的函数，没有 Math.random。 */
-.card-stage .b{display:block;height:calc(3*var(--u));border-radius:calc(2*var(--u));
-  background:var(--skel);margin-bottom:calc(5*var(--u))}
-.card-stage .b:last-child{margin-bottom:0}
-.sk{display:block;margin-bottom:calc(6*var(--u))}
-.sk:last-child{margin-bottom:0}
-.sk-h .b{height:calc(4*var(--u));background:var(--skel-h);margin-top:calc(2*var(--u))}
-.sk-l .li{display:flex;align-items:center;gap:calc(4*var(--u));margin-bottom:calc(5*var(--u))}
-.sk-l .li:last-child{margin-bottom:0}
-.sk-l .li i.dot{display:block;flex:none;width:calc(3*var(--u));height:calc(3*var(--u));
-  border-radius:50%;background:var(--skel)}
-.sk-l .li .b{flex:none;margin-bottom:0}
-.sk-t{display:grid;grid-template-columns:repeat(3,1fr);gap:calc(1*var(--u));
-  background:var(--skel);padding:calc(1*var(--u));border-radius:calc(2*var(--u))}
-.sk-t>span{display:block;height:calc(7*var(--u));background:var(--paper)}
-.sk-c{height:calc(16*var(--u));border-radius:calc(3*var(--u));background:var(--skel-fill)}
-/* 全页唯一一处虚线：它表示「这儿是一张图」 */
-.sk-i{height:calc(20*var(--u));border-radius:calc(3*var(--u));
-  border:calc(1*var(--u)) dashed var(--skel-line)}
-.sk-q{border-left:calc(2*var(--u)) solid var(--skel-bar);padding-left:calc(5*var(--u))}
+/* html：60×46 的小横窗。窗头一条 8px 极浅灰带 ＋ 三粒 2.5px 灰点（不用红黄绿：
+   3px 上的三粒原色会先抢眼，brief §1.8-6），窗身第一块是 --accent 10% 的 hero。
+   服务端不给 html 算骨架（fulltext.py 只对 md 算），所以**所有 html 一张脸**；
+   将来若给 html 也算一版骨架，这里就能跟 md 一样分化。 */
+.nthumb .twin{position:relative;display:flex;flex-direction:column;overflow:hidden;
+  width:60px;height:46px;border-radius:6px;background:var(--paper);
+  box-shadow:0 0 0 1px var(--tw-edge),var(--tw-shadow)}
+.nthumb .twin .bar{flex:none;height:8px;display:flex;align-items:center;gap:2.5px;
+  padding:0 5px;background:var(--tw-winbar)}
+.nthumb .twin .bar i{display:block;flex:none;width:2.5px;height:2.5px;border-radius:50%;
+  background:var(--t3);opacity:.55}
+.nthumb .twin .bar i:nth-child(2){opacity:.42}
+.nthumb .twin .bar i:nth-child(3){opacity:.32}
+.nthumb .twin .body{position:relative;flex:1;min-height:0;overflow:hidden;padding:5px 6px 0}
+.nthumb .twin .body::after{content:'';position:absolute;left:0;right:0;bottom:0;height:8px;
+  pointer-events:none;background:linear-gradient(var(--tw-fade),var(--paper))}
+.nthumb .hero{display:block;height:11px;border-radius:2px;background:var(--tw-hero);
+  margin-bottom:6px}
 
-/* ── 类型芯片：左下角，浮在预览区里（原来卡顶那一行退役） ── */
-.kindchip{position:absolute;left:7px;bottom:7px;display:inline-flex;align-items:center;
-  gap:4px;height:21px;padding:0 8px 0 6px;border-radius:6px;background:var(--chip-bg);
-  -webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);
-  font-size:11px;color:var(--t2);line-height:1}
-.kindchip svg{width:14px;height:14px;flex:none;color:var(--ico-md)}
-.kindchip.html svg{color:var(--ico-html)}
-
-/* ── 标题 / 页脚 ──────────────────────────
-   标题 14px / 400：不要太大、也不加粗——预览区已经把「这是哪一篇」说了大半，
-   标题只负责认名字。两行写死 min-height，页脚才在一排卡片上对得齐。 */
-.card-body{display:block;padding:14px 12px 12px}   /* 6 + 12 ＝ 卡内边距 18 */
-.note-card h3{font-size:14px;font-weight:400;line-height:1.5;margin:0;min-height:42px;
-  display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
-.card-footer{margin-top:12px;display:flex;align-items:center;gap:6px;width:100%;
-  color:var(--t3);font-size:12px}
-.card-footer svg{width:12px;height:12px;flex:none}
-.card-footer .fdr{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.card-footer .when{margin-left:auto;flex:none;padding-left:8px}
-/* 5.6：这一篇最近一次是本机某个 AI 助手改的。页脚时间前挂一枚 ✦ ＋ 它的名字，
-   颜色借强调色（深浅两支已经各自定义过），不新开颜色。
-   auto 边距从「时间」挪到这一枚上，不然两个 auto 会把余白对半分，
-   署名就飘到中间去了。 */
+/* ── 标题行：标题 ··········· ● 日期 ──
+   align-items:flex-end —— 标题、点线、日期共用 22px 行高，末行底缘对齐。
+   .ntitle 的 max-width:72% 只拦「几乎占满整行」的标题：更小的封顶会出现
+   「右边明明一大截空白，标题却被砍掉」的误会。 */
+.nmain{flex:1;min-width:0}
+.ntop{display:flex;align-items:flex-end;gap:10px}
+.ntitle{font-size:15px;font-weight:500;line-height:22px;color:var(--t1);
+  flex:0 1 auto;min-width:0;max-width:72%;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* ✦ 署名（5.6）：这一篇最近一次是本机某个 AI 助手改的。颜色借强调色
+   （深浅两支已经各自定义过），不新开颜色。续读大卡的底行也用这一条。 */
 .agentmark{color:var(--accent);font-weight:500;
   max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.card-footer .agentmark{flex:none;margin-left:auto;padding-left:8px;max-width:56%}
-.card-footer .agentmark+.when{margin-left:0}
-.card-pin{
-  position:absolute;right:12px;top:12px;width:26px;height:26px;border-radius:8px;
-  color:var(--t3);opacity:0;display:flex;align-items:center;justify-content:center;
-  background:var(--chip-bg);
-  -webkit-backdrop-filter:blur(2px);backdrop-filter:blur(2px);
-  transition:opacity .15s ease,background-color .16s ease,color .16s ease;
-}
-.card-pin:hover{background:var(--win);color:var(--t1)}
-.card-pin.pinned,.note-card:hover .card-pin{opacity:1}
-/* :focus-visible 单开一条：Safari 15.0 不认它，写进逗号组会把整条规则一起丢掉 */
-.card-pin:focus-visible{opacity:1}
-.card-pin.pinned{color:var(--pin)}
-.card-pin svg{width:14px;height:14px}
+/* 列表行里的那一枚：跟卡片页脚那枚同一个判断条件、同一个字形，只换尺寸和位置
+   ——贴在标题后面 4px（.ntop 的 gap 是 10，所以自己收回 6），在点线之前，
+   不进副行。margin-bottom:-2px 是量出来的：12px 的字与 15px 的标题盒底齐时
+   基线差 2px（算出来是 (15-12)/2＝1.5，字体的升降部再补半格），跟右边 .nmeta
+   的 -1px 是同一笔账。名字长了自己打省略号，不挤标题。 */
+.ntop .agentmark{flex:0 1 auto;min-width:0;max-width:26%;
+  margin-left:-6px;margin-bottom:-2px;
+  font-size:12px;line-height:22px}
+/* 点线。min-width 32 —— 标题被截断时它也不会消失；
+   margin-bottom 9 ＋ 自身 2px 高，把点的中线抬到标题基线上方 5px
+   （量出来：22px 行高 15px 字，末行基线在行盒底上方 5px；9 ＋ 1 ＝ 10 ＝ 5 ＋ 5）。
+   为什么不是 border-bottom:1.5px dotted：dotted 的点距被浏览器锁死成「点径 ＝
+   间隙」，1.5px 下密得像一条发丝线，目录那种一粒一粒的感觉出不来。改成 6px
+   一粒的 repeating 圆点，点径和点距各自可调；Safari 15 认 radial-gradient。 */
+.nleader{flex:1 1 auto;min-width:32px;height:2px;margin-bottom:9px;
+  background-image:radial-gradient(circle at center,
+    var(--leader) 1px, rgba(0,0,0,0) 1.2px);
+  background-size:6px 2px;background-repeat:repeat-x;background-position:left center}
+/* margin-bottom:-1px —— flex-end 对齐的是盒底，13px 的日期和 15px 的标题
+   盒底齐时基线差 1px，补回来，日期与标题才真的坐在同一条线上。 */
+.nmeta{flex:none;display:flex;align-items:center;line-height:22px;font-size:13px;
+  margin-bottom:-1px;color:var(--t3)}
+.nmeta .nd{width:6px;height:6px;margin-right:8px}
+.nwhen{color:var(--t3);white-space:nowrap;display:inline-block;
+  min-width:66px;text-align:right}
+/* 日期写两份：.nmeta.wide 给宽屏（钉在最右），.nmeta.narrow 给 <700（跟到副行
+   末尾）。用 display:none 切 —— 被藏起来的那份同时退出无障碍树。 */
+.nmeta.narrow{display:none}
 
-/* ── 预览区的深色补丁 ─────────────────────
-   ① 骨架条淡一档；② 纸页／窗身加 1px 亮边模拟纸；③ 纸的投影换成黑的；
-   ④ 三颗灯降饱和（不降的话深色下会亮成三颗灯泡）。
-   两块逐字相同（媒体查询版 ＋ 属性版），跟 HEAD 上那两块色板一个道理。 */
-:root[data-theme="dark"] .note-card{--chip-bg:rgba(37,41,49,.80)}
-:root[data-theme="dark"] .card-stage{
-  --skel:rgba(146,155,171,.25);
-  --skel-h:rgba(164,172,185,.38);
-  --skel-fill:rgba(146,155,171,.15);
-  --skel-line:rgba(146,155,171,.38);
-  --skel-bar:rgba(146,155,171,.42);
-  --paper-0:rgba(43,47,55,0);
-  --paper-dog:#474a51;
-  --win-bar:#3a3e45;
-  --win-addr:#3b404a;
-  --wb-bar:rgba(198,163,224,.30)}
-:root[data-theme="dark"] .sheetwrap,:root[data-theme="dark"] .winlet{
-  filter:drop-shadow(0 4px 12px rgba(0,0,0,.42))}
-:root[data-theme="dark"] .sheet,:root[data-theme="dark"] .winlet{
-  box-shadow:inset 0 0 0 1px rgba(255,255,255,.07)}
-:root[data-theme="dark"] .winlet .dots i{filter:saturate(.6) brightness(.85)}
+/* ── 副行：永远一行，灰字，省略号 ──
+   来源：`预览` 的第一句 → 文件夹路径 → 笔记本名 → 库根。没有摘要时回落到
+   文件夹路径用的是同一个 .ntx，一模一样的样式，不加图标不加前缀。 */
+.ndesc{display:flex;align-items:baseline;gap:10px;margin-top:5px}
+.ndesc .ntx{font-size:13px;line-height:1.5;color:var(--t3);min-width:0;flex:1 1 auto;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+
+
+/* ── 缩略图的深色补丁 ──
+   纸片是被打亮一档的灰板（--paper #2b2f37 坐在 --win #252931 上），不是黑纸；
+   边从「暗投影」翻成「亮边」，投影加深，骨架条淡一档，hero 提到 14% 才看得见。
+   两块逐字相同（属性版 ＋ 媒体查询版），跟 HEAD 上那两块色板一个道理。 */
+:root[data-theme="dark"] .nthumb{--tw-edge:rgba(255,255,255,.10);
+  --tw-shadow:0 1px 3px rgba(0,0,0,.38);
+  --tw-drop:0 1px 2px rgba(0,0,0,.45);
+  --tw-fold:#3c4149;
+  --tw-foldhi:rgba(255,255,255,.16);
+  --tw-skel:rgba(150,159,175,.38);
+  --tw-skelh:rgba(176,184,197,.52);
+  --tw-fill:rgba(150,159,175,.16);
+  --tw-dash:rgba(150,159,175,.44);
+  --tw-winbar:#383c44;
+  --tw-hero:rgba(198,163,224,.14);
+  --tw-fade:rgba(43,47,55,0)}
 @media (prefers-color-scheme:dark){
-  :root:not([data-theme="light"]) .note-card{--chip-bg:rgba(37,41,49,.80)}
-  :root:not([data-theme="light"]) .card-stage{
-    --skel:rgba(146,155,171,.25);
-    --skel-h:rgba(164,172,185,.38);
-    --skel-fill:rgba(146,155,171,.15);
-    --skel-line:rgba(146,155,171,.38);
-    --skel-bar:rgba(146,155,171,.42);
-    --paper-0:rgba(43,47,55,0);
-    --paper-dog:#474a51;
-    --win-bar:#3a3e45;
-    --win-addr:#3b404a;
-    --wb-bar:rgba(198,163,224,.30)}
-  :root:not([data-theme="light"]) .sheetwrap,
-  :root:not([data-theme="light"]) .winlet{
-    filter:drop-shadow(0 4px 12px rgba(0,0,0,.42))}
-  :root:not([data-theme="light"]) .sheet,
-  :root:not([data-theme="light"]) .winlet{
-    box-shadow:inset 0 0 0 1px rgba(255,255,255,.07)}
-  :root:not([data-theme="light"]) .winlet .dots i{filter:saturate(.6) brightness(.85)}
+  :root:not([data-theme="light"]) .nthumb{--tw-edge:rgba(255,255,255,.10);
+    --tw-shadow:0 1px 3px rgba(0,0,0,.38);
+    --tw-drop:0 1px 2px rgba(0,0,0,.45);
+    --tw-fold:#3c4149;
+    --tw-foldhi:rgba(255,255,255,.16);
+    --tw-skel:rgba(150,159,175,.38);
+    --tw-skelh:rgba(176,184,197,.52);
+    --tw-fill:rgba(150,159,175,.16);
+    --tw-dash:rgba(150,159,175,.44);
+    --tw-winbar:#383c44;
+    --tw-hero:rgba(198,163,224,.14);
+    --tw-fade:rgba(43,47,55,0)}
 }
 
 /* ── 首次提示卡（只在全新的档案第一次进来时出一次）────── */
@@ -1028,22 +1019,35 @@ kbd{
   .home{padding:30px 26px 40px}
   .home h1{font-size:25px}
   .home-greeting{margin-bottom:21px}
-  .cards{grid-template-columns:repeat(2,minmax(0,1fr));gap:11px}
-  /* 两列：卡片一下子宽了一半，预览区跟着等比长大（容器查询要 Safari 16，
-     这里靠断点写死，效果跟 min(calc(100cqw/314),1.4px) 一样）。 */
-  .card-stage{--u:1.4px}
   .paper-art{margin-right:0;width:110px}
   .resume .excerpt{max-width:390px}
 }
+/* <700：缩略图 40×50、日期挪到副行末尾右对齐、点线隐藏（brief §1.4）。
+   日期在两处各写一份 markup，用 display:none 切——被 display:none 的那份
+   同时从无障碍树里消失，不必再挂 aria-hidden。
+   缩略图里的一切都是 --v 的倍数，所以这里只改 --v 和外框两个数，
+   骨架条、折角、窗头三点一起等比缩小（容器查询要 Safari 16，走不了）。 */
 @media (max-width:700px){
   .home{padding:24px 18px 40px}
   .home h1{font-size:23px}
-  .cards{grid-template-columns:minmax(0,1fr)}
-  .card-stage{--u:1.4px}   /* 单列：封顶，再大纸上的字就比界面字还大 */
   .paper-art{display:none}
-  .card-pin{opacity:1}
   .home-greeting .hbtn .lbl{display:none}
   .tc-cols{grid-template-columns:minmax(0,1fr);gap:10px}
+  .section-head .section-meta{display:none}
+  .notelist{margin:0 -10px}
+  .nrow{gap:11px;padding:7px 10px}
+  /* 格子 50×50，纸 40×50、窗 50×38 —— 都是 5/6 等比。里面几十个 px 值不必
+     各写一份：整枚缩略图按 5/6 缩放，笔画、间距、折角一起等比小下去
+     （容器查询要 Safari 16，走不了；scale 是这里最省的一条）。 */
+  .nthumb{width:50px;height:50px}
+  .nthumb .tp,.nthumb .twin{transform:scale(.8333)}
+  .ntitle{font-size:14px;max-width:none}
+  .nleader{display:none}
+  .nwhen{min-width:0}
+  .nmeta.wide{display:none}
+  .nmeta.narrow{display:flex;font-size:12px;line-height:1.5;padding-left:10px}
+  .ndesc{margin-top:4px}
+  .ndesc .ntx{font-size:12px}
 }
 
 /* 分隔条：不画线，只留一条看不见的拖动区 */
@@ -1367,7 +1371,7 @@ body.solo .pane.html .htmlframe{top:0;height:100%}
 /* 常驻栏那颗收起箭头平时不露，鼠标进栏或键盘聚焦才浮出来；浮层那颗 × 一直在。 */
 .outline .ol-x{opacity:0;transition:opacity .14s ease}
 .outline:hover .ol-x{opacity:1}
-.outline .ol-x:focus-visible{opacity:1}   /* 单开一条，理由同 .card-pin */
+.outline .ol-x:focus-visible{opacity:1}   /* 单开一条：Safari 15.0 不认逗号组里的它 */
 /* 条目自己滚。滚动条平时不露，鼠标进来才浮出一条细的。 */
 .ol-list{position:relative;flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;
   scrollbar-width:thin;scrollbar-color:transparent transparent}
@@ -1506,9 +1510,22 @@ body.focus-mode .relpanel{opacity:0;pointer-events:none}
 .md li{margin:3px 0;padding-left:3px}
 .md li::marker{color:var(--t3)}
 .md li ul,.md li ol{margin:.32em 0 0}
-.md li.task{list-style:none;margin-left:-1.35em;display:flex;gap:.5em;align-items:flex-start}
+.md li.task{list-style:none;margin-left:-1.35em;display:flex;flex-wrap:wrap;column-gap:.5em;align-items:flex-start}
 .md li.task input{margin:.44em 0 0;accent-color:var(--accent);flex-shrink:0;cursor:pointer}
 .md li.task input:checked+span{color:var(--t3);text-decoration:line-through}
+/* 正文那一项必须给 0 基准。flex 的分行按「假想主尺寸」算，span 的 flex-basis:auto
+   ⇒ 假想尺寸 ＝ max-content：一条比一行宽的待办，勾选框 ＋ 整段 max-content 放不下，
+   下面那句 flex-wrap:wrap 就把整段文字推到第二条 flex 线上，还带着 margin-left:-1.35em
+   落到比周围列表更靠左的位置（5.10 审查 P1，打印同样中招）。
+   flex:1 1 0 让它先落到第一条线上再撑开；min-width:0 是给长单词/URL 留出收缩余地。 */
+.md li.task>span{flex:1 1 0;min-width:0}
+/* 嵌套：子列表是这个 li 的第三个 flex 项。不让它换行的话它会排到正文右边去
+   （5.9 就是这样，一整张子清单飘在父项旁边）。给它独占一行。
+   那 1.35em 是把上面那句 margin-left:-1.35em 还回来——负边距是为了让勾选框
+   站到项目符号本来的位置，它会连着把子列表一起往左拖，不还回去子项只比父项
+   缩进 5px，跟普通嵌套列表的 1.5em 对不上。
+   gap 拆成 column-gap：留着 gap 会连带一个行间距，换行之后凭空多半个字高。 */
+.md li.task>ul,.md li.task>ol{flex-basis:100%;margin-left:1.35em}
 .md del{color:var(--t3)}
 .md hr{border:0;height:1px;background:var(--rule-row);margin:2.4em 0}
 .md blockquote{margin:23px 0;padding:12px 20px;color:var(--t2);
@@ -2204,6 +2221,11 @@ body.solo #chrome{display:none!important}
   .md.f-hk h1,.md.f-hk h2,.md.f-hk h3{font-weight:min(600, calc(max(300, var(--rw,400)) + 200))}
   .md.f-hk h4,.md.f-hk h5,.md.f-hk h6{font-weight:min(600, calc(max(300, var(--rw,400)) + 100))}
   .histbox>.tw{display:block!important}
+  /* 待办勾选框。框本身打得出来（原生控件，没被隐藏），但「勾」是 accent-color
+     填出来的一块底色，浏览器打印默认丢背景色＝纸上只剩一排空框，做完的和
+     没做的长得一样。强制按原色打，顺手把强调紫换成黑：紫在激光打印机上太淡。
+     完成态的灰＋删除线由 :checked+span 那条管，这里不用重复。 */
+  .md li.task input{-webkit-print-color-adjust:exact;print-color-adjust:exact;accent-color:#000}
 }
 
 /* ═══ 5.7：多笔记本 ═══════════════════════
@@ -2215,7 +2237,7 @@ body.solo #chrome{display:none!important}
 
 /* ── 色点 ──
    全套多笔记本 UI 只靠这一枚。默认 8px（笔记本条、设置），
-   .sm 6px（标签页、⌘K 行、卡片页脚、路径芯片）。
+   .sm 6px（标签页、⌘K 行、列表行、路径芯片）。
    不描边——实心圆本身就够；「找不到」那一态才换成一圈 inset 环。 */
 .nd{display:inline-block;width:8px;height:8px;border-radius:50%;flex:none;
   background:var(--nb,var(--t4))}
@@ -2252,15 +2274,6 @@ body.solo #chrome{display:none!important}
 .home-greeting .here .nd{width:7px;height:7px}
 
 /* ── 卡片页脚 ──
-   5.9：多笔记本时页脚左边**只有**色点 ＋ 笔记本名（不再 › 文件夹，文件夹去了
-   右键菜单和关联面板）；单库照旧是黄夹子 ＋ 目录，一枚色点都不出现（P1）。
-   名字长了打省略号——这一段现在是页脚里唯一会长的东西。
-   色点 7px：页脚从 9px 长到 12px，6px 的 .sm 在这一行里太小了。 */
-.card-footer .nbname{min-width:0;overflow:hidden;text-overflow:ellipsis;
-  white-space:nowrap;color:var(--t3)}
-.card-footer .csep{flex:none;color:var(--t4)}
-.card-footer .nd{width:7px;height:7px;margin-right:1px}
-
 /* ── 继续阅读大卡 ──
    这一行是普通文字流不是 flex，色点得自己带右边距。 */
 .resume-bottom .nd{margin-right:5px}
@@ -2294,7 +2307,7 @@ body.solo #chrome{display:none!important}
 /* ── ⌘K / 搜索结果 ── */
 .search-row small .nd{margin-right:5px;position:relative;top:1px}
 .search-row small .nbname{color:var(--t3)}
-/* 这几处是普通文字流（不是 .card-footer 那种 flex），› 得自己带左右间距 */
+/* 这几处是普通文字流（不是列表行 .nmeta 那种 flex），› 得自己带左右间距 */
 .search-row small .csep,.resume-bottom .csep,#toast .csep{margin:0 4px;color:var(--t4)}
 /* 范围芯片行：⌘K 面板里贴在输入行下面，结果页里贴在 .serp-q 下面。 */
 .modal .nbchips.scope{margin:0;padding:9px 14px 3px}
@@ -3850,12 +3863,29 @@ function hasDocNow(t){
   const k=kindOfTab(t);
   return !!(t && (k==='md'||k==='html') && t.path);
 }
+/* 「最近打开」这一条的时间戳（5.10）。在这之前列表按打开顺序排、却写着文件的
+   mtime，于是时间列不单调：第 1 行「2025年12月8日」、第 2 行「今天 20:10」。
+   现在每开一篇就盖一个 `打开于`（Unix 秒，跟 `改于` 同一口径，直接喂 fmtWhen），
+   同一篇再打开就更新并挪回队首。老档案里的条目没有这个字段，读的时候回落 mtime。
+   只存一个数字，不是路径，所以不进 nbMapStored 那张迁移表。 */
 function touchRecent(it){
   const p=it && (it.路径||it.path); if(!p) return;
   const rec=Array.isArray(ST.recents)?ST.recents.slice():[];
-  ST.recents=[{路径:p, 标题:it.标题||it.title||p, 类型:it.类型||it.type||'md'},
+  ST.recents=[{路径:p, 标题:it.标题||it.title||p, 类型:it.类型||it.type||'md',
+    打开于:Math.floor(Date.now()/1000)},
     ...rec.filter(x=>x && x.路径!==p)].slice(0,12);
   ST.lastPath=p; saveST();
+}
+/* 这一篇上次是什么时候打开的。只有「最近打开」那一列和续读大卡问这个问题——
+   收藏页和文件夹页答的是「这份文件什么时候改的」，还是 mtime。
+   ST.recents 封顶 12 条，线性找一遍比建 Map 便宜。0 ＝ 没记过，调用方回落 mtime。 */
+function openedAt(rel){
+  const rec=ST.recents||[];
+  for(let n=0;n<rec.length;n++){
+    const r=rec[n];
+    if(r && r.路径===rel) return +r.打开于 || 0;
+  }
+  return 0;
 }
 function currentPath(t){
   t=t||active();
@@ -4349,88 +4379,141 @@ function sectionHead(label, n){
    ✦ ＋ 名字，摆在时间前面；没有这一笔就一个字都不多。 */
 const agentMark = i => (i && i.代理)
   ? `<span class="agentmark">✦ ${esc(i.代理)}</span>` : '';
-/* ── 卡片正面的那张预览（5.9）────────────────────────────────
-   md：一张纸页，第一行是真标题，下面按「骨架」串摆条。骨架串由服务端在索引时
-   算好一次带在 /__tree 里（h 标题 p 段落 l 列表 t 表格 c 代码 i 图片 q 引用，
-   最多 14 个字符），页面只负责画——一个 2000 篇的文件夹不能在这里现算结构。
-   老服务端没有这个键（或者这一篇还没轮到索引）：md 退回一张通用骨架，不报错。
-   html：一扇浏览器窗，窗内是通用图形（服务端不抽 html 结构）。
-   两样都是**纯字符串拼接 ＋ 纯 CSS 条**：不建 DOM、不发请求、不用 SVG。 */
+/* ── 一行左边那枚缩略图（5.10）────────────────────────────────
+   类型「画」出来不「标」出来，而且**长宽比本身就是类型标签**：
+   md 是一张 48×60 的竖纸（右上一个真折角），html 是一扇 60×46 的横窗，
+   两者都在同一个 60×60 的格子里居中 —— 不用读内容就知道点开的是什么。
+   md 的纸上按「骨架」串摆条：骨架由服务端在索引时算好一次带在 /__tree 里
+   （h 标题 p 段落 l 列表 t 表格 c 代码 i 图片 q 引用，最多 14 个字符），页面
+   只负责画——一个 2000 篇的文件夹不能在这里现算结构。老服务端没有这个键
+   （或者这一篇还没轮到索引）：退回一张通用骨架，不报错。
+   html 没有骨架（fulltext.py 只对 md 算），所以**所有 html 一张脸**：窗头三点
+   ＋ 一块 hero ＋ 两组文字条。将来若给 html 也算一版骨架，这里就能跟 md 一样分化。
+   两样都是**纯字符串拼接 ＋ 纯 CSS 条**：不建 DOM、不发请求、不用 SVG。
+   同一份 md 永远画出同一张：所有「随机感」都是块序号 ix 的函数，没有 Math.random。 */
 const SKEL_FALLBACK='php';
-function renderSkeleton(sk){
+/* 48px 宽的纸上塞不下 14 个块：每类块记一份权重（标题薄，算 1），画到权重和
+   够 SK_BUDGET 就收笔，下缘留一截白 ＋ 一层淡出，像「写到这儿就看不见了」。
+   卡片那套 renderSkeleton 是另一套几何（每块更高更宽），5.10 随卡片一起退役。 */
+const SK_WEIGHT={h:1, p:2, l:2, t:2, c:2, i:2, q:2};
+const SK_BUDGET=6;
+function renderMini(sk){
   const bar=w=>`<i class="b" style="width:${w}%"></i>`;
-  return Array.from(String(sk||'')).map((c,ix)=>{
+  const out=[];
+  let used=0;
+  Array.from(String(sk||'')).forEach((c,ix)=>{
+    const w=SK_WEIGHT[c];
+    if(!w || used+w>SK_BUDGET) return;
+    used+=w;
     switch(c){
-      case 'h': return `<span class="sk sk-h">${bar(ix%2?55:42)}</span>`;
-      case 'p': return `<span class="sk">${bar(100)}${bar(92)}`
-                     + ((ix%3)!==1 ? bar(60) : '') + `</span>`;
-      case 'l': return `<span class="sk sk-l">`
-                     + [88,76,66].map(w=>`<span class="li"><i class="dot"></i>${bar(w)}</span>`).join('')
-                     + `</span>`;
-      case 't': return `<span class="sk sk-t">` + '<span></span>'.repeat(6) + `</span>`;
-      case 'c': return `<span class="sk sk-c"></span>`;
-      case 'i': return `<span class="sk sk-i"></span>`;
-      case 'q': return `<span class="sk sk-q">${bar(94)}${bar(70)}</span>`;
-      default : return '';
+      case 'h': out.push(`<span class="blk h">${bar(ix%2 ? 54 : 46)}</span>`); break;
+      case 'p': out.push(`<span class="blk">${bar(100)}${bar(ix%3===1 ? 72 : 84)}</span>`); break;
+      /* 列表条要 flex:none ＋ calc(% - 6px)（6 ＝ 圆点 3 ＋ 间隙 3）：用 flex:1
+         两行会被拉成一样长，列表那点「一行长一行短」的节奏就没了。 */
+      case 'l': out.push(`<span class="blk l">`
+                  + [100,78].map(x=>`<span class="li"><i class="dot"></i>`
+                      + `<i class="b" style="width:calc(${x}% - 6px)"></i></span>`).join('')
+                  + `</span>`); break;
+      case 't': out.push(`<span class="blk t">` + '<span></span>'.repeat(6) + `</span>`); break;
+      case 'c': out.push(`<span class="blk c"></span>`); break;
+      case 'i': out.push(`<span class="blk i"></span>`); break;
+      /* 引用没有单独的画法：它在 48px 的纸上跟段落分不开，按段落画。 */
+      case 'q': out.push(`<span class="blk">${bar(94)}${bar(66)}</span>`); break;
     }
-  }).join('');
+  });
+  return out.join('');
 }
-function stageHtml(i, html, title){
+function thumbHtml(i){
   const bar=w=>`<i class="b" style="width:${w}%"></i>`;
-  if(html){
-    const wc=`<span>${bar(80)}${bar(55)}</span>`;
-    return `<span class="winlet">`
-      +   `<span class="bar"><span class="dots"><i></i><i></i><i></i></span><span class="addr"></span></span>`
-      +   `<span class="body"><span class="st">${esc(title)}</span>`
-      +     `<span class="wblock">${bar(72)}${bar(46)}</span>`
-      +     `<span class="wcards">${wc}${wc}${wc}</span>`
-      +     `<span class="sk sk-tail">${bar(100)}${bar(64)}</span>`
-      +   `</span></span>`;
+  if(kindOf(i)==='html'){
+    return `<span class="nthumb" aria-hidden="true"><span class="twin">`
+      +   `<span class="bar"><i></i><i></i><i></i></span>`
+      +   `<span class="body"><span class="hero"></span>`
+      +     `<span class="blk">${bar(100)}${bar(86)}</span>`
+      +     `<span class="blk">${bar(94)}${bar(60)}</span>`
+      +   `</span></span></span>`;
   }
-  return `<span class="sheetwrap"><span class="sheet">`
-    +   `<span class="st">${esc(title)}</span>`
-    +   renderSkeleton(String((i&&i.骨架)||'') || SKEL_FALLBACK)
-    +   `<i class="dog"></i>`
-    + `</span></span>`;
+  /* .tp 不能有 background、边是 .body 的 inset 阴影、投影是 .tp 的 drop-shadow
+     ——三件事缺一个，右上那个折角就读成普通圆角（CSS 里写了为什么）。
+     纸上第一根永远是文档标题条，后面才按骨架摆。 */
+  return `<span class="nthumb" aria-hidden="true"><span class="tp">`
+    +   `<span class="body"><span class="blk doct">${bar(62)}</span>`
+    +     renderMini(String((i&&i.骨架)||'') || SKEL_FALLBACK)
+    +   `</span>`
+    +   `<span class="fold"></span><span class="foldhi"></span></span></span>`;
 }
-/* 卡片页脚左边那一段。多本时只留「● 笔记本名」（brief §4.5 第 3 条，用户拍板：
-   文件夹去右键菜单和关联面板）；单库照旧走 whereHtml 的黄夹子 ＋ 目录，
-   一枚色点都不出现（P1 单库零变化）。 */
-function cardWhereHtml(rel){
-  if(!NB.multi) return whereHtml(rel,{fdr:1, icon:1});
-  const book=NB.of(rel);
-  return book ? nbDot(book,{sm:true})+`<span class="nbname">${esc(book)}</span>` : '';
+/* ── 副行：一行灰字，给一个点开的理由 ────────────────────────
+   来源有规则，不靠手写副标题（brief §1.3-1）：
+     `预览`（/__tree 已带回来的 ≤240 字洗净正文）的第一句，截 60 字
+       → 取不到就写文件夹路径（去掉笔记本前缀，/ 换成「 / 」）
+       → 再取不到（就在库根上）多本时写笔记本名、单库写「库根」。
+   洗法跟 cardText 同一套（去 markdown 记号、去表格竖线、去开头重复的标题），
+   差别只有两处：标题可能重复不止一次（html 抽取正文会把 <title> 和 <h1> 各留
+   一行），所以循环剥；以及断句 —— 到第一个句号/问号/叹号为止，收尾的引号和
+   右括号算在句子里面。
+   断句认两套终止符：中文那套（。！？，后面跟什么都算）和英文那套（. ! ? 之后
+   必须是空白或行尾）。英文那条的「必须跟空白」同时躲开了 `v1.0` / `3.14` 这类
+   小数点——没有它，英文笔记永远匹配不到句号，整段 240 字被 60 字硬切在词中间
+   （审查 S3）。 */
+function rowDesc(i){
+  let s=String((i&&i.预览) || (NOTEPV && NOTEPV.get(i&&i.路径)) || '');
+  // 行内链接只留文字：不剥的话下面那一句剥完方括号会留下 `客服月报(https://…)`
+  s=s.replace(/\[([^\]]*)\]\([^)]*\)/g,'$1');
+  s=s.replace(/[#>*`~\[\]]/g,'').replace(/\|/g,' ').replace(/-{3,}/g,' ')
+     .replace(/\s+/g,' ').trim();
+  const t=String((i&&i.标题)||'').trim();
+  while(t && s.slice(0,t.length)===t) s=s.slice(t.length).trim();
+  const m=s.match(/^[\s\S]*?(?:[。！？!?](?=\s|$|[^」』"'）)])|\.(?=\s|$))/);
+  s=(m?m[0]:s).trim();
+  // 按码位切，不按 UTF-16 码元：`'字'×59 + 🎉` 硬切会留下半个代理对，渲染成 �
+  const cp=Array.from(s);
+  if(cp.length>60) s=cp.slice(0,60).join('')+'…';
+  if(s) return s;
+  const rel=String((i&&i.路径)||'');
+  const inner=NB.strip(rel), at=inner.lastIndexOf('/');
+  if(at>0) return inner.slice(0,at).split('/').join(' / ');
+  return (NB.multi ? NB.of(rel) : '') || TR('库根');
 }
-function cardHtml(i){
-  const rel=i.路径, html=kindOf(i)==='html', pinned=isPinned(rel);
+/* ── 一行 ────────────────────────────────────────────────────
+   ┌──────┐  标题 ························· ● 15 分钟前
+   │ 纸页 │  一行摘要或文件夹路径
+   └──────┘
+   日期写两份：.nmeta.wide 给宽屏（钉在最右），.nmeta.narrow 给 <700（跟到副行
+   末尾）。CSS 用 display:none 切，被藏起来的那份同时退出无障碍树。
+   data-open / data-kind 跟卡片时代一个字不差——点击、右键、中键那一套代理
+   （newPane 里 .pagebox 上那一个 listener）因此零改动。 */
+/* opened＝这一屏是「最近打开」（开始页）：时间列写这一篇上次**打开**的时刻，
+   没记过的老条目回落 mtime。收藏页和文件夹页不传它，照旧写 mtime。 */
+function noteRowHtml(i, opened){
+  const rel=i.路径, html=kindOf(i)==='html';
   const title=cleanTitle(i);
-  const pinTip=pinned?TR('取消收藏'):TR('收藏');
-  const mark=agentMark(i);
-  /* 「Markdown」「HTML」两个串不含 CJK，不进词典（i18n_check 同一条规则）。 */
-  return `<div class="note-card">
-    <button type="button" class="card-open" data-open="${esc(rel)}" data-kind="${html?'html':'md'}" aria-label="${esc(TR('打开 {title}',{title}))}">
-      <span class="card-stage">${stageHtml(i, html, title)}<span class="kindchip${html?' html':''}">${icon(html?'globe':'doc',14)}<span>${html?'HTML':'Markdown'}</span></span></span>
-      <span class="card-body">
-        <h3>${esc(title)}</h3>
-        <span class="card-footer">${cardWhereHtml(rel)}${mark}<span class="when num">${esc(fmtWhen(i.修改时间))}</span></span>
-      </span>
-    </button>
-    <button type="button" class="card-pin${pinned?' pinned':''}" data-pin="${esc(rel)}"
-      title="${esc(pinTip)}" aria-label="${esc(pinTip+' '+title)}" aria-pressed="${pinned?'true':'false'}">${icon('star',14)}</button>
-  </div>`;
+  const when=(opened && openedAt(rel)) || i.修改时间;
+  /* 色点：多本才画，单库一枚都没有（P1）——nbDot 自己短路。 */
+  const meta=cls=>`<span class="nmeta ${cls}">${nbDot(NB.of(rel),{sm:true})}`
+    + `<span class="nwhen num">${esc(fmtWhen(when))}</span></span>`;
+  return `<button type="button" class="nrow" data-open="${esc(rel)}" data-kind="${html?'html':'md'}"`
+    + ` title="${esc(title)}" aria-label="${esc(TR('打开 {title}',{title}))}">`
+    + thumbHtml(i)
+    + `<span class="nmain">`
+    +   `<span class="ntop"><span class="ntitle">${esc(title)}</span>${agentMark(i)}`
+    +     `<span class="nleader"></span>${meta('wide')}</span>`
+    +   `<span class="ndesc"><span class="ntx">${esc(rowDesc(i))}</span>${meta('narrow')}</span>`
+    + `</span></button>`;
 }
-/* opt.n＝这一屏先画几张（文件夹页 / 已收藏页分批，见 CARDS_BATCH）。
-   剩下的挂一枚「再看 {n} 篇」在网格下面——样式跟开始页那条「看全部」同一枚。
-   不给 opt 就是全画（开始页自己已经切到 12 张）。 */
-function cardsHtml(list, fallback, opt){
+/* opt.n＝这一屏先画几行（文件夹页 / 已收藏页分批，见 CARDS_BATCH）。
+   剩下的挂一枚「再看 {n} 篇」在列表下面——样式跟开始页那条「看全部」同一枚。
+   不给 opt 就是全画（开始页自己已经切到 12 行）。
+   opt.opened＝时间列写「打开于」（只有开始页那一屏传），见 noteRowHtml。 */
+function rowsHtml(list, fallback, opt){
   if(!list.length) return fallback;
   const n=(opt && opt.n>0) ? Math.min(opt.n, list.length) : list.length;
   const rest=list.length-n;
-  /* 数报的是「按一下会多出来几张」，不是「还剩几张」——段头那一枚已经说了总数。 */
+  /* 数报的是「按一下会多出来几篇」，不是「还剩几篇」——段头那一枚已经说了总数。 */
   const more = rest>0
     ? `<button type="button" class="see-all" data-act="morecards">${icon('chevron-down',14)}<span>${esc(TR('再看 {n} 篇',{n:Math.min(CARDS_BATCH, rest)}))}</span></button>`
     : '';
-  return `<div class="cards">${list.slice(0,n).map(cardHtml).join('')}</div>${more}`;
+  const op=!!(opt && opt.opened);
+  return `<div class="notelist">${list.slice(0,n).map(i=>noteRowHtml(i,op)).join('')}</div>${more}`;
 }
 /* opts.big＝空库那一版，占满问候区以下整片空白并居中；opts.buttons＝换掉默认那颗按钮。 */
 function emptyHtml(title, text, opts){
@@ -4450,7 +4533,7 @@ function resumeHtml(i){
       <span class="overline">${icon('clock',12)} ${esc(TR('上次停在'))}</span>
       <h2>${esc(cleanTitle(i))}</h2>
       <p class="excerpt">${esc(ex)}</p>
-      <span class="resume-bottom"><span>${whereHtml(i.路径)} · ${mark?mark+' · ':''}${esc(fmtWhen(i.修改时间))}</span><span class="continue">${esc(TR('接着读'))} ${icon('arrow',13)}</span></span>
+      <span class="resume-bottom"><span>${whereHtml(i.路径)} · ${mark?mark+' · ':''}${esc(fmtWhen(openedAt(i.路径) || i.修改时间))}</span><span class="continue">${esc(TR('接着读'))} ${icon('arrow',13)}</span></span>
     </span>
     <span class="paper-art" aria-hidden="true">
       <span class="paper-front"><b></b><i></i><i></i><i></i><i></i><i></i></span>
@@ -4475,20 +4558,36 @@ function paintStart(box){
     return;
   }
   const all=pageDocs('start');
-  const shown=all.slice(0,12);
   const last=resumeDoc();
+  /* 续读大卡就是第 1 行的放大版（brief §1.5）：有大卡时列表从第 2 篇起，
+     段头那个「n 篇」跟着少一篇；没有大卡就整列画。
+     **扣掉大卡之后的这个 rest 才是这一屏的口径**——段头、空态、底下那颗
+     「看全部」都按它算，拿 all 说话会在小库上自相矛盾（5.10 审查 P2）。
+     行数 11 而不是 12：ST.recents 只存 12 条，大卡吃掉第 1 条，列表再画 12 行
+     的话最后一行必然落在 rank=9999 档上、只能回落 mtime，时间列永远有一行
+     对不上「打开于」（审查 S6）。brief §1.5 写的也是「其余 11 篇进列表」。
+     没有大卡时照旧 12 行——那 12 条都在 recents 里，时间列一样是齐的。 */
+  const rest=last ? all.filter(i=>i.路径!==last.路径) : all;
+  const shown=rest.slice(0, rest.length<all.length ? 11 : 12);
   const cur=NB.cur;
   // 标题右边那个数报的是这一屏画了几张，不是库里一共几篇——数跟眼睛看到的对得上。
   // 装不下的走下面那条去库根，文件夹页里接着翻。
   // 「全部」模式下没有库根可去（§4b.7），这一条不画。
   const rootOfPage = NB.multi ? cur : '';
-  const more=(all.length>shown.length && (!NB.multi || cur))
+  const more=(rest.length>shown.length && (!NB.multi || cur))
     ? `<button type="button" class="see-all" data-folder="${esc(rootOfPage)}">${icon('folder',14)}<span>${esc(TR('看全部 {n} 篇',{n:all.length}))}</span></button>`
     : '';
   /* 5.8：副句不再复述大卡。问候开着又有大卡，那一句就是多余的——上次停在哪儿，
      底下那张卡自己写着。没有大卡才问一句今天想写什么；问候关着的话这句已经当了
      大标题，副句同样不画。 */
   const sub = (greetOn() && !last) ? TR('今天，想记下什么？') : '';
+  /* 大卡把这一屏唯一的一篇吃掉了（库里统共就这一篇，写完第一篇就是这个画面）：
+     段头和列表整块不画。再来一句「这一类还没有」是自相矛盾——那一篇明明就在
+     上面的大卡里（审查 P2）。`all.length` 那一半是分寸：筛成「网页」而库里一篇
+     网页都没有时 all 本来就是空的，那句「这一类还没有」是对的，照画。 */
+  const recent = (!shown.length && all.length) ? ''
+    : `${sectionHead(TR('最近打开'), shown.length)}
+    ${rowsHtml(shown, emptyHtml(TR('这一类还没有'),esc(TR('换个类型看看，或者写点新的。'))), {opened:true})}`;
   box.innerHTML=`<div class="home">
     ${greetingHtml('','',
       greetOn()?greetTitle():TR('今天，想记下什么？'),sub,{scan:true})}
@@ -4496,8 +4595,7 @@ function paintStart(box){
     ${(NB.multi && !cur) ? '' : startChipsHtml()}
     ${last?resumeHtml(last):''}
     ${tipsCardHtml()}
-    ${sectionHead(TR('最近打开'), shown.length)}
-    ${cardsHtml(shown, emptyHtml(TR('这一类还没有'),esc(TR('换个类型看看，或者写点新的。'))))}
+    ${recent}
     ${more}
     ${tip}</div>`;
 }
@@ -4509,7 +4607,7 @@ function paintPins(t, box){
   withNbCtx('', ()=>{ box.innerHTML=`<div class="home">
     ${greetingHtml(icon('star',13),TR('收藏##eyebrow'),TR('已收藏'),TR('把常看的、喜欢的，留在手边。'))}
     ${sectionHead(TR('收藏的笔记'), list.length)}
-    ${cardsHtml(list, emptyHtml(TR('还没有收藏'),esc(TR('在卡片右上角点一下 ★，它就放进这里了。'))), {n})}
+    ${rowsHtml(list, emptyHtml(TR('还没有收藏'),esc(TR('在笔记的右键菜单里点一下「收藏」，它就放进这里了。'))), {n})}
   </div>`; });
 }
 function paintSerp(t, box){
@@ -4646,7 +4744,7 @@ function paintFolder(t, box){
     ${sibChips}
     ${subChips}
     ${sectionHead(TR('这个文件夹里'), list.length)}
-    ${cardsHtml(list, emptyHtml(subs.length?TR('这一层还没有文件'):TR('空文件夹'), esc(subs.length?TR('点上面的子文件夹看看。'):TR('这里还没有 md 或 html。'))), {n})}
+    ${rowsHtml(list, emptyHtml(subs.length?TR('这一层还没有文件'):TR('空文件夹'), esc(subs.length?TR('点上面的子文件夹看看。'):TR('这里还没有 md 或 html。'))), {n})}
   </div>`;
 }
 /* wait＝一个 Promise：标签照样立刻建（标签条、前进后退都指着它），只把第一次
@@ -5590,6 +5688,9 @@ function newPane(t){
       if(nbc.closest('.nbchips.scope')){ t.nbs=nbc.dataset.nb||''; paintPage(t, {quiet:true}); return; }
       setCurNb(nbc.dataset.nb||''); return;
     }
+    /* 5.10：列表退掉星标之后全页没有 [data-pin] 的生产者了（收藏改走右键菜单
+       那一项）。这一条留着当接口——将来哪一屏想把收藏做成一颗就地的按钮，
+       markup 上挂 data-pin 就能用，不用再回来改这个代理。 */
     const pin=e.target.closest('[data-pin]');
     if(pin){ e.preventDefault(); e.stopPropagation(); togglePin(pin.dataset.pin); return; }
     const flt=e.target.closest('[data-filter]');
@@ -5640,6 +5741,11 @@ function newPane(t){
       }
       return;
     }
+    /* 待办勾选框。**不要 preventDefault**：浏览器在派发 click 之前就把 checked
+       翻好了，拦下来等于每次点击都还原回去（0829 D 路实测时序，编辑态那段注释
+       记着同一个坑）。这里只把翻好的那一半补到 attribute 上，再把这一行写回文件。 */
+    const cb0=e.target.closest('input[type=checkbox]');
+    if(cb0 && md0.contains(cb0)){ toggleTask(t, cb0); return; }
     const a=e.target.closest('a'); if(!a || !md0.contains(a)) return;
     if(a.dataset.wl!==undefined){ e.preventDefault(); openWiki(a.dataset.wl, e, t.path); return; }
     const rel=libRel(a.dataset.u||'', dirOf(t.path));
@@ -5938,6 +6044,12 @@ async function loadMd(t){
   const p=paneOf(t); if(!p) return;
   const md=p.querySelector('.md');
   try{
+    /* 先量 mtime 再读正文。阅读态勾选（toggleTask）拿 t.rawAt 当写回时的「基于」，
+       顺序反过来的话，两次请求之间文件被改了就会拿到「新 mtime ＋ 旧正文」，
+       行号对着旧正文算、mtime 却说「没人动过」，两道闸一起失灵。
+       这个顺序只会让 rawAt 偏旧，偏旧最多多走一次 409 重载，不会写错行。 */
+    t.rawAt='';
+    if(!t.ext) await refreshRawAt(t);
     const r=await fetch(url(t.path)); if(!r.ok) throw 0;
     t.raw=await r.text();
     renderMd(md, t.raw, dirOf(t.path));
@@ -5950,6 +6062,89 @@ async function loadMd(t){
   applyPref();
   drawDocMeta(t);
   if(t.id===curTab){ buildToc(); syncRel(); syncProg(); syncBar(); }
+}
+
+/* ── 阅读态勾选待办 ─────────────────────
+   点一下 `- [ ]` 的框，只把文件里那一行方括号里的一个字符翻过来（POST /__task）。
+   不进编辑态、不重画整篇、不整篇覆写——整篇覆写会让 listMd 把整张列表反解一遍
+   （`* `→`- `、`[X]`→`[x]`、四空格→两空格、有序号重排），勾一条看见一次大 diff。
+
+   **行号怎么算**：md2html 的列表分支一个 <li> 只吃一行、build() 又是按 rows
+   顺序递归塞进去的，所以「顶层块里第 k 个 <li>」就是「源码第 data-l0 + k 行」。
+   data-l0 只贴在块的第一个标签（<ul>/<ol>）上，<li> 上没有，所以要从块上取。
+   别拿「.md 的第几个子元素」定位：文档历史折叠会往 .md 里塞一层 .histbox 包装盒。 */
+function taskLineOf(cb){
+  const li=cb.closest('li'); if(!li) return null;
+  const top=li.closest('.md>*');
+  if(!top || top.dataset.l0===undefined) return null;
+  const k=[...top.querySelectorAll('li')].indexOf(li);
+  if(k<0) return null;
+  return {li, ln:+top.dataset.l0 + k};
+}
+
+function toggleTask(t, cb){
+  const want=!!cb.checked;                       // 浏览器在 click 之前已经翻好了
+  const back=()=>{                               // 翻回去：property 和 attribute 一起
+    cb.checked=!want;
+    if(cb.checked) cb.setAttribute('checked',''); else cb.removeAttribute('checked');
+  };
+  const hit=taskLineOf(cb);
+  /* 库外只读文档（t.ext）、写不进去的路径、没有服务的预览模式：框照样画得出来
+     （渲染器不认「这一份能不能写」），点下去只会自己弹回来。不说一句的话
+     用户只会以为「点坏了」（审查 S4）。剩下那几个条件是「这一下算不出行号」，
+     属于内部状态不一致，没有能对用户说的话，照旧静静弹回。 */
+  const readonly = !IS_HTTP || t.ext || !canEditPath(t.path);
+  if(readonly || !hit || !cb.closest('li.task') || typeof t.raw!=='string'){
+    back();
+    if(readonly) notify(TR('这一份是只读的，勾不动'));
+    return;
+  }
+  // attribute 那一半补上：:checked 的灰＋删除线跟着 property 走，已经当场出来了，
+  // 这一句是给后面任何一次 outerHTML 比对（进编辑、verifyDirty）留个对得上的基线
+  if(want) cb.setAttribute('checked',''); else cb.removeAttribute('checked');
+  /* 串行化。连点三个框会并发发三条，后两条手上的「基于」还是旧的 mtime，
+     服务端一律判成「别处改过」——三下里有两下变成假冲突 ＋ 整篇重载。
+     链子上挂 catch：断一次后面全不发了，框就再也点不动。 */
+  const gen=t.taskGen|0;
+  t.taskQ=(t.taskQ||Promise.resolve())
+    .then(()=>sendTask(t, hit.ln, want, back, gen)).catch(()=>{});
+}
+
+async function sendTask(t, ln, want, back, gen){
+  if(!paneOf(t)) return;                         // 排队期间标签被关了
+  /* 排在前面的那一条撞了冲突、整篇已经重载过：这一条的行号是按旧 DOM 算的，
+     再发就有写错行的风险（服务端那道「当前状态」校验挡得住大部分，挡不住全部）。
+     翻回去就行——用户眼前已经是重载之后那份的真实状态。 */
+  if((t.taskGen|0)!==gen){ back(); return; }
+  let r=null;
+  try{
+    r=await (await fetch('/__task', {method:'POST', headers:hdrs(), body:JSON.stringify(
+      {路径:t.path, 行:ln, 勾:want, 基于:t.rawAt||''})})).json();
+  }catch(e){ r=null; }
+  if(!paneOf(t)) return;
+  if(r && r.ok){
+    /* 就地更新，一次 paintWork 都不要有：重画会滚动、会炸大纲、会把光标和
+       文档历史的折叠状态弄丢。t.raw 那一行必须跟着改——下一次重画
+       （取消编辑、切标签回来）按的是 t.raw，不同步的话框会自己弹回去。 */
+    const L=t.raw.split('\n');
+    if(typeof r.行文==='string' && ln<L.length) L[ln]=r.行文;
+    t.raw=L.join('\n');
+    if(r.改于) t.rawAt=r.改于;                    // 下一次的「基于」
+    drawDocMeta(t);
+    return;
+  }
+  back();
+  // 服务没应答：文件没动过，行号还作数，后面排着的照发
+  if(!r){ notify(TR('没存上，这一下不算数')); return; }
+  // 服务端说手上这份过期了（mtime 对不上，或那一行已经不是待办行）：重新载入这一篇
+  t.taskGen=(t.taskGen|0)+1;                     // 作废还排在后面的那几条
+  notify(TR('这篇刚在别处改过，已重新载入'));
+  /* 阅读位置自己存一手。loadMd 走 renderMd ⇒ 整份 innerHTML 重置，它没有
+     paintWork 里存取 scrollTop 那两句。一份长笔记读到一半勾一条、撞上「别处改过」
+     就被弹回第一屏，比那句提示本身更恼火（审查 S2）。行数极少会变，位置一定还在。 */
+  const p=paneOf(t), top=p?p.scrollTop:0;
+  await loadMd(t);
+  if(p && paneOf(t)===p) p.scrollTop=top;
 }
 
 /* ── 库外文档（只读）────────────────────
@@ -6715,9 +6910,13 @@ function cleanBlock(el){
   });
   // 浏览器随手贴的 style / class 一律去掉。表格格子的 text-align 是我们自己按
   // 对齐位生成的，留着；li.task、div.tw、span.imgbad 三个 class 同理。
+  // li.task 只在真有勾选框时才保：浏览器劈 <li> 会把 class 一起抄给下半个、
+  // 勾选框却留在上半个，那条骗人的 class 会让一条普通列表项一直顶着待办的样子
+  // （无项目符号、flex 版式），存盘写出来却是 `- 文字`。没框就不是待办，剥掉。
   el.querySelectorAll('[style],[class],[align],[color],[face],[dir]').forEach(n=>{
     if(!/^(TD|TH)$/.test(n.tagName)) n.removeAttribute('style');
-    if(!(n.tagName==='LI'&&n.classList.contains('task'))
+    if(!(n.tagName==='LI'&&n.classList.contains('task')
+         && n.querySelector(':scope > input[type=checkbox]'))
        && !n.classList.contains('tw') && !n.classList.contains('imgbad')) n.removeAttribute('class');
     ['align','color','face','dir'].forEach(a=>n.removeAttribute(a));
   });
@@ -6923,7 +7122,15 @@ function prepEdit(t){
 /* 光标落到某一块的末尾（atStart 则到开头）。空块先补 <br> 再放光标。 */
 function caretEnd(el, atStart){
   if(!el) return;
-  const tgt = el.tagName==='UL'||el.tagName==='OL' ? (el.querySelector('li')||el) : el;
+  let tgt = el.tagName==='UL'||el.tagName==='OL' ? (el.querySelector('li')||el) : el;
+  /* 待办项：光标要落进那个 <span>，不能停在 li 自己身上。停在 li 上（offset 0）
+     打的字会变成 <input> **前面**一个裸文本节点——排版上正文跑到勾选框左边去，
+     而 listMd 照样收得进来，文件里一个字不差，所以只有肉眼能发现。
+     空待办项特别容易踩：restoreSel 见块内没有文字就走 caretEnd(el, true)，
+     而 li.task 的文字全在 span 里、input 不贡献 textContent，
+     一条刚建出来的空待办永远判成「空块」。 */
+  if(tgt.tagName==='LI' && tgt.classList.contains('task'))
+    tgt = tgt.querySelector(':scope > span') || tgt;
   ensureBr(tgt);
   try{
     const r=document.createRange();
@@ -7216,6 +7423,46 @@ function exitOrOutdentLi(t, li){
   if(outdentLi(t, li)) return;
   liftLiToP(t, li);
 }
+/* 待办项上回车 → 下一条还是待办。
+   不接住的话落到 contenteditable 的默认行为：WebKit 把 <li> 从光标处劈开，
+   <input> 在光标之前、留在上半个 li 里，新起的那个继承了 class="task" 却
+   没有勾选框——看着是一条悬空的文字（li.task 是 flex 且 list-style:none，
+   连项目符号都没有），存盘时 listMd 看 cb 为 null，写出来是普通列表项 `- 文字`。
+   光标后面的文字跟着搬进新项；li 下面挂着的子列表留在原处不动。
+   空待办项上回车不走这里——上面那条空 li 分支先接走了，跟普通列表一样退出列表。 */
+function splitTaskLi(t, li){
+  const span=li.querySelector(':scope > span') || li;
+  let tail=null;
+  try{
+    const s=getSelection(), r=s.getRangeAt(0), rr=r.cloneRange();
+    rr.selectNodeContents(span);
+    /* 选中几个字再回车：跟别处一样，那几个字先被删掉，再从光标处劈开。
+       只搬「选区之后」的话选中的内容会原地留下（审查 S9）。
+       整个选区落在这一条的正文里才这么办——跨到别的 li 的选区一律沿老路
+       （从选区末尾切），deleteContents 会一路删过去，连勾选框一起带走。 */
+    const inSpan=span.contains(r.commonAncestorContainer);
+    if(inSpan){
+      if(!r.collapsed) r.deleteContents();      // 删完 r 自己收成光标，下面那句拿的就是光标位置
+      rr.setStart(r.startContainer, r.startOffset);
+    }else{
+      rr.setStart(r.endContainer, r.endOffset);
+    }
+    tail=rr.extractContents();
+  }catch(e){}
+  const nl=document.createElement('li');
+  nl.className='task';
+  const cb=document.createElement('input');
+  cb.type='checkbox';                            // 新起的一条永远是没勾的
+  const sp=document.createElement('span');
+  if(tail) sp.appendChild(tail);
+  nl.appendChild(cb); nl.appendChild(sp);
+  ensureBr(sp); ensureBr(span);
+  li.after(nl);
+  const top=li.closest('.md>*'); if(top) top.dataset.dirty='1';
+  t.touched=true;
+  caretEnd(sp, true);
+  autoKick(t);                                   // 观察器没开 attributes，新 input 靠这一句推
+}
 /* 空项上按删除：只拿掉这一条，光标落到上一条末尾。不要做出缩——
    夹在中间的空项做出缩会把后面整段列表拖走，而且原先那圈兄弟会卡死。 */
 function removeEmptyLi(t, li){
@@ -7496,6 +7743,12 @@ function edKey(t, e){
     if(li && !tidyTxt(li.textContent).trim() && !li.querySelector('img')){
       e.preventDefault();
       exitOrOutdentLi(t, li);
+      return;
+    }
+    // 非空待办项上回车 → 再来一条待办（空的那条已经被上面接走，退出列表）
+    if(li && li.classList.contains('task') && li.querySelector(':scope > input[type=checkbox]')){
+      e.preventDefault();
+      splitTaskLi(t, li);
       return;
     }
 

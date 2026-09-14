@@ -2,7 +2,7 @@
 name: amnote
 description: "Search, read and write the user's local AM·Note markdown vault through the amnote CLI. 当用户提到笔记、AM·Note、「我记过 / 我写过 / 我在笔记里」，或者要查笔记、记一笔、改一份笔记时，用这个技能，不要自己去 grep 文件夹。"
 ---
-<!-- amnote-skill v2 -->
+<!-- amnote-skill v3 -->
 
 # AM·Note 笔记库
 
@@ -76,6 +76,9 @@ EOF
 
 - 不要 `grep` / `find` 笔记文件夹，也不要直接改文件——搜索走索引，写走 `save`，
   这样才有备份、流水和冲突检测。
+- 用户在 AM·Note 界面上勾一个 `- [ ]` 待办会**当场改那份文件**，不经过你：
+  所以 `save` 之前一定是刚 `read` 过的那一版，隔了一会儿就重读一遍再写；
+  拿到退出码 3（冲突）就重读、合并、再写，别 `--force` 盖掉用户刚勾的那一下。
 - `.amnote/` 是 AM·Note 自己的目录（索引、备份、配置），每个笔记本各有一份，
   不看也不动。
 - `~/Library/Application Support/AMNote/notebooks.json` 是笔记本名单，

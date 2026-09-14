@@ -1922,14 +1922,126 @@ def html_title(head):
     return line
 
 
+# ── 副行要的是「第一段散文」，所以洗的时候先整行扔掉不是散文的那些 ────
+#
+# 5.10 首页列表的副行取的是这份摘录的第一句（brief §1.3-1）。老洗法只剥
+# frontmatter、井号和图片，一份「整页就是一张表」的笔记洗完剩一串
+# `问题 条数 占比 触点氧化 412` 的碎词，当副行读起来像乱码。
+# 补的几条都是**丢行**，不改剩下那些行里的任何一个字：
+#   · 标题行 / 围栏代码块 / 引用行（_pv_body，整块丢；brief §1.3-1 点名的三条，
+#     5.10 审查 S1 补上的。它必须赶在剥记号之前，见那个函数的注释）
+#   · 表格行（`|` 开头，跟骨架的 SK_TABLE 同一条）
+#   · 只有一条链接的行（markdown 链接或裸 URL，前面允许一个列表记号）
+#   · 纯日期行（`2026-08-31` / `2026年8月31日` / 后面跟个时刻也算）
+#   · 列表项（整条清单交给下面那一档，不按长短拆开）
+#   · 少于 PV_MIN 个字的行——「完」「见下」这类碎句；
+#     它们进了副行只会占位，不给「点开的理由」。
+# 一行合格散文都没有的时候还有一档兜底：把列表项串成一句
+# （`- 牛奶 / - 面包 / - 苹果` → `牛奶、面包、苹果`）。购物清单、检查表这类笔记
+# 本来就没有散文，但那串项目名恰恰是它最有用的一行摘要；`- [ ]`/`- [x]`
+# 的勾选框一并剥掉——勾没勾是文档里的事，副行只要那句话。
+# 两档都空（整页只有一张表 / 一张图）才真的回空，列表那边再回落文件夹路径。
+PV_TABLE_RE = re.compile(r"^ {0,3}\|")
+PV_LINK_RE = re.compile(
+    r"^ {0,3}(?:[-*+]\s+)?(?:\[[^\]]*\]\([^)]*\)|<?https?://\S+>?)[ \t]*$")
+PV_DATE_RE = re.compile(
+    r"^ {0,3}(?:\d{4}\s*[-/.年]\s*)?\d{1,2}\s*[-/.月]\s*\d{1,2}\s*日?"
+    r"(?:[\s,，]*\d{1,2}:\d{2}(?::\d{2})?)?[ \t.。、·\-–—]*$")
+PV_MIN = 8
+PV_CAP = 240            # 存进索引的上限。页面副行再从这里截 60 字
+PV_ITEM_RE = re.compile(r"^[ \t]*(?:[-*+]|\d+[.)])[ \t]+(.*)$")
+PV_TASK_RE = re.compile(r"^\[[ xX]\][ \t]*")
+# brief §1.3-1 的另外三条「跳过」：标题 / 代码 / 引用。这三条是**整块丢**，
+# 所以不在 _pv_keep 里（它一次只看一行，看不见围栏的开合），走 _pv_body。
+# 口径跟骨架的 SK_FENCE / SK_H / SK_QUOTE 一样（那组常量在这个文件往下 30 行，
+# 这一段要能自己读得懂才另写一份）；哪天改了记得两边一起看。
+PV_FENCE_RE = re.compile(r"^ {0,3}(`{3,}|~{3,})")
+PV_HEAD_RE = re.compile(r"^ {0,3}#{1,6}(?:[ \t]|$)")
+PV_QUOTE_RE = re.compile(r"^ {0,3}>")
+
+
+def _pv_body(text):
+    """丢掉标题行、围栏代码块（连围栏一起）、引用行，剩下的原样返回。
+
+    **必须在剥 `#` 之前做。** 先把记号剥了，标题就跟散文长得一模一样，只要不短于
+    PV_MIN 就照收——5.10 审查 S1 实测出来的三种副行：从 H2 标题开头、一整行
+    `docker compose up -d …`、连 `>` 都留着的引文。代码和引用则原本一条规则都没有。
+    没收尾的围栏一路吃到文末（跟 skeleton_of 同一个处置），洗出来是空的，
+    列表那边回落文件夹路径。
+    """
+    out = []
+    fence = ""
+    for line in text.split("\n"):
+        m = PV_FENCE_RE.match(line)
+        if fence:
+            if m and m.group(1)[0] == fence:
+                fence = ""
+            continue
+        if m:
+            fence = m.group(1)[0]
+            continue
+        if PV_HEAD_RE.match(line) or PV_QUOTE_RE.match(line):
+            continue
+        out.append(line)
+    return out
+
+
+def _pv_items(text):
+    """把正文里的列表项用「、」串成一句：剥掉 - * + / 1. 记号和 [ ] [x] 勾选框。
+    只在一行合格散文都没有时才走这一档，所以**不挑长短**——一条清单要么整条进来，
+    要么一条都不进；按长度筛会筛出「写发版说明 跑 i18n_check」这种缺了中间一项的洞。"""
+    out = []
+    for line in text.split("\n"):
+        m = PV_ITEM_RE.match(line.strip())
+        if not m:
+            continue
+        t = PV_TASK_RE.sub("", m.group(1).strip(), count=1).strip()
+        if t:
+            out.append(t)
+    return "、".join(out)
+
+
+def _pv_keep(line):
+    """这一行算不算「散文」：不是表格 / 链接 / 纯日期 / 列表项，且不少于 PV_MIN 个字。
+    （标题 / 代码 / 引用在 _pv_body 里已经整行丢掉了。）
+
+    **长度那一刀放在四条正则之前**：这串要对每篇笔记逐行跑一遍，而它挂在一条
+    每小时至少重算一次、索引一动就重跑的路上（勾一条待办也补扫一次，审查 S7）。
+    中文一个字一个码位，短行占大多数，len(s) 不花钱就能挡掉一大半。
+    先按整行长度筛跟原来的判据是一回事：非空白字符数不可能多过整行长度。"""
+    s = line.strip()
+    if len(s) < PV_MIN:
+        return False
+    if (PV_TABLE_RE.match(s) or PV_LINK_RE.match(s)
+            or PV_DATE_RE.match(s) or PV_ITEM_RE.match(s)):
+        return False
+    return len(re.sub(r"\s", "", s)) >= PV_MIN
+
+
 def list_preview(head, kind):
     """列表和本地搜索用的短摘录。html 已经是抽过的纯文本。"""
     s = head or ""
     if kind == "md":
         s = TAG_HEAD_RE.sub("", s, count=1)
-        s = re.sub(r"^#+\s*", "", s, flags=re.M)
+        s = "\n".join(_pv_body(s))     # 标题 / 代码 / 引用整块丢，得赶在剥记号之前
         s = re.sub(r"!\[[^\]]*\]\([^)]*\)", " ", s)
-    return re.sub(r"\s+", " ", s).strip()[:240]
+    # 凑够 PV_CAP 就收手：结果只要前 240 字，后面那几千字一行都不用看
+    # （逐行收、收满即停，跟「整篇洗完再切」出来的串一模一样：合并空白只会变短，
+    #   按合并后的长度记账就不会提前切）。审查 S7 说的那条每小时重跑的路上，
+    #   这一刀比省几条正则管用。
+    parts, got = [], 0
+    for ln in s.split("\n"):
+        if not _pv_keep(ln):
+            continue
+        t = re.sub(r"\s+", " ", ln).strip()
+        parts.append(t)
+        got += len(t) + 1
+        if got > PV_CAP:
+            break
+    if parts:
+        return " ".join(parts)[:PV_CAP]
+    # 一行散文都没有：退到列表项那一档（页面再截到 60 字当副行）
+    return re.sub(r"\s+", " ", _pv_items(s)).strip()[:PV_CAP]
 
 
 # ── 骨架：一份 md 的结构缩影，索引时算一次 ───────────────────

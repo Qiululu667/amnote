@@ -47,19 +47,20 @@ AM·Note doesn't move anything. Pick a folder and you get a window as light as a
 - Under that first row are actions and note titles. Arrow keys to choose, Return to open. It matches file names and body text, in this folder — not on the web.
 - You can also just type on the Start page; the first keystroke brings the panel up.
 - Below the greeting on the Start page is a row of folder chips: the top-level folders in your vault, with "Pinned" last. Click one to see what's inside, ⌘-click to open it in a new tab. If it has subfolders they appear on the next row, with breadcrumbs above to step back out.
-- Cards can be filtered by "All / Markdown / HTML". Each card is a picture of the note itself: a .md becomes a sheet of paper with the real title on it and the shape of the note below — where the headings are, where the paragraphs, lists and tables are; an .html becomes a small browser window. The same note always looks the same, so you recognize it without reading a word.
+- The Start page, a folder and "Pinned" are all a table of contents: one note per row, with a small thumbnail on the left (a .md is a sheet of paper carrying the shape of the note — where the headings are, where the paragraphs, lists and tables are; an .html is a small browser window), the title in the middle, a run of dots leading your eye to the time on the right, and one grey line underneath: the first sentence of the note. It still filters by "All / Markdown / HTML".
 
 **Read**
 
 - Both .md and .html open in tabs. Web pages in your vault render as they are — no conversion.
 - Vault HTML renders in a sandbox: scripts run and charts draw, but the page can't reach `localStorage`, `sessionStorage`, `cookie` or `indexedDB` (touching them throws a SecurityError), and it can't call the local server. Anything worth keeping goes in a .md — don't let the page remember it for you, because next time it won't.
-- The Start page has "Recently opened" plus a big "Where you left off" card — the note you were last in is right there, and "Keep reading" takes you back.
+- The Start page has "Recently opened" plus a big "Where you left off" card — the note you were last in is right there, and "Keep reading" takes you back. The time in the list is when you last opened that note, and the one on the card isn't listed again below.
 - The Start page shows no status most of the time; a small dot appears next to the greeting only while it's tidying up ("Indexing…") or when the service isn't running. There's no status bar at the bottom of the window either.
-- Click the ★ on a card to pin it; everything you pin lives behind the "Pinned" chip.
+- Right-click a note and choose Pin (the star on the right of the document header does the same); everything you pin lives behind the "Pinned" chip.
 - The row above the text is the document header: on the left, the outline toggle, the Related toggle and this file's path — click the path to copy it, ⌘-click one of the folder segments to open that folder in a new tab. On the right: pin, Reveal in Finder, Share, Open in New Window, then focus, "⋯" and "Edit".
 - The outline sits on the left: heading levels at a glance, the section you're reading highlights itself, click to jump. ⌥⌘I hides it or brings it back.
 - "Related" sits on the left too: what surrounds this note — the folder it lives in (which unfolds into the whole notebook's file tree, with this note highlighted), other versions of the same note (`_v1`, `v3 final`, a `20260827_` prefix, a same-named .html — they all gather together), and what it links to and what links back. It stays closed until ⌥⌘R calls it up; it shares the left column with the outline, one at a time.
 - Focus mode: click ⤢ and the document header, the outline and Related slide away, leaving only the text. Nudge the top of the window with the pointer to bring them back; Esc leaves.
+- A `- [ ]` in the text is a checkbox you can actually click: tick it while you read, the words grey out and get a line through them, and that line's `[ ]` becomes `[x]` in the file — one character, nothing else. Return in edit mode starts the next one.
 
 ![Reading a note: two rows on top, outline on the left](docs/en/reading.png)
 
@@ -84,8 +85,8 @@ AM·Note doesn't move anything. Pick a folder and you get a window as light as a
 
 **Several notebooks**
 
-- Every folder you add is a **notebook**. Add a second one and a notebook bar appears under the greeting on the Start page: `All | ● Work | ● Reading | ☆ Pinned | ＋`. Folder chips, cards, the search scope and where a new note lands all follow it.
-- Each notebook has a color, and its dot travels with it — on cards, on the path chip, on tabs and in ⌘K results — so you always know which one you're in. Purple still means "selected" and nothing else.
+- Every folder you add is a **notebook**. Add a second one and a notebook bar appears under the greeting on the Start page: `All | ● Work | ● Reading | ☆ Pinned | ＋`. Folder chips, the list, the search scope and where a new note lands all follow it.
+- Each notebook has a color, and its dot travels with it — in the list, on the path chip, on tabs and in ⌘K results — so you always know which one you're in. Purple still means "selected" and nothing else.
 - "All" is the overview: “Where you left off”, Recently opened and search span every notebook. Pick one notebook to get folder chips back — at that moment the page is the Start page you already know.
 - A new quick note (⌥⌘N) lands in whichever notebook the bar has selected, or in the default one while "All" is showing. The toast reads "New note in ● Work", and "Move it" sends it to another notebook.
 - With two or more, paths start with the notebook name, like `Work/Meetings/Weekly.md`. Each notebook keeps its own `.amnote/`. When a folder is missing — an external drive that isn't plugged in — its chip dims and reads "Not found"; nothing is removed for you.
@@ -303,7 +304,7 @@ curl -s "http://127.0.0.1:$P/__tree"
 
 # Write it back. Needs the token. Put the "改于" you last read into "基于";
 # if someone else changed the file meanwhile, the write is refused.
-# Send a name and the card will show who made the change.
+# Send a name and the list will show who made the change.
 curl -s -X POST "http://127.0.0.1:$P/__save" \
      -H "X-AMN-Token: $T" -H "X-AMN-Agent: My Script" \
      --data-binary '{"路径":"工作手记/发布检查表.md","正文":"# 标题\n\n正文\n","基于":"2026-09-05 09:42:00"}'
@@ -323,9 +324,9 @@ Every `/__search` hit carries `路径`, `标题`, `类型`, `改于`, `大小` a
 
 With two or more notebooks every path starts with the notebook name, and `/__search`, `/__recent`, `/__changes`, `/__map`, `/__config` and `/__archive` all take `nb=NAME` (comma-separated for several) to narrow the scope; `dir=工作/会议` carries the prefix, so it narrows too. The sequence numbers in `/__changes` are counted per notebook, so an incremental `since=` pull has to ask about one notebook at a time.
 
-`X-AMN-Agent` works on every POST: the change log records it as "来源 Agent · 代理 <your name>", and the card picks up a `✦ <your name>` line.
+`X-AMN-Agent` works on every POST: the change log records it as "来源 Agent · 代理 <your name>", and that note's row picks up a `✦ <your name>` mark after the title.
 
-`/__save` is the only route that changes a file's contents. It writes `.md` files inside the vault only, and backs one up before writing. The other two, `/__trash` and `/__untrash`, just move files in and out of the system Trash byte for byte. Backup folders, cache folders and hidden folders are all off limits.
+`/__save` and `/__task` are the only routes that change a file's contents — the second one flips just the single character inside one line's `- [ ]`. Both write `.md` files inside the vault only, and back one up before writing. The other two, `/__trash` and `/__untrash`, just move files in and out of the system Trash byte for byte. Backup folders, cache folders and hidden folders are all off limits.
 
 ## FAQ
 
@@ -339,7 +340,7 @@ With two or more notebooks every path starts with the notebook name, and `/__sea
 
 **Will it fight with Obsidian or another editor?** It won't overwrite. When you save, if the file was changed elsewhere, a bar appears at the top and you choose "Keep Mine" or "Use Theirs".
 
-**How do I know when an agent edited my notes?** The card picks up a `✦ Claude Code` line — which assistant on this Mac last wrote that note, kept for seven days. For the details, read `.amnote/changes.jsonl`; every entry records its `来源` (source) and `代理` (agent).
+**How do I know when an agent edited my notes?** The note's row picks up a `✦ Claude Code` mark — which assistant on this Mac last wrote that note, kept for seven days. For the details, read `.amnote/changes.jsonl`; every entry records its `来源` (source) and `代理` (agent).
 
 **Where do my name and picture live?** In `~/Library/Application Support/AMNote/`, as `profile.json` and `avatar.img`. They belong to this Mac, not to any notebook: nothing is uploaded, and adding or switching notebooks doesn't reset them. To stop being greeted, turn off "Greet me on the start page" in Settings → Profile.
 
