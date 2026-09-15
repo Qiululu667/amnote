@@ -148,9 +148,15 @@
   --ico-md:#91a1b5;   --ico-md-bg:#f4f6f9;
   --ico-html:#9a91b5; --ico-html-bg:#f3f1f7;
   /* 5.10 目录式列表：标题牵到日期那串点的颜色。比 --t4 再淡一档——它是牵引
-     视线的，不是信息。（文件徽标的底与字是下面那几枚现成 token，边与投影是
-     组件作用域的 --fi-*，都不在这里。） */
+     视线的，不是信息。 */
   --leader:#bcc4cf;
+  /* 5.12 文件徽标（珍珠玻璃）落在纸面上的那层影。位图自己烘不了主题——原图里
+     那层投影在抠白底时一并去掉了，改由这一枚 token 画，浅深各一支。
+     写成 drop-shadow 不写 box-shadow：PNG 是圆角方块外带一圈透明，box-shadow
+     描的是 <img> 的方形盒子，四个角会露出直角的影。
+     0 1.5px 3px / 16% —— 跟 5.11 那枚字符徽标的 --fi-drop（0 1px 1.5px / 8%）
+     同一路数，只是徽标从 34 长到 40、又换成有厚度的玻璃，影子跟着放一档。 */
+  --fi-shadow:drop-shadow(0 1.5px 3px rgba(58,48,80,.16));
   /* 分段控件的凹槽底 */
   --seg-track:rgba(39,43,49,.03);
   /* 大卡右边那叠纸的配色。5.8 起并进淡紫系，跟贴在纸角的应用图标是一家人 */
@@ -243,6 +249,9 @@
   --ico-md:#9aa8bb;   --ico-md-bg:#303640;
   --ico-html:#aaa0c8; --ico-html-bg:#343044;
   --leader:#545c6a;
+  /* 文件徽标的投影（5.12）：深底上 16% 的紫黑影等于没有，换纯黑并加深到 45%，
+     同时把模糊从 3 放到 5、下沉从 1.5 放到 2 —— 影子淡了就得铺得开一点才看得见。 */
+  --fi-shadow:drop-shadow(0 2px 5px rgba(0,0,0,.45));
   --seg-track:rgba(215,226,250,.05);
   /* 书签栏那排小文件夹和收藏星：浅色那对压在深底上发闷，各提亮一档 */
   --bm-ico:#c9b48f; --pin:#d6c07e;
@@ -289,6 +298,9 @@
   --ico-md:#9aa8bb;   --ico-md-bg:#303640;
   --ico-html:#aaa0c8; --ico-html-bg:#343044;
   --leader:#545c6a;
+  /* 文件徽标的投影（5.12）：深底上 16% 的紫黑影等于没有，换纯黑并加深到 45%，
+     同时把模糊从 3 放到 5、下沉从 1.5 放到 2 —— 影子淡了就得铺得开一点才看得见。 */
+  --fi-shadow:drop-shadow(0 2px 5px rgba(0,0,0,.45));
   --seg-track:rgba(215,226,250,.05);
   /* 书签栏那排小文件夹和收藏星：浅色那对压在深底上发闷，各提亮一档 */
   --bm-ico:#c9b48f; --pin:#d6c07e;
@@ -781,73 +793,62 @@ kbd{
 /* ── 目录式列表 ───────────────────────────
    5.10：首页「最近打开」、已收藏页、文件夹页从三列卡片网格换成一行一篇的目录
    （brief §1）。一行 ＝ 文件徽标｜标题 ···· 日期｜副行：无分割线、无卡片、无类型
-   芯片、无星标 —— 目录的安静全靠留白。类型「标」在左边那枚 34px 的字符徽标上
-   （5.11：md 一枚 M↓、html 一枚 </>，见下一段），笔记本是日期左边一枚 6px 色点
+   芯片、无星标 —— 目录的安静全靠留白。类型「标」在左边那枚 40px 的珍珠玻璃徽标上
+   （5.12：md 一枚、html 一枚，见下一段），笔记本是日期左边一枚 6px 色点
    （单库一枚都没有）。
    5.11：整列字号收一档（标题 15→14、副行与日期 13→12），加上缩略图从 60 收到
-   34，行高跟着从 72 落到 52 —— 一屏多放四行。行高由文字列决定：
-   20（标题行）＋ 4（副行上边距）＋ 18（副行 12px × 1.5）＋ 5×2（上下内边距）。
+   34，行高跟着从 72 落到 52 —— 一屏多放四行。
+   5.12：字号一个不动（还是 5.11 那一档），只把行盒放回 72、徽标 34→40。为什么
+   放宽：珍珠是一枚有厚度的物件，52 的行盒把它夹在上下两行字中间，投影直接压在
+   副行的字上，玻璃上唇那道高光也没地方透气；40 的珍珠要 72 的行盒才站得住。
+   代价是一屏（1280×820，问候＋笔记本条＋续读卡＋段头先占掉 330）从 9 行落到
+   6 行半 —— 用户在画布「行距四档」页比过 52/64/72/80，拍的这一档。
+   行高由文字列决定：
+   72 ＝ 20（标题行）＋ 6（副行上边距）＋ 18（副行 12px × 1.5）＋ 14×2（上下内边距）。
    兼容线：build_app.py MIN_MACOS = "12.0"（Safari 15），所以这一段
    **不用 color-mix、不用容器查询、不用 content-visibility**——透明色一律写死
-   rgba（浅深各一份，靠下面那两枚组件作用域局部变量切换）。 */
+   rgba（浅深各一份，靠 :root 里 --fi-shadow 那两支切换）。 */
 .notelist{display:block;margin:0 -12px}
-.nrow{display:flex;align-items:center;gap:12px;width:100%;text-align:left;
-  padding:5px 12px;border-radius:12px;
+.nrow{display:flex;align-items:center;gap:16px;width:100%;text-align:left;
+  padding:14px 12px;border-radius:12px;
   transition:background-color var(--d-fast) ease}
 /* 悬停只铺淡底：无 transform、无位移、无阴影变化（5.9 决策，全页一种悬停语言） */
 .nrow:hover{background:var(--hover)}
 /* 按下去也不缩。全局那条 button:active{transform:scale(.98)} 是给按钮尺度的控件写的，
-   一整条 52px 的行跟着缩是另一回事（5.9 的卡片专门压过同一条，卡片退役时一起没了）。
+   一整条 72px 的行跟着缩是另一回事（5.9 的卡片专门压过同一条，卡片退役时一起没了）。
    一行只做一件事：铺底。 */
 .nrow:active:not([disabled]){transform:none}
 
-/* ── 文件徽标：34×34 的小方块，md 写 M↓、html 写 </> ──
-   5.11：5.10 那套「画内容」的缩略图（md 一张 48×60 的竖纸、html 一扇 60×46 的
-   横窗）退役 —— 行高收到 52 之后格子只剩 34px，纸上那几根骨架条糊成一团灰，
-   长宽比也分不出竖和横了。改成一枚字符徽标：读的是符号，不是缩影，34px 上
-   照样认得出。
-   配色呼应应用图标那块珍珠紫玻璃：md 淡紫底 ＋ 深紫字，html 中性灰底 ＋ 灰字
-   ——「紫的是我们的笔记，灰的是外来的网页」。底与字四样全是现成 token
-   （--accent-soft / --accent-ink / --field / --t2），三块色板里都已经有深色的
-   一支，所以浅深自动跟着换，一枚新全局颜色都不开。 */
+/* ── 文件徽标：40×40 的珍珠玻璃，md 一枚、html 一枚 ──
+   5.12：5.11 那枚 34px 的字符徽标（CSS 画的圆角方块 ＋ 一枚描边 M↓ / </>）退役，
+   换成两张 PNG。**为什么是图片不是 SVG**：这一版玻璃立得住，靠的是边缘那圈折射
+   高光、块体里的漫射内发光，和字形从玻璃面上挤出来的那层厚度——三样都是渲染
+   出来的光学，描边画不出来。图是 codex 出的渲染原件，我们不复刻不重画
+   （契约 §0 用户原话：「你直接用他原版的，不要复刻」）。
+   **唯一动过原件的地方是白底**：原图 colortype 2（RGB 无 alpha），底是纯白，直接
+   贴进列表有两处露馅——悬停时行底是 --hover #f2f4f7，深色主题下页面是 #252931，
+   两种情况下都会看见一个白方块。（codex 自己那份 demo 拿 mix-blend-mode:multiply
+   绕过去，那招只在浅底上成立，深色下整张图会被压黑。）所以把白底抠掉补上 alpha，
+   预乘后缩到 192×192 RGBA；抠图脚本留底在
+   _工作区/20260915_首页重设计_v1/assets/cut_white.py。
+   **原图烘进去的那层投影也一并去掉**，改由 --fi-shadow 画，:root 里浅深各一支
+   —— 位图投影换不了主题，烘在图里深色下就是一摊看不见的紫灰。
+   192 是 4x 余量（列表最大用到 40），只留这一档，不再出 96。图走
+   /file-md.png、/file-html.png 两条独立 HTTP 响应，不进 template：静态路由是
+   硬编码白名单（portal_server 的 ALIAS）、打包也是硬编码清单（build_app 的
+   RESOURCE_FILES），两处各加了一行，少一行就 404 或者构建期炸。
+   类名 .fpearl 不叫 .fico、不叫 .md：前者被设置页「当前笔记库」那张卡占着
+   （那枚 44px 的 folderMark 格子），后者是阅读态正文的根类，上面那条
+   `.pane.pg .md{display:none!important}` 会把列表里每一枚 md 徽标整个藏掉
+   （首页 / 收藏页 / 文件夹页全是 .pane.pg）—— 5.11 那枚字符徽标的类名当年也是
+   这么绕出来的，这一轮换了图，绕法照旧。 */
 .nthumb{flex:none;display:flex;align-items:center;justify-content:center;
-  width:34px;height:34px}
-/* radius 10.5 ＝ 34 的 31%：比 8 饱满、又远没到胶囊，是 squircle 的近似
-   （Safari 15 不认 corner-shape，只能拿这个比例凑）。
-   box-shadow 三段按「边、高光、投影」的顺序写：
-     边   —— 把方块从页面底色里切出来。用 inset 阴影不用 border，图的是它能跟
-             高光、投影排进同一条 box-shadow：换深色只重写 --fi-edge 一枚变量
-             就完事，border 换不了主题，得再多铺一条声明出去。何况 :326 那条
-             全局 box-sizing:border-box 下 border 是往里吃的，34 的格子内框收到
-             32，24px 的字形离边只剩 4px，圆角还得内外画两条半径不同的弧；
-     高光 —— 玻璃的上唇。直接引 --hi：这枚全局 token 自己就有深浅两支
-             （浅 .75、深 .06），再套一枚局部别名只会多一处要对齐的地方；
-     投影 —— 一层极淡的落地影，让方块贴在纸面上而不是浮在上面。
-   浅深真正要换的只有边和投影（深色下边从「暗投影」翻成「亮边」，投影加深），
-   所以只有这两样做成组件作用域的局部变量，深色块重写它们就够了。
-   两处命名都是绕开已有名字绕出来的，看着眼生是有原因的：
-     · 徽标叫 .fmark 不叫 .fico —— 设置页「当前笔记库」那张卡里已经住着一枚
-       .fico（装 folderMark 的 44px 格子），两样东西不该共名：共了名，以后动
-       哪一边都得先想一遍会不会串到对面去。下面每条仍从 .nthumb 起头，把作用域
-       再收一道；
-     · 类型用 .f-md / .f-html 而不是 .md / .html —— `.md` 是阅读态正文的根类，
-       上面那条 `.pane.pg .md{display:none!important}` 会把列表里每一枚 md 徽标
-       连人带底一起藏掉（首页 / 收藏页 / 文件夹页全是 .pane.pg）。 */
-.nthumb .fmark{flex:none;display:flex;align-items:center;justify-content:center;
-  width:34px;height:34px;border-radius:10.5px;
-  /* 兜底：--fi-edge 只由下面 .f-md / .f-html 两条定义。万一哪天来了一枚裸
-     .fmark（新类型还没配色，或者类名写漏一截），box-shadow 里只要有一个变量
-     没定义，整条声明就作废回 none —— 边、高光、投影一起没，剩个光板方块。
-     先在基类摆一枚中性灰边（跟 html 那档同值），最坏也只是退化成灰徽标。 */
-  --fi-edge:inset 0 0 0 1px rgba(40,54,74,.09);
-  --fi-drop:0 1px 1.5px rgba(58,48,80,.08);
-  box-shadow:var(--fi-edge),var(--hi),var(--fi-drop)}
-/* 字形尺寸只写在 CSS 里（SVG 串上不带 width/height），断点那一档改这一条即可 */
-.nthumb .fmark svg{width:24px;height:24px}
-.nthumb .fmark.f-md{background:var(--accent-soft);color:var(--accent-ink);
-  --fi-edge:inset 0 0 0 1px rgba(138,99,180,.12)}
-.nthumb .fmark.f-html{background:var(--field);color:var(--t2);
-  --fi-edge:inset 0 0 0 1px rgba(40,54,74,.09)}
+  width:40px;height:40px}
+/* display:block —— <img> 默认是 inline，行盒会在图底下留一条基线下沉的空隙，
+   40 的格子里就装不下 40 的图（底边被顶出去 3~4px）。
+   尺寸写 100% 不写死 40：格子多大珍珠多大，尺寸只由上面 .nthumb 一处说了算，
+   断点那一档因此只改一个数——沿用 5.11 定下的口径。 */
+.nthumb .fpearl{display:block;width:100%;height:100%;filter:var(--fi-shadow)}
 
 /* ── 标题行：标题 ··········· ● 日期 ──
    align-items:flex-end —— 标题、点线、日期共用 20px 行高，末行底缘对齐。
@@ -901,28 +902,11 @@ kbd{
 /* ── 副行：永远一行，灰字，省略号 ──
    来源：`预览` 的第一句 → 文件夹路径 → 笔记本名 → 库根。没有摘要时回落到
    文件夹路径用的是同一个 .ntx，一模一样的样式，不加图标不加前缀。 */
-.ndesc{display:flex;align-items:baseline;gap:10px;margin-top:4px}
+/* margin-top 6（5.12，原 4）：行盒放到 72 之后标题与副行之间也得跟着松半档，
+   不然两行字挤在一起、行盒的空全落在上下内边距上，看着像两行字掉进了一个大格子。 */
+.ndesc{display:flex;align-items:baseline;gap:10px;margin-top:6px}
 .ndesc .ntx{font-size:12px;line-height:1.5;color:var(--t3);min-width:0;flex:1 1 auto;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-
-
-/* ── 文件徽标的深色补丁 ──
-   底与字直接引 token、高光直接引 --hi，这三样在深色色板里都已经有自己的一支，
-   所以这里只翻边和投影两项：边从「暗投影」翻成「亮边」（浅色是往里压的暗边，
-   深色得反过来提亮一圈才切得出轮廓），投影加深到 40% 纯黑 —— 深底上 8% 的
-   黑影等于没有。
-   两块逐字相同（属性版 ＋ 媒体查询版），跟 HEAD 上那两块色板一个道理。
-   基类那枚裸 .fmark 的兜底边这里不必再写一遍：它声明在浅色基类上，深色下照样
-   继承得到，box-shadow 不会因为缺变量作废——只是那圈边偏浅色的路子，而裸 .fmark
-   本来就是不该出现的画面，兜底管的是「别塌」，不是「好看」。 */
-:root[data-theme="dark"] .nthumb .fmark{--fi-drop:0 1px 2px rgba(0,0,0,.40)}
-:root[data-theme="dark"] .nthumb .fmark.f-md{--fi-edge:inset 0 0 0 1px rgba(198,163,224,.16)}
-:root[data-theme="dark"] .nthumb .fmark.f-html{--fi-edge:inset 0 0 0 1px rgba(255,255,255,.08)}
-@media (prefers-color-scheme:dark){
-  :root:not([data-theme="light"]) .nthumb .fmark{--fi-drop:0 1px 2px rgba(0,0,0,.40)}
-  :root:not([data-theme="light"]) .nthumb .fmark.f-md{--fi-edge:inset 0 0 0 1px rgba(198,163,224,.16)}
-  :root:not([data-theme="light"]) .nthumb .fmark.f-html{--fi-edge:inset 0 0 0 1px rgba(255,255,255,.08)}
-}
 
 /* ── 首次提示卡（只在全新的档案第一次进来时出一次）────── */
 .tipcard{margin:0 0 20px;padding:15px 20px 16px;border:0;
@@ -970,7 +954,7 @@ kbd{
   .paper-art{margin-right:0;width:110px}
   .resume .excerpt{max-width:390px}
 }
-/* <700：文件徽标收到 28、日期挪到副行末尾右对齐、点线隐藏（brief §1.4）。
+/* <700：文件徽标收到 34、日期挪到副行末尾右对齐、点线隐藏（brief §1.4）。
    日期在两处各写一份 markup，用 display:none 切——被 display:none 的那份
    同时从无障碍树里消失，不必再挂 aria-hidden。 */
 @media (max-width:700px){
@@ -981,15 +965,14 @@ kbd{
   .tc-cols{grid-template-columns:minmax(0,1fr);gap:10px}
   .section-head .section-meta{display:none}
   .notelist{margin:0 -10px}
-  .nrow{gap:10px;padding:5px 10px}
-  /* 徽标跟着收一档：34→28，radius 10.5→8.5，字形 24→20。
-     8.5 的来历跟上面 10.5 是同一个口径：把 10.5 按 34→28 等比缩下来
-     （10.5×28/34≈8.6），再取整到 .5 —— 半像素以内的圆角差肉眼分不出，
-     写齐了反倒好记好改。
-     viewBox 不动，SVG 自己等比缩，所以只有这两个尺寸要写。 */
-  .nthumb{width:28px;height:28px}
-  .nthumb .fmark{width:28px;height:28px;border-radius:8.5px}
-  .nthumb .fmark svg{width:20px;height:20px}
+  .nrow{gap:12px;padding:12px 10px}
+  /* 5.12：珍珠跟着宽屏一起放一档，34（原 28）。行高 65 ＝ 20（标题行：13px 的字
+     仍按基类那 20 的行盒排，这一档只改字号）＋ 3（副行上边距，下面那条没跟着
+     放宽 —— 窄屏上下留白本来就紧）＋ 18（副行 12×1.5）＋ 12×2（上下内边距）
+     —— 比宽屏那档矮 7px，34 的珍珠在 65 的行盒里跟 40 的在 72 里是同一个松紧。
+     只写一个数：珍珠的尺寸由 .nthumb 的格子说了算（图是 100%），
+     圆角与字形尺寸随 5.11 那枚字符徽标一起退役了。 */
+  .nthumb{width:34px;height:34px}
   /* 窄屏标题再收一档到 13：这里没有右边那一列日期抢位，13 读起来不憋屈 */
   .ntitle{font-size:13px;max-width:none}
   .nleader{display:none}
@@ -4330,46 +4313,22 @@ function sectionHead(label, n){
    ✦ ＋ 名字，摆在时间前面；没有这一笔就一个字都不多。 */
 const agentMark = i => (i && i.代理)
   ? `<span class="agentmark">✦ ${esc(i.代理)}</span>` : '';
-/* ── 一行左边那枚文件徽标（5.11）──────────────────────────────
-   5.10 那套「画内容」的缩略图（md 一张竖纸按服务端算好的 `骨架` 串摆条、
-   html 一扇横窗）在 5.11 退役：行高从 72 收到 52 之后格子只剩 34px，纸上的
-   骨架条糊成一团灰，长宽比也分不出竖纸和横窗了。改成一枚字符徽标——读的是
-   符号不是缩影，34px 上照样认得出（md 一枚 M↓、html 一枚 </>）。
+/* ── 一行左边那枚文件徽标（5.12）──────────────────────────────
+   一张 PNG，md 一枚 html 一枚，40px（窄屏 34）。5.11 那三枚模块级 SVG 常量
+   （一份公共属性串 ＋ 描边的 M↓ 与 </> 两份路径）连同它们那一串坐标
+   配平的账一起退役：这一版是 codex 出的珍珠玻璃渲染图，边缘折射、块体内发光和
+   字形的立体厚度都不是描边画得出来的，所以直接贴他的原件（契约 §0：不复刻）。
    `骨架` 字段服务端照算照带（fulltext.py 的索引列、/__tree 的键都没动），
-   只是前端从 5.11 起不再消费它：将来若要回到「画内容」，底稿还在。
-   两枚字形不走 icon() 注册表：那边的包装把 stroke-width 锁死在 1.45，24px 的
-   字形上太细，压在淡紫／淡灰底上立不住（量到 1.75 才够）。所以在这儿写两枚
-   模块级常量，三种页面（开始页 / 收藏页 / 文件夹页）共用同一份，不各写一遍。
-   尺寸不写在串上，由 CSS 的 .nthumb .fmark svg 管——断点那一档只改 CSS 一个数。
-   类型写 f-md / f-html，不写 md / html：`.md` 是阅读态正文的根类，
-   `.pane.pg .md{display:none!important}` 会把列表里每一枚 md 徽标藏掉。 */
-const FICO_ATTR='viewBox="0 0 24 24" fill="none" stroke="currentColor" '
-  + 'stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"';
-/* md：一个 M 配一枚下箭头，Markdown 的通用记号。M 的两笔和箭头已经配过平：
-   M 收在 y=16.4、箭头也收在 16.9，两边看着一样重，不会左重右轻。
-   坐标又挪过一次，为的是中间那道缝：M 整体往左让半格（左腿 3.6→3.1、右腿
-   12.6→11.7），箭头整体往右让半格（竖笔 17.2→18.1、箭头头的左端 14→15.3），
-   M 的右腿到箭头头左端空出 3.6 个单位。字形在 CSS 里定 24px、viewBox 也是 24，
-   一个单位正好一个 px，1.75 的笔画左右各吃掉一半之后净空还剩 1.8px；原先那
-   两笔只隔 1.4 个单位，扣完笔宽连一根笔的缝都不到，34px 的徽标上看过去就是
-   粘住的一坨。
-   箭头的头同时收窄收矮（6.4→5.6 宽、3.9→3.5 高）：头是两笔交汇的地方，墨本来
-   就比别处厚，不收一点，右边这枚会把左边的 M 压下去，读出来像「↓」不像「M↓」。
-   整体 x 从 3.1 到 20.9，中线还是落在 12 上，没往哪边偏。 */
-const FICO_MD=`<svg ${FICO_ATTR}>`
-  + `<path d="M3.1 16.4 L3.1 7.6 L7.4 12.7 L11.7 7.6 L11.7 16.4"/>`
-  + `<path d="M18.1 7 L18.1 16.4"/>`
-  + `<path d="M15.3 13.4 L18.1 16.9 L20.9 13.4"/></svg>`;
-/* html：一对尖括号夹一条斜杠 ＝ </>，网页的通用记号。斜杠比两边的括号各高
-   1.4/1.4，让三笔的视觉重心落在同一格里。 */
-const FICO_HTML=`<svg ${FICO_ATTR}>`
-  + `<path d="M8.2 7.8 L3.4 12 L8.2 16.2"/>`
-  + `<path d="M14.6 6.4 L9.4 17.6"/>`
-  + `<path d="M15.8 7.8 L20.6 12 L15.8 16.2"/></svg>`;
+   前端从 5.11 起就不消费它了，这一轮也没捡回来：将来要回到「画内容」，底稿还在。
+   尺寸不写在标签上（不带 width/height），由 CSS 的 .nthumb 管——沿用 5.11
+   那条口径：断点那一档只改一个数。
+   alt="" ＝ 纯装饰。外面这枚 .nthumb 本来就挂着 aria-hidden，行按钮自己带
+   aria-label「打开 {标题}」，类型从来不靠这枚徽标报给读屏 —— 5.11 那枚 SVG
+   也一个字都没给。所以这一轮一句新文案都不开，两份词典不用动。 */
 function thumbHtml(i){
   const html=kindOf(i)==='html';
   return `<span class="nthumb" aria-hidden="true">`
-    + `<span class="fmark ${html?'f-html':'f-md'}">${html?FICO_HTML:FICO_MD}</span></span>`;
+    + `<img class="fpearl" src="${html?'/file-html.png':'/file-md.png'}" alt=""></span>`;
 }
 /* ── 副行：一行灰字，给一个点开的理由 ────────────────────────
    来源有规则，不靠手写副标题（brief §1.3-1）：

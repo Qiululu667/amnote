@@ -188,6 +188,11 @@ def export_icons(dest_dir):
 
 # ───────────────────────── 后台服务脚本（LaunchAgent 调用）─────────────────────────
 NATIVE_SRC = "app_shell.m"
+# 5.12.0 = 目录式列表（开始页「最近打开」/ 已收藏页 / 文件夹页三处共用）左边那枚
+# 34px 的字符徽标换成两张珍珠玻璃 PNG（src/file-md.png / file-html.png，192×192
+# RGBA，用的是 codex 出的渲染原件，只抠掉白底、投影改由 CSS 的 --fi-shadow 画）；
+# 行高 72（原 52；窄屏 65，原 51）、徽标 40（窄屏 34）。字号一个没动。
+# 壳本身一行没改，只跟版本号。
 # 5.11.0 = 目录式列表的字号整列收一档（标题 15→14、副行与日期 13→12），行高 72 → 52；
 # 行左边那枚缩略图（md 一张竖纸 + 骨架条、html 一扇横窗）换成 34px 的字符徽标
 # （md 淡紫底 M↓、html 中性灰底 </>），纸/窗那套 CSS 与 renderMini 整段退役
@@ -240,7 +245,7 @@ NATIVE_SRC = "app_shell.m"
 # （20260903）。有 digest 核 sha256，解开后核对 bundle id。
 # 5.0.0 = 开源首发。
 # 版本号是唯一能在「关于 AM·Note」里看出来跑的是新壳还是旧壳的地方，改了壳就要动它。
-NATIVE_VERSION = ("5.11.0", "37")
+NATIVE_VERSION = ("5.12.0", "38")
 MIN_MACOS = "12.0"
 
 
@@ -273,6 +278,11 @@ RESOURCE_FILES = (
     "template.html",
     "icon-192.png",
     "icon-512.png",
+    # 目录式列表的两枚文件徽标（5.12）。放这儿不放 OPTIONAL_RESOURCE_FILES：
+    # 少一张图，三个目录页每一行左边就是个空格子，这是功能残废不是少块装饰，
+    # 该在构建期就炸（copy_resources 末尾那条 raise SystemExit）。
+    "file-md.png",
+    "file-html.png",
 )
 
 # 命令行包装脚本。**可执行位要留住**：`~/.local/bin/amnote` 是一条指到它的

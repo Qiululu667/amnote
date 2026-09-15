@@ -47,7 +47,7 @@ AM·Note doesn't move anything. Pick a folder and you get a window as light as a
 - Under that first row are actions and note titles. Arrow keys to choose, Return to open. It matches file names and body text, in this folder — not on the web.
 - You can also just type on the Start page; the first keystroke brings the panel up.
 - Below the greeting on the Start page is a row of folder chips: the top-level folders in your vault, with "Pinned" last. Click one to see what's inside, ⌘-click to open it in a new tab. If it has subfolders they appear on the next row, with breadcrumbs above to step back out.
-- The Start page, a folder and "Pinned" are all a table of contents: one note per row, with a small badge on the left (`M↓` on pale lilac for a .md, `</>` on grey for an .html), the title in the middle, a run of dots leading your eye to the time on the right, and one grey line underneath: the first sentence of the note. It still filters by "All / Markdown / HTML".
+- The Start page, a folder and "Pinned" are all a table of contents: one note per row, with a small badge on the left (a thick little tile of glass: pale lilac with an `M↓` floating in it for a .md, grey with a `</>` for an .html), the title in the middle, a run of dots leading your eye to the time on the right, and one grey line underneath: the first sentence of the note. It still filters by "All / Markdown / HTML".
 
 **Read**
 

@@ -146,6 +146,11 @@ NOWHERE = os.path.join(HERE, "__amn_no_such_file__")
 ALIAS = {
     "/icon-192.png": (os.path.join(HERE, "icon-192.png"), "image/png"),
     "/icon-512.png": (os.path.join(HERE, "icon-512.png"), "image/png"),
+    # 目录式列表左边那两枚珍珠玻璃文件徽标（5.12）。跟上面两张 icon 同样待遇：
+    # 走 _file → _body，所以也跟它们一样是 Cache-Control: no-store，每次重取
+    # ——38/42 KB 走环回口，比塞进每份 /portal 的 base64 便宜得多。
+    "/file-md.png": (os.path.join(HERE, "file-md.png"), "image/png"),
+    "/file-html.png": (os.path.join(HERE, "file-html.png"), "image/png"),
     # 界面词典：键是简体中文源串，页面按当前语言查表；文件在 src/locales/
     "/__i18n/en.js": (os.path.join(HERE, "locales", "en.js"), "application/javascript; charset=utf-8"),
     "/__i18n/zh-HK.js": (os.path.join(HERE, "locales", "zh-HK.js"), "application/javascript; charset=utf-8"),
