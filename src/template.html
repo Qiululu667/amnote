@@ -147,12 +147,9 @@
      不然白底方块直接砸在深色卡片上。 */
   --ico-md:#91a1b5;   --ico-md-bg:#f4f6f9;
   --ico-html:#9a91b5; --ico-html-bg:#f3f1f7;
-  /* 纸页 / 浏览器窗的纸色。5.9 给卡片预览区用，5.10 卡片退役后由列表的缩略图
-     接着用（卡片专用的 --card-stage 跟着退役）。它得在下面深色的**两块**里逐字
-     再写一遍，漏一块就是系统深色时缩略图发白。 */
-  --paper:#ffffff;
   /* 5.10 目录式列表：标题牵到日期那串点的颜色。比 --t4 再淡一档——它是牵引
-     视线的，不是信息。（缩略图的边与投影是组件作用域的 --tw-*，不在这里。） */
+     视线的，不是信息。（文件徽标的底与字是下面那几枚现成 token，边与投影是
+     组件作用域的 --fi-*，都不在这里。） */
   --leader:#bcc4cf;
   /* 分段控件的凹槽底 */
   --seg-track:rgba(39,43,49,.03);
@@ -245,8 +242,6 @@
   --scrim:rgba(10,14,22,.45);
   --ico-md:#9aa8bb;   --ico-md-bg:#303640;
   --ico-html:#aaa0c8; --ico-html-bg:#343044;
-  /* 纸色。这一行跟 :root 那一行一一对应（共三处）。5.10 起是列表缩略图的纸。 */
-  --paper:#2b2f37;
   --leader:#545c6a;
   --seg-track:rgba(215,226,250,.05);
   /* 书签栏那排小文件夹和收藏星：浅色那对压在深底上发闷，各提亮一档 */
@@ -293,8 +288,6 @@
   --scrim:rgba(10,14,22,.45);
   --ico-md:#9aa8bb;   --ico-md-bg:#303640;
   --ico-html:#aaa0c8; --ico-html-bg:#343044;
-  /* 纸色。这一行跟 :root 那一行一一对应（共三处）。5.10 起是列表缩略图的纸。 */
-  --paper:#2b2f37;
   --leader:#545c6a;
   --seg-track:rgba(215,226,250,.05);
   /* 书签栏那排小文件夹和收藏星：浅色那对压在深底上发闷，各提亮一档 */
@@ -646,9 +639,14 @@ kbd{
   border:1px solid var(--rule-row);border-radius:5px;padding:0 5px;
 }
 /* ═══ 开始页 / 文件夹页 / 已收藏页 ═══════════
-   三种页面共用同一套骨架：问候 → 文件夹芯片 → 大卡 → 分区标题 → 卡片网格。
-   5.4 起底色是纯白 --win，卡片靠 --el-* 三层阴影浮起来，一条描边都不画；
-   --canvas 只留给引用块、代码块和内凹控件。 */
+   三种页面共用同一条主干：问候 → 笔记本条 → 文件夹芯片 → 续读大卡 → 分区标题
+   → 目录式列表。
+   5.10 起末尾那一段不再是浮起来的卡片网格，是一行行的目录：行不投影、不描边、
+   按下去也不位移，指针压上来才铺一层 --hover 的淡底，松开就没了。整屏还靠
+   --el-* 三层阴影浮起来的只剩续读大卡和问候行那两枚按钮——一屏里浮的东西越少，
+   浮着的那一件才越像「从这儿接着读」。
+   5.4 起底色是纯白 --win，一条描边都不画；--canvas 只留给引用块、代码块和
+   内凹控件。 */
 .home{max-width:1050px;margin:0 auto;padding:32px 38px 40px}
 .home-greeting{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:20px}
 .eyebrow{color:var(--t2);font-size:11px;display:flex;align-items:center;gap:7px;margin-bottom:8px}
@@ -782,126 +780,84 @@ kbd{
 
 /* ── 目录式列表 ───────────────────────────
    5.10：首页「最近打开」、已收藏页、文件夹页从三列卡片网格换成一行一篇的目录
-   （brief §1）。一行 ＝ 缩略图｜标题 ···· 日期｜副行：无分割线、无卡片、无类型
-   芯片、无星标 —— 目录的安静全靠留白。类型「画」出来不「标」出来（md 一张小
-   纸页、html 一扇小浏览器窗），笔记本是日期左边一枚 6px 色点（单库一枚都没有）。
-   5.9 的投入没有浪费：卡片退役了，`骨架` 索引原样当缩略图的底稿，服务端零改动。
+   （brief §1）。一行 ＝ 文件徽标｜标题 ···· 日期｜副行：无分割线、无卡片、无类型
+   芯片、无星标 —— 目录的安静全靠留白。类型「标」在左边那枚 34px 的字符徽标上
+   （5.11：md 一枚 M↓、html 一枚 </>，见下一段），笔记本是日期左边一枚 6px 色点
+   （单库一枚都没有）。
+   5.11：整列字号收一档（标题 15→14、副行与日期 13→12），加上缩略图从 60 收到
+   34，行高跟着从 72 落到 52 —— 一屏多放四行。行高由文字列决定：
+   20（标题行）＋ 4（副行上边距）＋ 18（副行 12px × 1.5）＋ 5×2（上下内边距）。
    兼容线：build_app.py MIN_MACOS = "12.0"（Safari 15），所以这一段
    **不用 color-mix、不用容器查询、不用 content-visibility**——透明色一律写死
-   rgba（浅深各一份，靠下面那几枚组件作用域局部变量切换），缩略图的缩放单位
-   --v 在两档断点上各写死一次。 */
+   rgba（浅深各一份，靠下面那两枚组件作用域局部变量切换）。 */
 .notelist{display:block;margin:0 -12px}
-.nrow{display:flex;align-items:center;gap:14px;width:100%;text-align:left;
-  padding:6px 12px;border-radius:12px;
+.nrow{display:flex;align-items:center;gap:12px;width:100%;text-align:left;
+  padding:5px 12px;border-radius:12px;
   transition:background-color var(--d-fast) ease}
 /* 悬停只铺淡底：无 transform、无位移、无阴影变化（5.9 决策，全页一种悬停语言） */
 .nrow:hover{background:var(--hover)}
 /* 按下去也不缩。全局那条 button:active{transform:scale(.98)} 是给按钮尺度的控件写的，
-   一整条 72px 的行跟着缩是另一回事（5.9 的卡片专门压过同一条，卡片退役时一起没了）。
+   一整条 52px 的行跟着缩是另一回事（5.9 的卡片专门压过同一条，卡片退役时一起没了）。
    一行只做一件事：铺底。 */
 .nrow:active:not([disabled]){transform:none}
 
-/* ── 缩略图：60×60 的格子里，md 一张竖纸、html 一扇横窗 ──
-   长宽比本身就是类型标签：md 48×60 竖、html 60×46 横，不用读内容就知道点开的
-   是什么（demo 三版里的 B 版，用户拍板）。
-   下面这 12 枚 --tw-* 是**组件作用域的局部变量**，不是新增全局 token：深色只要
-   把这一条重写一遍，其余规则一个字都不用重复。
-   retina 口径：DPR 2 下 .5px ＝ 1 个设备像素，所以条高、间距、内边距一律取 .5
-   的整数倍，笔画永远落在设备像素边界上，不会一半灰一半更灰。 */
+/* ── 文件徽标：34×34 的小方块，md 写 M↓、html 写 </> ──
+   5.11：5.10 那套「画内容」的缩略图（md 一张 48×60 的竖纸、html 一扇 60×46 的
+   横窗）退役 —— 行高收到 52 之后格子只剩 34px，纸上那几根骨架条糊成一团灰，
+   长宽比也分不出竖和横了。改成一枚字符徽标：读的是符号，不是缩影，34px 上
+   照样认得出。
+   配色呼应应用图标那块珍珠紫玻璃：md 淡紫底 ＋ 深紫字，html 中性灰底 ＋ 灰字
+   ——「紫的是我们的笔记，灰的是外来的网页」。底与字四样全是现成 token
+   （--accent-soft / --accent-ink / --field / --t2），三块色板里都已经有深色的
+   一支，所以浅深自动跟着换，一枚新全局颜色都不开。 */
 .nthumb{flex:none;display:flex;align-items:center;justify-content:center;
-  width:60px;height:60px;
-  --tw-edge:rgba(40,54,74,.10);              /* 纸/窗那圈「边」：阴影，不是 border */
-  --tw-shadow:0 1px 2px rgba(58,48,80,.07);  /* 窗的落地投影（box-shadow 口径） */
-  --tw-drop:0 1px 1.5px rgba(58,48,80,.13);  /* 纸的落地投影（drop-shadow 口径，
-                                                blur 约为 box 的一半） */
-  --tw-fold:#e4e6ea;                         /* 折面：翻过来的纸背，比纸略深 */
-  --tw-foldhi:rgba(255,255,255,.92);         /* 折边那条 .5px 高光 */
-  --tw-skel:rgba(144,150,160,.42);           /* 段落条 / 列表条 / 表格底 */
-  --tw-skelh:rgba(108,115,126,.62);          /* 标题条：更粗更深 */
-  --tw-fill:rgba(144,150,160,.14);           /* 代码块 */
-  --tw-dash:rgba(144,150,160,.46);           /* 图片占位那圈虚线 */
-  --tw-winbar:#ecedf1;                       /* 窗头那条极浅灰带 */
-  --tw-hero:rgba(138,99,180,.10);            /* 窗里第一块＝ --accent 10% */
-  --tw-fade:rgba(255,255,255,0)}             /* 纸色的全透明版，给下缘淡出 */
-
-/* md：48×60 的小纸片，右上一个 9px 真折角。
-   折角要读成折角，靠的不是那块深三角，而是**边跟着切口走**，三件事缺一不可
-   （demo 实现者踩过：H-report §7.5-1）：
-     ① .tp 自己不能有 background —— 否则被切掉的那半三角又被填回来了；
-     ② 「边」写成 .body 上的 inset 阴影 —— 外投的 box-shadow 会绕着完整圆角矩形
-        走一圈，切口那条斜边就没有边，怎么看都是「圆角」不是「折角」；
-     ③ 投影换成 .tp 上的 filter:drop-shadow —— 它跟着裁出来的真实轮廓走
-        （5.9 大卡那张纸用的是同一手法，那套 CSS 随卡片一起退役了）。 */
-.nthumb .tp{position:relative;display:block;width:48px;height:60px;
-  filter:drop-shadow(var(--tw-drop))}
-.nthumb .tp .body{position:absolute;left:0;right:0;top:0;bottom:0;overflow:hidden;
-  border-radius:6px;padding:7px 6px 0;background:var(--paper);
-  box-shadow:inset 0 0 0 1px var(--tw-edge);
-  clip-path:polygon(0 0, calc(100% - 9px) 0, 100% 9px, 100% 100%, 0 100%)}
-/* 下缘淡出：条不是被切断的，是「写到这儿就看不见了」 */
-.nthumb .tp .body::after{content:'';position:absolute;left:0;right:0;bottom:0;height:11px;
-  pointer-events:none;background:linear-gradient(var(--tw-fade),var(--paper))}
-.nthumb .fold{position:absolute;right:0;top:0;width:9px;height:9px;
-  background:var(--tw-fold);clip-path:polygon(0 0, 100% 100%, 0 100%)}
-.nthumb .foldhi{position:absolute;right:0;top:0;width:9px;height:9px;overflow:hidden}
-.nthumb .foldhi::before{content:'';position:absolute;left:50%;top:50%;width:15px;height:.5px;
-  background:var(--tw-foldhi);transform:translate(-50%,-50%) rotate(45deg)}
-
-/* 条的像素表（纸与窗共用）
-   文档标题条 2px / 62% / --tw-skelh        块间 6px
-   标题块条   2px / 46% 或 54%（按块序号交替）
-   段落条     1.5px / 100% ＋ 84%（第 3n+1 块换 72%）  块内 4px
-   列表行     3px 圆点 ＋ 1.5px 条，行距 4px
-   表格       3×2，格高 5px，缝 1px       图片 14px 虚线框   代码 10px 淡底 */
-.nthumb .b{display:block;height:1.5px;border-radius:.25px;background:var(--tw-skel);
-  margin-bottom:4px}
-.nthumb .b:last-child{margin-bottom:0}
-.nthumb .blk{display:block;margin-bottom:6px}
-.nthumb .blk:last-child{margin-bottom:0}
-.nthumb .blk.doct .b{height:2px;width:62%;background:var(--tw-skelh)}
-.nthumb .blk.h .b{height:2px;background:var(--tw-skelh)}
-.nthumb .blk.l .li{display:flex;align-items:center;gap:3px;margin-bottom:4px}
-.nthumb .blk.l .li:last-child{margin-bottom:0}
-/* 一定要写 i.dot 而不是 i：列表行里的条也是 <i>，`.li i`（0,4,1）会盖过
-   `.nthumb .b`（0,2,0），把 1.5px 的条变成 3px 的正圆 ＝ 一条条椭圆（§7.5-2）。 */
-.nthumb .blk.l .li i.dot{display:block;flex:none;width:3px;height:3px;border-radius:50%;
-  background:var(--tw-skel)}
-/* flex:none ＋ calc(% - 6px)：flex:1 会把两行拉成一样长，列表那点
-   「一行长一行短」的节奏就没了（6px ＝ 圆点 3 ＋ 间隙 3）。 */
-.nthumb .blk.l .li .b{flex:none;margin-bottom:0}
-.nthumb .blk.t{display:grid;grid-template-columns:repeat(3,1fr);gap:1px;padding:1px;
-  border-radius:2px;background:var(--tw-skel)}
-.nthumb .blk.t > span{display:block;height:5px;background:var(--paper)}
-/* 全稿唯一一处虚线：它表示「这儿是一张图」 */
-.nthumb .blk.i{height:14px;border-radius:2px;border:1px dashed var(--tw-dash)}
-.nthumb .blk.c{height:10px;border-radius:2px;background:var(--tw-fill)}
-
-/* html：60×46 的小横窗。窗头一条 8px 极浅灰带 ＋ 三粒 2.5px 灰点（不用红黄绿：
-   3px 上的三粒原色会先抢眼，brief §1.8-6），窗身第一块是 --accent 10% 的 hero。
-   服务端不给 html 算骨架（fulltext.py 只对 md 算），所以**所有 html 一张脸**；
-   将来若给 html 也算一版骨架，这里就能跟 md 一样分化。 */
-.nthumb .twin{position:relative;display:flex;flex-direction:column;overflow:hidden;
-  width:60px;height:46px;border-radius:6px;background:var(--paper);
-  box-shadow:0 0 0 1px var(--tw-edge),var(--tw-shadow)}
-.nthumb .twin .bar{flex:none;height:8px;display:flex;align-items:center;gap:2.5px;
-  padding:0 5px;background:var(--tw-winbar)}
-.nthumb .twin .bar i{display:block;flex:none;width:2.5px;height:2.5px;border-radius:50%;
-  background:var(--t3);opacity:.55}
-.nthumb .twin .bar i:nth-child(2){opacity:.42}
-.nthumb .twin .bar i:nth-child(3){opacity:.32}
-.nthumb .twin .body{position:relative;flex:1;min-height:0;overflow:hidden;padding:5px 6px 0}
-.nthumb .twin .body::after{content:'';position:absolute;left:0;right:0;bottom:0;height:8px;
-  pointer-events:none;background:linear-gradient(var(--tw-fade),var(--paper))}
-.nthumb .hero{display:block;height:11px;border-radius:2px;background:var(--tw-hero);
-  margin-bottom:6px}
+  width:34px;height:34px}
+/* radius 10.5 ＝ 34 的 31%：比 8 饱满、又远没到胶囊，是 squircle 的近似
+   （Safari 15 不认 corner-shape，只能拿这个比例凑）。
+   box-shadow 三段按「边、高光、投影」的顺序写：
+     边   —— 把方块从页面底色里切出来。用 inset 阴影不用 border，图的是它能跟
+             高光、投影排进同一条 box-shadow：换深色只重写 --fi-edge 一枚变量
+             就完事，border 换不了主题，得再多铺一条声明出去。何况 :326 那条
+             全局 box-sizing:border-box 下 border 是往里吃的，34 的格子内框收到
+             32，24px 的字形离边只剩 4px，圆角还得内外画两条半径不同的弧；
+     高光 —— 玻璃的上唇。直接引 --hi：这枚全局 token 自己就有深浅两支
+             （浅 .75、深 .06），再套一枚局部别名只会多一处要对齐的地方；
+     投影 —— 一层极淡的落地影，让方块贴在纸面上而不是浮在上面。
+   浅深真正要换的只有边和投影（深色下边从「暗投影」翻成「亮边」，投影加深），
+   所以只有这两样做成组件作用域的局部变量，深色块重写它们就够了。
+   两处命名都是绕开已有名字绕出来的，看着眼生是有原因的：
+     · 徽标叫 .fmark 不叫 .fico —— 设置页「当前笔记库」那张卡里已经住着一枚
+       .fico（装 folderMark 的 44px 格子），两样东西不该共名：共了名，以后动
+       哪一边都得先想一遍会不会串到对面去。下面每条仍从 .nthumb 起头，把作用域
+       再收一道；
+     · 类型用 .f-md / .f-html 而不是 .md / .html —— `.md` 是阅读态正文的根类，
+       上面那条 `.pane.pg .md{display:none!important}` 会把列表里每一枚 md 徽标
+       连人带底一起藏掉（首页 / 收藏页 / 文件夹页全是 .pane.pg）。 */
+.nthumb .fmark{flex:none;display:flex;align-items:center;justify-content:center;
+  width:34px;height:34px;border-radius:10.5px;
+  /* 兜底：--fi-edge 只由下面 .f-md / .f-html 两条定义。万一哪天来了一枚裸
+     .fmark（新类型还没配色，或者类名写漏一截），box-shadow 里只要有一个变量
+     没定义，整条声明就作废回 none —— 边、高光、投影一起没，剩个光板方块。
+     先在基类摆一枚中性灰边（跟 html 那档同值），最坏也只是退化成灰徽标。 */
+  --fi-edge:inset 0 0 0 1px rgba(40,54,74,.09);
+  --fi-drop:0 1px 1.5px rgba(58,48,80,.08);
+  box-shadow:var(--fi-edge),var(--hi),var(--fi-drop)}
+/* 字形尺寸只写在 CSS 里（SVG 串上不带 width/height），断点那一档改这一条即可 */
+.nthumb .fmark svg{width:24px;height:24px}
+.nthumb .fmark.f-md{background:var(--accent-soft);color:var(--accent-ink);
+  --fi-edge:inset 0 0 0 1px rgba(138,99,180,.12)}
+.nthumb .fmark.f-html{background:var(--field);color:var(--t2);
+  --fi-edge:inset 0 0 0 1px rgba(40,54,74,.09)}
 
 /* ── 标题行：标题 ··········· ● 日期 ──
-   align-items:flex-end —— 标题、点线、日期共用 22px 行高，末行底缘对齐。
+   align-items:flex-end —— 标题、点线、日期共用 20px 行高，末行底缘对齐。
    .ntitle 的 max-width:72% 只拦「几乎占满整行」的标题：更小的封顶会出现
-   「右边明明一大截空白，标题却被砍掉」的误会。 */
+   「右边明明一大截空白，标题却被砍掉」的误会。
+   5.11 收一档：15 → 14，行盒 22 → 20。不再往下收到目录档（13px）——用户库里
+   二十字以上的中文长标题很多，13 上去就偏小了。 */
 .nmain{flex:1;min-width:0}
 .ntop{display:flex;align-items:flex-end;gap:10px}
-.ntitle{font-size:15px;font-weight:500;line-height:22px;color:var(--t1);
+.ntitle{font-size:14px;font-weight:500;line-height:20px;color:var(--t1);
   flex:0 1 auto;min-width:0;max-width:72%;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* ✦ 署名（5.6）：这一篇最近一次是本机某个 AI 助手改的。颜色借强调色
@@ -910,29 +866,34 @@ kbd{
   max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* 列表行里的那一枚：跟卡片页脚那枚同一个判断条件、同一个字形，只换尺寸和位置
    ——贴在标题后面 4px（.ntop 的 gap 是 10，所以自己收回 6），在点线之前，
-   不进副行。margin-bottom:-2px 是量出来的：12px 的字与 15px 的标题盒底齐时
-   基线差 2px（算出来是 (15-12)/2＝1.5，字体的升降部再补半格），跟右边 .nmeta
-   的 -1px 是同一笔账。名字长了自己打省略号，不挤标题。 */
+   不进副行。margin-bottom:-2px 是量出来的：11px 的字与 14px 的标题盒底齐时
+   基线差 2px（算出来是 (14-11)/2＝1.5，字体的升降部再补半格），跟右边 .nmeta
+   的 -1px 是同一笔账 —— 5.11 两边各收 1px，这两个补正的口径不变。
+   名字长了自己打省略号，不挤标题。 */
 .ntop .agentmark{flex:0 1 auto;min-width:0;max-width:26%;
   margin-left:-6px;margin-bottom:-2px;
-  font-size:12px;line-height:22px}
+  font-size:11px;line-height:20px}
 /* 点线。min-width 32 —— 标题被截断时它也不会消失；
-   margin-bottom 9 ＋ 自身 2px 高，把点的中线抬到标题基线上方 5px
-   （量出来：22px 行高 15px 字，末行基线在行盒底上方 5px；9 ＋ 1 ＝ 10 ＝ 5 ＋ 5）。
+   margin-bottom 8.5 ＋ 自身 2px 高，把点的中线抬到标题基线上方 5px
+   （量出来：20px 行高 14px 字，末行基线在行盒底上方约 4.7；8.5 ＋ 1 ＝ 9.5 ≈ 4.7 ＋ 5）。
    为什么不是 border-bottom:1.5px dotted：dotted 的点距被浏览器锁死成「点径 ＝
    间隙」，1.5px 下密得像一条发丝线，目录那种一粒一粒的感觉出不来。改成 6px
    一粒的 repeating 圆点，点径和点距各自可调；Safari 15 认 radial-gradient。 */
-.nleader{flex:1 1 auto;min-width:32px;height:2px;margin-bottom:9px;
+.nleader{flex:1 1 auto;min-width:32px;height:2px;margin-bottom:8.5px;
   background-image:radial-gradient(circle at center,
     var(--leader) 1px, rgba(0,0,0,0) 1.2px);
   background-size:6px 2px;background-repeat:repeat-x;background-position:left center}
-/* margin-bottom:-1px —— flex-end 对齐的是盒底，13px 的日期和 15px 的标题
-   盒底齐时基线差 1px，补回来，日期与标题才真的坐在同一条线上。 */
-.nmeta{flex:none;display:flex;align-items:center;line-height:22px;font-size:13px;
+/* margin-bottom:-1px —— flex-end 对齐的是盒底，12px 的日期和 14px 的标题
+   盒底齐时基线差仍是 ~0.8px（5.11 两边各收 1px，差值没变），补回来，
+   日期与标题才真的坐在同一条线上。 */
+.nmeta{flex:none;display:flex;align-items:center;line-height:20px;font-size:12px;
   margin-bottom:-1px;color:var(--t3)}
-.nmeta .nd{width:6px;height:6px;margin-right:8px}
+/* 色点到日期的 7px：字收到 12 之后 8px 显宽，点像是落了单 */
+.nmeta .nd{width:6px;height:6px;margin-right:7px}
+/* min-width 60 —— 最长的一串「昨天 18:37」在 12px 下约 57px：够它右对齐钉住，
+   又不至于在「刚刚」那种两字日期后面留一大截空 */
 .nwhen{color:var(--t3);white-space:nowrap;display:inline-block;
-  min-width:66px;text-align:right}
+  min-width:60px;text-align:right}
 /* 日期写两份：.nmeta.wide 给宽屏（钉在最右），.nmeta.narrow 给 <700（跟到副行
    末尾）。用 display:none 切 —— 被藏起来的那份同时退出无障碍树。 */
 .nmeta.narrow{display:none}
@@ -940,40 +901,27 @@ kbd{
 /* ── 副行：永远一行，灰字，省略号 ──
    来源：`预览` 的第一句 → 文件夹路径 → 笔记本名 → 库根。没有摘要时回落到
    文件夹路径用的是同一个 .ntx，一模一样的样式，不加图标不加前缀。 */
-.ndesc{display:flex;align-items:baseline;gap:10px;margin-top:5px}
-.ndesc .ntx{font-size:13px;line-height:1.5;color:var(--t3);min-width:0;flex:1 1 auto;
+.ndesc{display:flex;align-items:baseline;gap:10px;margin-top:4px}
+.ndesc .ntx{font-size:12px;line-height:1.5;color:var(--t3);min-width:0;flex:1 1 auto;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
 
-/* ── 缩略图的深色补丁 ──
-   纸片是被打亮一档的灰板（--paper #2b2f37 坐在 --win #252931 上），不是黑纸；
-   边从「暗投影」翻成「亮边」，投影加深，骨架条淡一档，hero 提到 14% 才看得见。
-   两块逐字相同（属性版 ＋ 媒体查询版），跟 HEAD 上那两块色板一个道理。 */
-:root[data-theme="dark"] .nthumb{--tw-edge:rgba(255,255,255,.10);
-  --tw-shadow:0 1px 3px rgba(0,0,0,.38);
-  --tw-drop:0 1px 2px rgba(0,0,0,.45);
-  --tw-fold:#3c4149;
-  --tw-foldhi:rgba(255,255,255,.16);
-  --tw-skel:rgba(150,159,175,.38);
-  --tw-skelh:rgba(176,184,197,.52);
-  --tw-fill:rgba(150,159,175,.16);
-  --tw-dash:rgba(150,159,175,.44);
-  --tw-winbar:#383c44;
-  --tw-hero:rgba(198,163,224,.14);
-  --tw-fade:rgba(43,47,55,0)}
+/* ── 文件徽标的深色补丁 ──
+   底与字直接引 token、高光直接引 --hi，这三样在深色色板里都已经有自己的一支，
+   所以这里只翻边和投影两项：边从「暗投影」翻成「亮边」（浅色是往里压的暗边，
+   深色得反过来提亮一圈才切得出轮廓），投影加深到 40% 纯黑 —— 深底上 8% 的
+   黑影等于没有。
+   两块逐字相同（属性版 ＋ 媒体查询版），跟 HEAD 上那两块色板一个道理。
+   基类那枚裸 .fmark 的兜底边这里不必再写一遍：它声明在浅色基类上，深色下照样
+   继承得到，box-shadow 不会因为缺变量作废——只是那圈边偏浅色的路子，而裸 .fmark
+   本来就是不该出现的画面，兜底管的是「别塌」，不是「好看」。 */
+:root[data-theme="dark"] .nthumb .fmark{--fi-drop:0 1px 2px rgba(0,0,0,.40)}
+:root[data-theme="dark"] .nthumb .fmark.f-md{--fi-edge:inset 0 0 0 1px rgba(198,163,224,.16)}
+:root[data-theme="dark"] .nthumb .fmark.f-html{--fi-edge:inset 0 0 0 1px rgba(255,255,255,.08)}
 @media (prefers-color-scheme:dark){
-  :root:not([data-theme="light"]) .nthumb{--tw-edge:rgba(255,255,255,.10);
-    --tw-shadow:0 1px 3px rgba(0,0,0,.38);
-    --tw-drop:0 1px 2px rgba(0,0,0,.45);
-    --tw-fold:#3c4149;
-    --tw-foldhi:rgba(255,255,255,.16);
-    --tw-skel:rgba(150,159,175,.38);
-    --tw-skelh:rgba(176,184,197,.52);
-    --tw-fill:rgba(150,159,175,.16);
-    --tw-dash:rgba(150,159,175,.44);
-    --tw-winbar:#383c44;
-    --tw-hero:rgba(198,163,224,.14);
-    --tw-fade:rgba(43,47,55,0)}
+  :root:not([data-theme="light"]) .nthumb .fmark{--fi-drop:0 1px 2px rgba(0,0,0,.40)}
+  :root:not([data-theme="light"]) .nthumb .fmark.f-md{--fi-edge:inset 0 0 0 1px rgba(198,163,224,.16)}
+  :root:not([data-theme="light"]) .nthumb .fmark.f-html{--fi-edge:inset 0 0 0 1px rgba(255,255,255,.08)}
 }
 
 /* ── 首次提示卡（只在全新的档案第一次进来时出一次）────── */
@@ -1022,11 +970,9 @@ kbd{
   .paper-art{margin-right:0;width:110px}
   .resume .excerpt{max-width:390px}
 }
-/* <700：缩略图 40×50、日期挪到副行末尾右对齐、点线隐藏（brief §1.4）。
+/* <700：文件徽标收到 28、日期挪到副行末尾右对齐、点线隐藏（brief §1.4）。
    日期在两处各写一份 markup，用 display:none 切——被 display:none 的那份
-   同时从无障碍树里消失，不必再挂 aria-hidden。
-   缩略图里的一切都是 --v 的倍数，所以这里只改 --v 和外框两个数，
-   骨架条、折角、窗头三点一起等比缩小（容器查询要 Safari 16，走不了）。 */
+   同时从无障碍树里消失，不必再挂 aria-hidden。 */
 @media (max-width:700px){
   .home{padding:24px 18px 40px}
   .home h1{font-size:23px}
@@ -1035,18 +981,23 @@ kbd{
   .tc-cols{grid-template-columns:minmax(0,1fr);gap:10px}
   .section-head .section-meta{display:none}
   .notelist{margin:0 -10px}
-  .nrow{gap:11px;padding:7px 10px}
-  /* 格子 50×50，纸 40×50、窗 50×38 —— 都是 5/6 等比。里面几十个 px 值不必
-     各写一份：整枚缩略图按 5/6 缩放，笔画、间距、折角一起等比小下去
-     （容器查询要 Safari 16，走不了；scale 是这里最省的一条）。 */
-  .nthumb{width:50px;height:50px}
-  .nthumb .tp,.nthumb .twin{transform:scale(.8333)}
-  .ntitle{font-size:14px;max-width:none}
+  .nrow{gap:10px;padding:5px 10px}
+  /* 徽标跟着收一档：34→28，radius 10.5→8.5，字形 24→20。
+     8.5 的来历跟上面 10.5 是同一个口径：把 10.5 按 34→28 等比缩下来
+     （10.5×28/34≈8.6），再取整到 .5 —— 半像素以内的圆角差肉眼分不出，
+     写齐了反倒好记好改。
+     viewBox 不动，SVG 自己等比缩，所以只有这两个尺寸要写。 */
+  .nthumb{width:28px;height:28px}
+  .nthumb .fmark{width:28px;height:28px;border-radius:8.5px}
+  .nthumb .fmark svg{width:20px;height:20px}
+  /* 窄屏标题再收一档到 13：这里没有右边那一列日期抢位，13 读起来不憋屈 */
+  .ntitle{font-size:13px;max-width:none}
   .nleader{display:none}
   .nwhen{min-width:0}
   .nmeta.wide{display:none}
-  .nmeta.narrow{display:flex;font-size:12px;line-height:1.5;padding-left:10px}
-  .ndesc{margin-top:4px}
+  /* 日期跟到副行末尾，比副行再小一档，它是这一行里最次要的一件事 */
+  .nmeta.narrow{display:flex;font-size:11px;line-height:1.5;padding-left:10px}
+  .ndesc{margin-top:3px}
   .ndesc .ntx{font-size:12px}
 }
 
@@ -4379,68 +4330,46 @@ function sectionHead(label, n){
    ✦ ＋ 名字，摆在时间前面；没有这一笔就一个字都不多。 */
 const agentMark = i => (i && i.代理)
   ? `<span class="agentmark">✦ ${esc(i.代理)}</span>` : '';
-/* ── 一行左边那枚缩略图（5.10）────────────────────────────────
-   类型「画」出来不「标」出来，而且**长宽比本身就是类型标签**：
-   md 是一张 48×60 的竖纸（右上一个真折角），html 是一扇 60×46 的横窗，
-   两者都在同一个 60×60 的格子里居中 —— 不用读内容就知道点开的是什么。
-   md 的纸上按「骨架」串摆条：骨架由服务端在索引时算好一次带在 /__tree 里
-   （h 标题 p 段落 l 列表 t 表格 c 代码 i 图片 q 引用，最多 14 个字符），页面
-   只负责画——一个 2000 篇的文件夹不能在这里现算结构。老服务端没有这个键
-   （或者这一篇还没轮到索引）：退回一张通用骨架，不报错。
-   html 没有骨架（fulltext.py 只对 md 算），所以**所有 html 一张脸**：窗头三点
-   ＋ 一块 hero ＋ 两组文字条。将来若给 html 也算一版骨架，这里就能跟 md 一样分化。
-   两样都是**纯字符串拼接 ＋ 纯 CSS 条**：不建 DOM、不发请求、不用 SVG。
-   同一份 md 永远画出同一张：所有「随机感」都是块序号 ix 的函数，没有 Math.random。 */
-const SKEL_FALLBACK='php';
-/* 48px 宽的纸上塞不下 14 个块：每类块记一份权重（标题薄，算 1），画到权重和
-   够 SK_BUDGET 就收笔，下缘留一截白 ＋ 一层淡出，像「写到这儿就看不见了」。
-   卡片那套 renderSkeleton 是另一套几何（每块更高更宽），5.10 随卡片一起退役。 */
-const SK_WEIGHT={h:1, p:2, l:2, t:2, c:2, i:2, q:2};
-const SK_BUDGET=6;
-function renderMini(sk){
-  const bar=w=>`<i class="b" style="width:${w}%"></i>`;
-  const out=[];
-  let used=0;
-  Array.from(String(sk||'')).forEach((c,ix)=>{
-    const w=SK_WEIGHT[c];
-    if(!w || used+w>SK_BUDGET) return;
-    used+=w;
-    switch(c){
-      case 'h': out.push(`<span class="blk h">${bar(ix%2 ? 54 : 46)}</span>`); break;
-      case 'p': out.push(`<span class="blk">${bar(100)}${bar(ix%3===1 ? 72 : 84)}</span>`); break;
-      /* 列表条要 flex:none ＋ calc(% - 6px)（6 ＝ 圆点 3 ＋ 间隙 3）：用 flex:1
-         两行会被拉成一样长，列表那点「一行长一行短」的节奏就没了。 */
-      case 'l': out.push(`<span class="blk l">`
-                  + [100,78].map(x=>`<span class="li"><i class="dot"></i>`
-                      + `<i class="b" style="width:calc(${x}% - 6px)"></i></span>`).join('')
-                  + `</span>`); break;
-      case 't': out.push(`<span class="blk t">` + '<span></span>'.repeat(6) + `</span>`); break;
-      case 'c': out.push(`<span class="blk c"></span>`); break;
-      case 'i': out.push(`<span class="blk i"></span>`); break;
-      /* 引用没有单独的画法：它在 48px 的纸上跟段落分不开，按段落画。 */
-      case 'q': out.push(`<span class="blk">${bar(94)}${bar(66)}</span>`); break;
-    }
-  });
-  return out.join('');
-}
+/* ── 一行左边那枚文件徽标（5.11）──────────────────────────────
+   5.10 那套「画内容」的缩略图（md 一张竖纸按服务端算好的 `骨架` 串摆条、
+   html 一扇横窗）在 5.11 退役：行高从 72 收到 52 之后格子只剩 34px，纸上的
+   骨架条糊成一团灰，长宽比也分不出竖纸和横窗了。改成一枚字符徽标——读的是
+   符号不是缩影，34px 上照样认得出（md 一枚 M↓、html 一枚 </>）。
+   `骨架` 字段服务端照算照带（fulltext.py 的索引列、/__tree 的键都没动），
+   只是前端从 5.11 起不再消费它：将来若要回到「画内容」，底稿还在。
+   两枚字形不走 icon() 注册表：那边的包装把 stroke-width 锁死在 1.45，24px 的
+   字形上太细，压在淡紫／淡灰底上立不住（量到 1.75 才够）。所以在这儿写两枚
+   模块级常量，三种页面（开始页 / 收藏页 / 文件夹页）共用同一份，不各写一遍。
+   尺寸不写在串上，由 CSS 的 .nthumb .fmark svg 管——断点那一档只改 CSS 一个数。
+   类型写 f-md / f-html，不写 md / html：`.md` 是阅读态正文的根类，
+   `.pane.pg .md{display:none!important}` 会把列表里每一枚 md 徽标藏掉。 */
+const FICO_ATTR='viewBox="0 0 24 24" fill="none" stroke="currentColor" '
+  + 'stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"';
+/* md：一个 M 配一枚下箭头，Markdown 的通用记号。M 的两笔和箭头已经配过平：
+   M 收在 y=16.4、箭头也收在 16.9，两边看着一样重，不会左重右轻。
+   坐标又挪过一次，为的是中间那道缝：M 整体往左让半格（左腿 3.6→3.1、右腿
+   12.6→11.7），箭头整体往右让半格（竖笔 17.2→18.1、箭头头的左端 14→15.3），
+   M 的右腿到箭头头左端空出 3.6 个单位。字形在 CSS 里定 24px、viewBox 也是 24，
+   一个单位正好一个 px，1.75 的笔画左右各吃掉一半之后净空还剩 1.8px；原先那
+   两笔只隔 1.4 个单位，扣完笔宽连一根笔的缝都不到，34px 的徽标上看过去就是
+   粘住的一坨。
+   箭头的头同时收窄收矮（6.4→5.6 宽、3.9→3.5 高）：头是两笔交汇的地方，墨本来
+   就比别处厚，不收一点，右边这枚会把左边的 M 压下去，读出来像「↓」不像「M↓」。
+   整体 x 从 3.1 到 20.9，中线还是落在 12 上，没往哪边偏。 */
+const FICO_MD=`<svg ${FICO_ATTR}>`
+  + `<path d="M3.1 16.4 L3.1 7.6 L7.4 12.7 L11.7 7.6 L11.7 16.4"/>`
+  + `<path d="M18.1 7 L18.1 16.4"/>`
+  + `<path d="M15.3 13.4 L18.1 16.9 L20.9 13.4"/></svg>`;
+/* html：一对尖括号夹一条斜杠 ＝ </>，网页的通用记号。斜杠比两边的括号各高
+   1.4/1.4，让三笔的视觉重心落在同一格里。 */
+const FICO_HTML=`<svg ${FICO_ATTR}>`
+  + `<path d="M8.2 7.8 L3.4 12 L8.2 16.2"/>`
+  + `<path d="M14.6 6.4 L9.4 17.6"/>`
+  + `<path d="M15.8 7.8 L20.6 12 L15.8 16.2"/></svg>`;
 function thumbHtml(i){
-  const bar=w=>`<i class="b" style="width:${w}%"></i>`;
-  if(kindOf(i)==='html'){
-    return `<span class="nthumb" aria-hidden="true"><span class="twin">`
-      +   `<span class="bar"><i></i><i></i><i></i></span>`
-      +   `<span class="body"><span class="hero"></span>`
-      +     `<span class="blk">${bar(100)}${bar(86)}</span>`
-      +     `<span class="blk">${bar(94)}${bar(60)}</span>`
-      +   `</span></span></span>`;
-  }
-  /* .tp 不能有 background、边是 .body 的 inset 阴影、投影是 .tp 的 drop-shadow
-     ——三件事缺一个，右上那个折角就读成普通圆角（CSS 里写了为什么）。
-     纸上第一根永远是文档标题条，后面才按骨架摆。 */
-  return `<span class="nthumb" aria-hidden="true"><span class="tp">`
-    +   `<span class="body"><span class="blk doct">${bar(62)}</span>`
-    +     renderMini(String((i&&i.骨架)||'') || SKEL_FALLBACK)
-    +   `</span>`
-    +   `<span class="fold"></span><span class="foldhi"></span></span></span>`;
+  const html=kindOf(i)==='html';
+  return `<span class="nthumb" aria-hidden="true">`
+    + `<span class="fmark ${html?'f-html':'f-md'}">${html?FICO_HTML:FICO_MD}</span></span>`;
 }
 /* ── 副行：一行灰字，给一个点开的理由 ────────────────────────
    来源有规则，不靠手写副标题（brief §1.3-1）：
@@ -4475,9 +4404,9 @@ function rowDesc(i){
   return (NB.multi ? NB.of(rel) : '') || TR('库根');
 }
 /* ── 一行 ────────────────────────────────────────────────────
-   ┌──────┐  标题 ························· ● 15 分钟前
-   │ 纸页 │  一行摘要或文件夹路径
-   └──────┘
+   ┌────┐  标题 ························· ● 15 分钟前
+   │ M↓ │  一行摘要或文件夹路径
+   └────┘
    日期写两份：.nmeta.wide 给宽屏（钉在最右），.nmeta.narrow 给 <700（跟到副行
    末尾）。CSS 用 display:none 切，被藏起来的那份同时退出无障碍树。
    data-open / data-kind 跟卡片时代一个字不差——点击、右键、中键那一套代理
@@ -8430,7 +8359,6 @@ function setTree(t){
   items=docs.map(d=>({
     路径:d.路径, 标题:d.标题||'', 类型:d.类型||'md',
     修改时间:d.改于||0, 日期:ymd(d.改于), 预览:d.预览||'',
-    骨架:d.骨架||'',                          // 卡片预览那几根条（索引时算好的块序列）
     本:d.本||'',                              // 多本时服务端标好了这一条属于哪一本
     代理:d.代理||''}));                       // 有名字＝最近一次是本机 AI 助手改的
   prepItems(); syncNotePv(); prunePins();
