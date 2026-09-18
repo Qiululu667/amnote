@@ -205,6 +205,7 @@ window.AMN_I18N["en"] = {
   "读不了这张图": "Couldn't read that image",
   "图片没写进去": "The image wasn't saved",
   "图片上传失败": "The image upload failed",
+  "{n} 张图没贴上": {"one": "{n} image didn't paste", "other": "{n} images didn't paste"},
   "保存中": "Saving…",
   "正在编辑 · 已保存 {at}": "Editing · saved {at}",
   "这一份不能删": "This file can't be deleted",

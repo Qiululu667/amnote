@@ -152,6 +152,9 @@ CODES = {
     "只有笔记和网页能删": "bad_type",
     "只认图片": "bad_type",
     "只收 png / jpg / gif / webp": "bad_type",
+    "只收 http / https 图片地址": "bad_type",
+    "这个地址不是图片": "bad_type",
+    "这个文件不是图片": "bad_type",
     "图片数据不对": "bad_type",
     "图片是空的": "bad_type",
     "正文不能是空的": "bad_type",
@@ -166,6 +169,8 @@ CODES = {
 
     "读不了：{e}": "io",
     "读不了原文：{e}": "io",
+    "读不了这张图：{e}": "io",
+    "拉不下来这张图": "io",
     "写不进去：{e}": "io",
     "写失败：{e}": "io",
     "图片写不进去：{e}": "io",
@@ -271,6 +276,11 @@ MESSAGES = {
         "图片是空的": "The image is empty",
         "这张 {n} MB，上限 {m} MB": "That image is {n} MB; the limit is {m} MB",
         "只收 png / jpg / gif / webp": "Only PNG, JPEG, GIF and WebP are accepted",
+        "只收 http / https 图片地址": "Image addresses have to be http or https",
+        "这个地址不是图片": "That address isn't an image",
+        "这个文件不是图片": "That file isn't an image",
+        "拉不下来这张图": "Couldn't download that image",
+        "读不了这张图：{e}": "Couldn't read that image: {e}",
         "图片写不进去：{e}": "Couldn't save the image: {e}",
 
         # 保存与改名
@@ -435,6 +445,11 @@ MESSAGES = {
         "图片是空的": "圖片是空的",
         "这张 {n} MB，上限 {m} MB": "這張圖 {n} MB，上限 {m} MB",
         "只收 png / jpg / gif / webp": "只接受 PNG、JPEG、GIF、WebP",
+        "只收 http / https 图片地址": "圖片網址只接受 http 或 https",
+        "这个地址不是图片": "這個網址不是圖片",
+        "这个文件不是图片": "這個檔案不是圖片",
+        "拉不下来这张图": "拉不下來這張圖",
+        "读不了这张图：{e}": "讀不到這張圖：{e}",
         "图片写不进去：{e}": "圖片寫不進去：{e}",
 
         # 儲存與更名

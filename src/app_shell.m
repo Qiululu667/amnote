@@ -2286,6 +2286,12 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
     NSString *type = [m[@"type"] isKindOfClass:NSString.class] ? m[@"type"] : nil;
     if (!type.length) return;
 
+    // 粘贴图文：主窗和独立窗都要回给发件的那块 webview，所以排在分岔之前。
+    if ([type isEqualToString:@"clipPeek"]) {
+        [self clipPeek:m from:message.webView];
+        return;
+    }
+
     // 独立文稿窗口跟主窗口共用同一个 handler，靠发件的那块 webview 分。
     // 这一岔必须在 ready 之前：ready 会把 Agent 排的「打开这份」冲给发件那一页，
     // 让独立窗口收了就等于把主窗口的收件吃掉。
@@ -2483,6 +2489,104 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
     if (!text.length) return;
     [NSPasteboard.generalPasteboard clearContents];
     [NSPasteboard.generalPasteboard setString:text forType:NSPasteboardTypeString];
+}
+
+/// 飞书／网页那种图文剪贴板：WKWebView 的 clipboardData 常常只给纯文本，
+/// 图在 public.html 的 <img> 里，或者另放成 PNG/TIFF / 文件。粘贴时门户
+/// 发 clipPeek，这里把 HTML、本地文件路径、位图（base64）一次性回给它。
+static NSString *AMNImgKind(NSData *data) {
+    if (data.length < 12) return nil;
+    const unsigned char *b = data.bytes;
+    if (b[0] == 0x89 && b[1] == 0x50 && b[2] == 0x4E && b[3] == 0x47) return @"png";
+    if (b[0] == 0xFF && b[1] == 0xD8 && b[2] == 0xFF) return @"jpg";
+    if (b[0] == 'G' && b[1] == 'I' && b[2] == 'F') return @"gif";
+    if (b[0] == 'R' && b[1] == 'I' && b[2] == 'F' && b[3] == 'F'
+        && b[8] == 'W' && b[9] == 'E' && b[10] == 'B' && b[11] == 'P') return @"webp";
+    return nil;
+}
+
+static NSData *AMNPngFromImageData(NSData *data) {
+    if (!data.length) return nil;
+    if (AMNImgKind(data)) return data;
+    NSImage *img = [[NSImage alloc] initWithData:data];
+    if (!img) return nil;
+    NSData *tiff = img.TIFFRepresentation;
+    if (!tiff) return nil;
+    NSBitmapImageRep *rep = [NSBitmapImageRep imageRepWithData:tiff];
+    if (!rep) return nil;
+    return [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
+}
+
+- (void)clipPeek:(NSDictionary *)m from:(WKWebView *)web {
+    if (!web) return;
+    NSString *rid = [m[@"id"] isKindOfClass:NSString.class] ? m[@"id"] : nil;
+    if (!rid.length) return;
+    [self amnOn:web fn:@"clipPeekReply" args:@[rid, [self clipboardRich]]];
+}
+
+- (NSDictionary *)clipboardRich {
+    NSPasteboard *pb = NSPasteboard.generalPasteboard;
+    NSString *html = [pb stringForType:NSPasteboardTypeHTML] ?: @"";
+    NSString *text = [pb stringForType:NSPasteboardTypeString] ?: @"";
+    NSMutableArray *files = [NSMutableArray array];
+    NSMutableArray *images = [NSMutableArray array];
+    NSMutableSet *seen = [NSMutableSet set];
+    const NSUInteger cap = 12u * 1000u * 1000u;
+
+    NSSet *okExt = [NSSet setWithArray:@[@"png", @"jpg", @"jpeg", @"gif", @"webp"]];
+    NSArray *urls = [pb readObjectsForClasses:@[NSURL.class]
+                                      options:@{NSPasteboardURLReadingFileURLsOnlyKey: @YES}];
+    for (id obj in urls) {
+        if (![obj isKindOfClass:NSURL.class]) continue;
+        NSURL *u = obj;
+        if (!u.isFileURL) continue;
+        NSString *path = u.path;
+        NSString *ext = path.pathExtension.lowercaseString;
+        if (!path.length || ![okExt containsObject:ext]) continue;
+        [files addObject:path];
+    }
+
+    void (^addImg)(NSData *) = ^(NSData *data) {
+        if (!data.length || data.length > cap || images.count >= 8) return;
+        NSString *fp = [NSString stringWithFormat:@"%lu:%lu",
+                        (unsigned long)data.length, (unsigned long)data.hash];
+        if ([seen containsObject:fp]) return;
+        NSData *out = AMNPngFromImageData(data);
+        if (!out.length || out.length > cap) return;
+        [seen addObject:fp];
+        [images addObject:[out base64EncodedStringWithOptions:0]];
+    };
+
+    NSArray *items = pb.pasteboardItems ?: @[];
+    NSMutableArray *htmlItems = [NSMutableArray array];
+    NSMutableArray *otherItems = [NSMutableArray array];
+    for (NSPasteboardItem *item in items) {
+        NSArray *types = item.types ?: @[];
+        BOOL hasHtml = [types containsObject:NSPasteboardTypeHTML]
+                    || [types containsObject:@"public.html"];
+        [(hasHtml ? htmlItems : otherItems) addObject:item];
+    }
+    void (^harvest)(NSArray *) = ^(NSArray *list) {
+        for (NSPasteboardItem *item in list) {
+            NSData *png = [item dataForType:NSPasteboardTypePNG];
+            if (png) { addImg(png); continue; }
+            NSData *jpeg = [item dataForType:@"public.jpeg"];
+            if (jpeg) { addImg(jpeg); continue; }
+            NSData *tiff = [item dataForType:NSPasteboardTypeTIFF];
+            if (tiff) addImg(tiff);
+        }
+    };
+    harvest(otherItems);
+    if (images.count == 0) harvest(htmlItems);
+    if (images.count == 0) {
+        NSData *png = [pb dataForType:NSPasteboardTypePNG];
+        if (png) addImg(png);
+        else {
+            NSData *tiff = [pb dataForType:NSPasteboardTypeTIFF];
+            if (tiff) addImg(tiff);
+        }
+    }
+    return @{@"html": html, @"text": text, @"files": files, @"images": images};
 }
 
 // MARK: X-20 确认框

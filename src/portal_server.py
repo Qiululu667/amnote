@@ -122,6 +122,7 @@ import threading
 import time
 import unicodedata
 import urllib.parse
+import urllib.request
 from collections import OrderedDict, deque
 from datetime import datetime
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
@@ -860,6 +861,114 @@ def _sniff_img(b: bytes):
     return ""
 
 
+IMG_FETCH_TIMEOUT = 15                # 剪贴板里远程图，等太久编辑器会像卡住
+
+
+class _HttpOnlyRedirect(urllib.request.HTTPRedirectHandler):
+    """跟跳只跟 http / https。file: 这类一概不跟——剪贴板网址不能变成读盘。"""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        q = urllib.parse.urlparse(newurl)
+        if q.scheme not in ("http", "https"):
+            return None
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _fetch_img_url(url: str):
+    """把剪贴板 HTML 里的远程图拉下来。失败返回 (None, 错误)。
+
+    只认 http / https，跟跳也是。不带本机口令，也不把飞书的 cookie 带出去——
+    签过名的 CDN 地址常常能直接下；要登录的临时链就会失败，前端再换别的来源。
+    """
+    url = (url or "").strip()
+    p = urllib.parse.urlparse(url)
+    if p.scheme not in ("http", "https") or not p.netloc:
+        return None, T("只收 http / https 图片地址")
+    headers = {
+        "User-Agent": ("Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) "
+                       "AppleWebKit/605.1.15 (KHTML, like Gecko)"),
+        "Accept": "image/avif,image/webp,image/apng,image/*,*/*;q=0.8",
+    }
+    host = (p.hostname or "").lower()
+    if "feishu" in host or "larksuite" in host or host.endswith(".lark.com") \
+            or "larkoffice" in host:
+        headers["Referer"] = "https://www.feishu.cn/"
+    req = urllib.request.Request(url, headers=headers)
+    opener = urllib.request.build_opener(_HttpOnlyRedirect)
+    try:
+        with opener.open(req, timeout=IMG_FETCH_TIMEOUT) as resp:
+            final = urllib.parse.urlparse(resp.geturl() or "")
+            if final.scheme not in ("http", "https"):
+                return None, T("这个地址不是图片")
+            chunks = []
+            n = 0
+            while True:
+                b = resp.read(64 * 1024)
+                if not b:
+                    break
+                n += len(b)
+                if n > IMG_MAX:
+                    return None, T("这张超过 {m} MB 了",
+                                   m=IMG_MAX // 1024 // 1024)
+                chunks.append(b)
+            blob = b"".join(chunks)
+    except Exception:
+        return None, T("拉不下来这张图")
+    if not blob:
+        return None, T("图片是空的")
+    if not _sniff_img(blob):
+        return None, T("只收 png / jpg / gif / webp")
+    return blob, None
+
+
+def _read_local_img(path: str):
+    """读剪贴板里 file:// 或原生壳报上来的本地图。失败返回 (None, 错误)。"""
+    path = os.path.expanduser((path or "").strip())
+    if not path or not os.path.isabs(path) or "\x00" in path:
+        return None, T("路径不合法")
+    full = os.path.realpath(path)
+    if not os.path.isfile(full):
+        return None, T("这个文件不是图片")
+    try:
+        sz = os.path.getsize(full)
+    except OSError as e:
+        return None, T("读不了这张图：{e}", e=e)
+    if sz > IMG_MAX:
+        return None, T("这张超过 {m} MB 了", m=IMG_MAX // 1024 // 1024)
+    if sz <= 0:
+        return None, T("图片是空的")
+    try:
+        with open(full, "rb") as f:
+            blob = f.read()
+    except OSError as e:
+        return None, T("读不了这张图：{e}", e=e)
+    if not blob:
+        return None, T("图片是空的")
+    if not _sniff_img(blob):
+        return None, T("只收 png / jpg / gif / webp")
+    return blob, None
+
+
+def _decode_img_b64(raw64: str):
+    """剪贴板 / 粘贴事件里的 base64。失败返回 (None, 错误)。"""
+    if not isinstance(raw64, str) or not raw64:
+        return None, T("图片数据不对")
+    if len(raw64) > IMG_MAX * 4 // 3 + 1024:       # base64 撑大 4/3，先卡一道免得白解
+        return None, T("这张超过 {m} MB 了", m=IMG_MAX // 1024 // 1024)
+    try:
+        blob = base64.b64decode(raw64, validate=True)
+    except Exception:
+        return None, T("图片数据不对")
+    if not blob:
+        return None, T("图片是空的")
+    if len(blob) > IMG_MAX:
+        return None, T("这张 {n} MB，上限 {m} MB",
+                       n=len(blob) // 1024 // 1024, m=IMG_MAX // 1024 // 1024)
+    if not _sniff_img(blob):
+        return None, T("只收 png / jpg / gif / webp")
+    return blob, None
+
+
 def new_md(req: dict):
     """新建一份 md。只建新的，绝不覆盖已有的。"""
     rel = (req.get("路径") or "").strip()
@@ -900,23 +1009,32 @@ def save_img(req: dict):
 
     文件名一律服务端按时间戳生成，不收前端给的名——收了就等于把「往库里
     写任意文件名」这个能力交出去了。
+
+    「图片」三种来源只取一种，按这个顺序：数据（base64）→ 网址 → 文件
+    （本机绝对路径）。后两个是给飞书／网页那种「图在 HTML 里、剪贴板
+    没有 image/ 文件」的粘贴用的；网址只拉 http(s)，文件只读已经在盘上
+    的图，都要过 _sniff_img。
     """
     rel = (req.get("路径") or "").strip()          # 那份 md 的相对路径
-    raw64 = (req.get("图片") or {}).get("数据") or ""
+    img = req.get("图片") or {}
+    if not isinstance(img, dict):
+        return _bad(T("图片数据不对"))
     md_full, err = _edit_full(rel, must_exist=True)
     if err:
         return _bad(err)
-    if len(raw64) > IMG_MAX * 4 // 3 + 1024:       # base64 撑大 4/3，先卡一道免得白解
-        return _bad(T("这张超过 {m} MB 了", m=IMG_MAX // 1024 // 1024))
-    try:
-        blob = base64.b64decode(raw64, validate=True)
-    except Exception:
+    raw64 = img.get("数据") if isinstance(img.get("数据"), str) else ""
+    url = (img.get("网址") or "").strip() if isinstance(img.get("网址"), str) else ""
+    fpath = (img.get("文件") or "").strip() if isinstance(img.get("文件"), str) else ""
+    if raw64:
+        blob, err = _decode_img_b64(raw64)
+    elif url:
+        blob, err = _fetch_img_url(url)
+    elif fpath:
+        blob, err = _read_local_img(fpath)
+    else:
         return _bad(T("图片数据不对"))
-    if not blob:
-        return _bad(T("图片是空的"))
-    if len(blob) > IMG_MAX:
-        return _bad(T("这张 {n} MB，上限 {m} MB",
-                      n=len(blob) // 1024 // 1024, m=IMG_MAX // 1024 // 1024))
+    if err:
+        return _bad(err)
     ext = _sniff_img(blob)
     if not ext:
         return _bad(T("只收 png / jpg / gif / webp"))

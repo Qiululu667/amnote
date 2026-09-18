@@ -3621,8 +3621,8 @@ function listHtml(rows, inl, base){
    富文本编辑要把改完的正文写回 markdown，这一段就是那个反向器。
 
    **它只认 md2html 自己生成的那套结构**，别的一概不猜。外面粘进来的 HTML
-   在入口处就被拦掉了（见 onPaste：只收纯文本，按 markdown 解析），
-   所以这里遇到的永远是自己刚渲染出来的东西。
+   不会原样进正文（见 onPaste：有图的拆成「文字 + 本地图」，没图的只取纯文本
+   再按 markdown 解析），所以这里遇到的永远是自己刚渲染出来的东西。
 
    安全边界不靠这个反向器本身，靠三道：
      ① 进编辑时逐块自检（safeBlock）：反解→重渲染，跟原样对不上的块直接锁住，
@@ -7715,31 +7715,275 @@ function hopCell(t, cell, back){
   caretEnd(cells[i], true);
 }
 
-/* 粘贴。**只收纯文本，按 markdown 解析后再插进去。**
+/* 粘贴。
    直接放行 HTML 的话，从网页和 Word 里粘来的一堆 <span style> 会灌进正文，
-   反解不回 markdown。代价是从别处粘来的样式会丢，换来的是粘什么都不会把文档搞坏。 */
+   反解不回 markdown。所以没图时仍然只收纯文本，按 markdown 解析后再插。
+   飞书聊天、网页文章那种「文字夹着几张图」是另一回事：图在 text/html 的
+   <img> 里，不在 files 里；只取 text/plain 就只剩字。这种把 HTML 拆成
+   「文字块 + 图」，图落到这份 md 旁边的 _图/，插进去的仍是编辑器认得的
+   <p> 和 <img data-u>，样式丢掉、图留下。 */
 function onPaste(t, e){
   const dt=e.clipboardData; if(!dt) return;
-  // 剪贴板里有图就先走图这一支：截图、从别处拷来的图都是这个形状。
-  // items 和 files 两处都翻——Safari 截图走 items，从访达拷文件走 files。
-  const img=[...(dt.files||[])].find(f=>/^image\//.test(f.type))
-        || [...(dt.items||[])].filter(i=>i.kind==='file' && /^image\//.test(i.type))
-             .map(i=>i.getAsFile()).find(Boolean);
-  if(img){ e.preventDefault(); pasteImg(t, img); return; }
-  e.preventDefault();
+  const html=dt.getData('text/html')||'';
   const txt=(dt.getData('text/plain')||'').replace(/\r\n/g,'\n');
-  if(!txt) return;
+  const files=clipImageFiles(dt);
   const s=getSelection();
   // 选着字粘一条网址进来 → 直接变成链接，这是最常用的一下
-  if(s && !s.isCollapsed && /^(https?:\/\/|file:\/\/)\S+$/.test(txt.trim())){
+  if(s && !s.isCollapsed && /^(https?:\/\/|file:\/\/)\S+$/.test(txt.trim())
+     && !/<img\b/i.test(html) && files.length===0){
+    e.preventDefault();
     wrapInline('A', {href:txt.trim(), 'data-u':txt.trim(), target:'_blank', rel:'noopener'});
     t.touched=true; return;
   }
+  const hasImgTag=/<img\b/i.test(html);
+  if(hasImgTag || files.length>1){
+    e.preventDefault();
+    pasteMixed(t, {html, txt, files});
+    return;
+  }
+  if(files.length===1){
+    e.preventDefault(); pasteImg(t, files[0].file); return;
+  }
+  e.preventDefault();
+  if(!txt) return;
   const box=document.createElement('div');
   box.innerHTML=md2html(txt, dirOf(t.path), 0);
   const one=box.children.length===1 && box.firstElementChild.tagName==='P';
   document.execCommand('insertHTML', false, one ? box.firstElementChild.innerHTML : box.innerHTML);
   t.touched=true;
+}
+
+function clipImageFiles(dt){
+  const seen=new Set(), out=[];
+  const add=f=>{
+    if(!f || !/^image\//.test(f.type||'')) return;
+    const k=(f.name||'')+'/'+f.size+'/'+f.type;
+    if(seen.has(k)) return;
+    seen.add(k); out.push({file:f});
+  };
+  [...(dt.files||[])].forEach(add);
+  [...(dt.items||[])].forEach(i=>{
+    if(i.kind==='file' && /^image\//.test(i.type||'')) add(i.getAsFile());
+  });
+  return out;
+}
+
+/* 把飞书／网页那种图文 HTML 拆成按出现顺序的文字块和图。
+   不保留 style / class / span：只要正文和 <img> 的地址。装饰性小图
+   （emoji、贴纸、1×1 跟踪像素）丢掉。 */
+function htmlClipboardPieces(html){
+  if(!html) return [];
+  let doc; try{ doc=new DOMParser().parseFromString(html, 'text/html'); }
+  catch(e){ return []; }
+  const pieces=[];
+  let buf='';
+  const flush=()=>{
+    const t=buf.replace(/\r\n/g,'\n').replace(/[ \t]+\n/g,'\n').replace(/\n{3,}/g,'\n\n');
+    buf='';
+    if(t.trim()) pieces.push({kind:'text', text:t});
+  };
+  const skip=el=>{
+    const t=(el.tagName||'').toLowerCase();
+    return t==='script'||t==='style'||t==='meta'||t==='head'||t==='link'||t==='noscript';
+  };
+  const deco=img=>{
+    const w=+img.getAttribute('width')||0, h=+img.getAttribute('height')||0;
+    if(w && h && w<=32 && h<=32) return true;
+    const hint=((img.className||'')+' '+(img.getAttribute('alt')||'')+' '+(img.getAttribute('src')||''));
+    return /\bemoji\b|\bsticker\b|\bemoticon\b|\bemotion\b/i.test(hint);
+  };
+  const srcOf=img=>{
+    const s=(img.getAttribute('src')
+      || img.getAttribute('data-src')
+      || img.getAttribute('data-origin-src')
+      || img.getAttribute('data-original')
+      || '').trim();
+    return s;
+  };
+  const walk=node=>{
+    if(!node) return;
+    if(node.nodeType===3){ buf+=node.nodeValue; return; }
+    if(node.nodeType!==1) return;
+    if(skip(node)) return;
+    const tag=node.tagName;
+    if(tag==='IMG'){
+      if(!deco(node)){
+        const src=srcOf(node);
+        flush();
+        pieces.push({kind:'img', src, alt:node.getAttribute('alt')||''});
+      }
+      return;
+    }
+    if(tag==='BR'){ buf+='\n'; return; }
+    const block=/^(P|DIV|H[1-6]|LI|TR|BLOCKQUOTE|PRE|SECTION|ARTICLE|FIGURE|FIGCAPTION|DT|DD|TABLE|UL|OL)$/.test(tag);
+    if(block && buf && !buf.endsWith('\n')) buf+='\n';
+    for(const c of node.childNodes) walk(c);
+    if(block) buf+='\n';
+  };
+  walk(doc.body);
+  flush();
+  return pieces;
+}
+
+const CLIP_PEEK={};
+function clipPeek(){
+  if(!SHELL) return Promise.resolve(null);
+  const id='c'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
+  return new Promise(resolve=>{
+    const to=setTimeout(()=>{ delete CLIP_PEEK[id]; resolve(null); }, 1500);
+    CLIP_PEEK[id]={resolve, to};
+    post({type:'clipPeek', id});
+  });
+}
+
+function fileUrlToPath(u){
+  try{
+    const x=new URL(u);
+    if(x.protocol!=='file:') return '';
+    return decodeURIComponent(x.pathname||'');
+  }catch(e){ return ''; }
+}
+
+function dataUrlB64(src){
+  const i=String(src||'').indexOf(',');
+  return i<0 ? '' : src.slice(i+1).replace(/\s+/g,'');
+}
+
+function fileToB64(file){
+  return new Promise((ok,no)=>{
+    const fr=new FileReader();
+    fr.onload=()=>ok(String(fr.result).split(',')[1]||'');
+    fr.onerror=()=>no(new Error(TR('读不了这张图')));
+    fr.readAsDataURL(file);
+  });
+}
+
+async function savePastedImg(t, spec){
+  const img={};
+  if(spec.b64) img.数据=spec.b64;
+  else if(spec.url) img.网址=spec.url;
+  else if(spec.path) img.文件=spec.path;
+  else if(spec.file) img.数据=await fileToB64(spec.file);
+  else return {ok:false};
+  const r=await (await fetch('/__save',{method:'POST', headers:hdrs(),
+    body:JSON.stringify({路径:t.path, 图片:img})})).json();
+  return r;
+}
+
+async function resolvePastedImg(t, piece, fileQ){
+  const src=String(piece.src||'').trim();
+  const trySpec=async spec=>{
+    try{
+      const r=await savePastedImg(t, spec);
+      return (r && r.ok && r.相对路径) ? r.相对路径 : '';
+    }catch(e){ return ''; }
+  };
+  if(piece.file) return trySpec({file:piece.file});
+  if(piece.b64) return trySpec({b64:piece.b64});
+  if(piece.path) return trySpec({path:piece.path});
+  if(/^data:image\//i.test(src)){
+    const b64=dataUrlB64(src);
+    if(b64){ const u=await trySpec({b64}); if(u) return u; }
+  }else if(/^blob:/i.test(src)){
+    try{
+      const blob=await fetch(src).then(r=>r.blob());
+      const file=new File([blob], 'paste', {type:blob.type||'image/png'});
+      const u=await trySpec({file}); if(u) return u;
+    }catch(e){}
+  }else if(/^file:/i.test(src)){
+    const path=fileUrlToPath(src);
+    if(path){ const u=await trySpec({path}); if(u) return u; }
+  }else{
+    let url=src;
+    if(url.startsWith('//')) url='https:'+url;
+    if(/^https?:\/\//i.test(url)){
+      const u=await trySpec({url}); if(u) return u;
+    }
+  }
+  while(fileQ.length){
+    const nxt=fileQ.shift();
+    const u=await resolvePastedImg(t, nxt, []);
+    if(u) return u;
+  }
+  return '';
+}
+
+async function pasteMixed(t, src){
+  if(!IS_HTTP){ flash(TR('贴图要服务在跑')); return; }
+  if(!canEditPath(t.path) || t.ext){ flash(TR('这一份不能改')); return; }
+  const p=paneOf(t), md=p && p.querySelector('.md');
+  if(!md) return;
+  if(t.pasteBusy) return;
+  t.pasteBusy=true;
+  const keep=saveSel(md);
+  flash(TR('图片上传中'));
+  try{
+    let html=src.html||'';
+    let pieces=htmlClipboardPieces(html);
+    const fileQ=(src.files||[]).slice();
+    if(SHELL){
+      const peek=await clipPeek();
+      if(peek && typeof peek==='object'){
+        const alt=htmlClipboardPieces(peek.html||'');
+        const n=(html.match(/<img\b/gi)||[]).length;
+        const m=((peek.html||'').match(/<img\b/gi)||[]).length;
+        if(m>n || !pieces.some(x=>x.kind==='img')){
+          if(alt.some(x=>x.kind==='img')) pieces=alt;
+        }
+        (peek.files||[]).forEach(path=>{ if(path) fileQ.push({path}); });
+        const nImg=pieces.filter(x=>x.kind==='img').length;
+        const nativeImgs=Array.isArray(peek.images)?peek.images:[];
+        // 剪贴板里单独一张位图、HTML 里却有好几张 <img>：多半是整段的渲染图，
+        // 拿它去顶那几张原图会对不上。一对一或 HTML 只有一张时才当后备。
+        if(!(nativeImgs.length===1 && nImg>1 && !(peek.files||[]).length)){
+          nativeImgs.forEach(b64=>{ if(b64) fileQ.push({b64}); });
+        }
+      }
+    }
+    if(!pieces.some(x=>x.kind==='img')){
+      if(fileQ.length){
+        const head=src.txt && src.txt.trim() ? [{kind:'text', text:src.txt}] : [];
+        pieces=head.concat(fileQ.map(f=>({kind:'img', ...f})));
+      }else if(src.txt && src.txt.trim()){
+        pieces=[{kind:'text', text:src.txt}];
+      }
+    }
+    if(!pieces.length) return;
+    const resolved=[];
+    let failed=0, imgs=0;
+    for(const piece of pieces){
+      if(piece.kind==='text'){ resolved.push(piece); continue; }
+      imgs++;
+      const rel=await resolvePastedImg(t, piece, fileQ);
+      if(rel) resolved.push({kind:'img', rel, alt:piece.alt||''});
+      else failed++;
+    }
+    restoreSel(md, keep);
+    let htmlOut='';
+    for(const piece of resolved){
+      if(piece.kind==='text'){
+        const box=document.createElement('div');
+        box.innerHTML=md2html(piece.text, dirOf(t.path), 0);
+        htmlOut+=box.innerHTML;
+      }else{
+        const alt=esc(piece.alt||'');
+        htmlOut+=`<p><img src="${esc(resolveRef(piece.rel, dirOf(t.path), true))}" alt="${alt}" title="${alt}" data-u="${esc(piece.rel)}" data-fresh="1"></p>`;
+      }
+    }
+    if(!htmlOut){
+      if(failed) flash(TR('{n} 张图没贴上',{n:failed}));
+      return;
+    }
+    // 图文是好几段：光标停在标题里的话，浏览器会把第一段字塞进 h1，
+    // 还带一个 <span style>，存盘自检就过不去。先跳到标题后面再贴。
+    pasteLeaveHeading(md);
+    document.execCommand('insertHTML', false, htmlOut);
+    settleImgs(md);
+    [...md.children].forEach(el=>{ if(el.dataset.dirty) cleanBlock(el); });
+    t.touched=true; autoKick(t);
+    if(failed) flash(TR('{n} 张图没贴上',{n:failed}));
+  }catch(err){ flash(TR('图片上传失败')); }
+  finally{ t.pasteBusy=false; }
 }
 
 /* 把粘进来的图写进这份 md 旁边的 _图/，再插一条跟渲染器一模一样的 <img>。
@@ -7754,45 +7998,57 @@ async function pasteImg(t, file){
   const keep=saveSel(md);          // 上传要等一会儿，光标位置先记下来
   flash(TR('图片上传中'));
   try{
-    const b64=await new Promise((ok,no)=>{
-      const fr=new FileReader();
-      fr.onload=()=>ok(String(fr.result).split(',')[1]||'');
-      fr.onerror=()=>no(new Error(TR('读不了这张图')));
-      fr.readAsDataURL(file);
-    });
-    const r=await (await fetch('/__save',{method:'POST', headers:hdrs(),
-      body:JSON.stringify({路径:t.path, 图片:{数据:b64}})})).json();
+    const r=await savePastedImg(t, {file});
     if(!r.ok){ flash(r.错误||TR('图片没写进去')); return; }
     restoreSel(md, keep);
     const u=r.相对路径;
     document.execCommand('insertHTML', false,
       `<img src="${esc(resolveRef(u, dirOf(t.path), true))}" alt="" title="" data-u="${esc(u)}" data-fresh="1">`);
-    settleImg(md);
+    settleImgs(md);
     t.touched=true; autoKick(t);
   }catch(err){ flash(TR('图片上传失败')); }
 }
 
-/* 刚插进去的那张图归位。
+/* 刚插进去的图归位。
 
    浏览器的 insertHTML 有个脾气：光标停在段首或段末（以及正文本来就是空的）时，
    它不把 <img> 放进段落里，而是甩出来挂在正文根上。裸 <img> 不是这套编辑器认识的
    顶层块，序列化时取不到内容，会被当空块丢掉——图在屏幕上好好的，一存盘就没了。
-   所以插完当场把它包回一个 <p>，再把光标放到图后面，接着打字就是图下面一段。 */
-function settleImg(md){
-  const im=md.querySelector('img[data-fresh]');
-  if(!im) return;
-  im.removeAttribute('data-fresh');
-  if(im.parentElement===md){
-    const p=document.createElement('p');
-    im.replaceWith(p); p.appendChild(im);
-  }
-  let blk=im;
-  while(blk.parentElement && blk.parentElement!==md) blk=blk.parentElement;
-  if(blk.parentElement===md) blk.dataset.dirty='1';   // 新包的块没有 bid，盖章免得被抄旧源码
+   所以插完当场把它包回一个 <p>，再把光标放到最后一张图后面，接着打字就是图下面一段。 */
+function settleImgs(md){
+  const ims=[...md.querySelectorAll('img[data-fresh]')];
+  if(!ims.length) return;
+  let last=null;
+  ims.forEach(im=>{
+    im.removeAttribute('data-fresh');
+    if(im.parentElement===md){
+      const p=document.createElement('p');
+      im.replaceWith(p); p.appendChild(im);
+    }
+    let blk=im;
+    while(blk.parentElement && blk.parentElement!==md) blk=blk.parentElement;
+    if(blk.parentElement===md) blk.dataset.dirty='1';   // 新包的块没有 bid，盖章免得被抄旧源码
+    last=im;
+  });
+  if(!last) return;
   try{
-    const r=document.createRange(); r.setStartAfter(im); r.collapse(true);
+    const r=document.createRange(); r.setStartAfter(last); r.collapse(true);
     const s=getSelection(); s.removeAllRanges(); s.addRange(r);
   }catch(e){}
+}
+function settleImg(md){ settleImgs(md); }
+
+function pasteLeaveHeading(md){
+  const s=getSelection();
+  if(!s || !s.rangeCount || !md) return;
+  let n=s.anchorNode;
+  while(n && n!==md && n.parentNode!==md) n=n.parentNode;
+  if(!n || n.parentNode!==md || !/^H[1-6]$/.test(n.tagName)) return;
+  let p=n.nextElementSibling;
+  if(!p || p.parentNode!==md || p.tagName!=='P'){
+    p=document.createElement('p'); p.dataset.dirty='1'; ensureBr(p); n.after(p);
+  }
+  caretEnd(p, true);
 }
 
 /* ── 正文栏右上角那行淡字 ───────────────
@@ -10866,6 +11122,14 @@ window.AMN = {
     const cb=ctxCb; setTimeout(()=>{ if(ctxCb===cb) ctxCb=null; }, 300);
   },
   confirmReply(){},                       // 确认框走同步那条路，这里留着占位
+  /* 壳读完 NSPasteboard 的回执。id 对不上（已经超时）就丢掉。 */
+  clipPeekReply(id, payload){
+    const w=CLIP_PEEK[id];
+    if(!w) return;
+    clearTimeout(w.to);
+    delete CLIP_PEEK[id];
+    w.resolve(payload||null);
+  },
   state(){
     const t=active();
     const start=isStartTab(t) && TABS.length===1;
