@@ -2528,6 +2528,9 @@ static NSData *AMNPngFromImageData(NSData *data) {
     NSPasteboard *pb = NSPasteboard.generalPasteboard;
     NSString *html = [pb stringForType:NSPasteboardTypeHTML] ?: @"";
     NSString *text = [pb stringForType:NSPasteboardTypeString] ?: @"";
+    // 飞书整段 data URI 能把 HTML 撑到好几 MB，evaluateJavaScript 会卡住。
+    // 那种情况位图已经在 images 里，JS 自己的 clipboardData 也还有一份 HTML。
+    if (html.length > 800000) html = @"";
     NSMutableArray *files = [NSMutableArray array];
     NSMutableArray *images = [NSMutableArray array];
     NSMutableSet *seen = [NSMutableSet set];

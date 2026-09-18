@@ -7736,7 +7736,9 @@ function onPaste(t, e){
     t.touched=true; return;
   }
   const hasImgTag=/<img\b/i.test(html);
-  if(hasImgTag || files.length>1){
+  // 飞书在 Mac 上常常只往剪贴板塞一张 PNG，WKWebView 的 clipboardData.files
+  // 是空的。有图标签、多张文件、或者类型里写着 image/png，都走混贴（壳里再读原生剪贴板）。
+  if(hasImgTag || files.length>1 || (files.length===0 && (clipLooksLikeImage(dt) || SHELL))){
     e.preventDefault();
     pasteMixed(t, {html, txt, files});
     return;
@@ -7753,17 +7755,34 @@ function onPaste(t, e){
   t.touched=true;
 }
 
+function clipLooksLikeImage(dt){
+  const types=[...(dt.types||[])];
+  if(types.some(x=>/image\/|png|tiff|jpeg|Files/i.test(String(x)))) return true;
+  try{
+    if(dt.items && [...dt.items].some(i=>i.kind==='file' || /^image\//.test(i.type||''))) return true;
+  }catch(e){}
+  return false;
+}
+
 function clipImageFiles(dt){
   const seen=new Set(), out=[];
+  const looksImg=f=>{
+    if(!f) return false;
+    const t=(f.type||'').toLowerCase();
+    if(t.startsWith('image/')) return true;
+    if(!t || t==='application/octet-stream') return true;
+    return false;
+  };
   const add=f=>{
-    if(!f || !/^image\//.test(f.type||'')) return;
-    const k=(f.name||'')+'/'+f.size+'/'+f.type;
+    if(!looksImg(f)) return;
+    const k=(f.name||'')+'/'+f.size+'/'+(f.type||'');
     if(seen.has(k)) return;
     seen.add(k); out.push({file:f});
   };
   [...(dt.files||[])].forEach(add);
   [...(dt.items||[])].forEach(i=>{
-    if(i.kind==='file' && /^image\//.test(i.type||'')) add(i.getAsFile());
+    if(i.kind!=='file') return;
+    add(i.getAsFile());
   });
   return out;
 }
@@ -7830,7 +7849,7 @@ function clipPeek(){
   if(!SHELL) return Promise.resolve(null);
   const id='c'+Date.now().toString(36)+Math.random().toString(36).slice(2,8);
   return new Promise(resolve=>{
-    const to=setTimeout(()=>{ delete CLIP_PEEK[id]; resolve(null); }, 1500);
+    const to=setTimeout(()=>{ delete CLIP_PEEK[id]; resolve(null); }, 8000);
     CLIP_PEEK[id]={resolve, to};
     post({type:'clipPeek', id});
   });
@@ -7870,7 +7889,7 @@ async function savePastedImg(t, spec){
   return r;
 }
 
-async function resolvePastedImg(t, piece, fileQ){
+async function resolvePastedImg(t, piece){
   const src=String(piece.src||'').trim();
   const trySpec=async spec=>{
     try{
@@ -7883,27 +7902,20 @@ async function resolvePastedImg(t, piece, fileQ){
   if(piece.path) return trySpec({path:piece.path});
   if(/^data:image\//i.test(src)){
     const b64=dataUrlB64(src);
-    if(b64){ const u=await trySpec({b64}); if(u) return u; }
+    if(b64) return trySpec({b64});
   }else if(/^blob:/i.test(src)){
     try{
       const blob=await fetch(src).then(r=>r.blob());
       const file=new File([blob], 'paste', {type:blob.type||'image/png'});
-      const u=await trySpec({file}); if(u) return u;
+      return trySpec({file});
     }catch(e){}
   }else if(/^file:/i.test(src)){
     const path=fileUrlToPath(src);
-    if(path){ const u=await trySpec({path}); if(u) return u; }
+    if(path) return trySpec({path});
   }else{
     let url=src;
     if(url.startsWith('//')) url='https:'+url;
-    if(/^https?:\/\//i.test(url)){
-      const u=await trySpec({url}); if(u) return u;
-    }
-  }
-  while(fileQ.length){
-    const nxt=fileQ.shift();
-    const u=await resolvePastedImg(t, nxt, []);
-    if(u) return u;
+    if(/^https?:\/\//i.test(url)) return trySpec({url});
   }
   return '';
 }
@@ -7916,7 +7928,6 @@ async function pasteMixed(t, src){
   if(t.pasteBusy) return;
   t.pasteBusy=true;
   const keep=saveSel(md);
-  flash(TR('图片上传中'));
   try{
     let html=src.html||'';
     let pieces=htmlClipboardPieces(html);
@@ -7930,33 +7941,38 @@ async function pasteMixed(t, src){
         if(m>n || !pieces.some(x=>x.kind==='img')){
           if(alt.some(x=>x.kind==='img')) pieces=alt;
         }
+        if(!src.txt && peek.text) src.txt=String(peek.text).replace(/\r\n/g,'\n');
         (peek.files||[]).forEach(path=>{ if(path) fileQ.push({path}); });
-        const nImg=pieces.filter(x=>x.kind==='img').length;
-        const nativeImgs=Array.isArray(peek.images)?peek.images:[];
-        // 剪贴板里单独一张位图、HTML 里却有好几张 <img>：多半是整段的渲染图，
-        // 拿它去顶那几张原图会对不上。一对一或 HTML 只有一张时才当后备。
-        if(!(nativeImgs.length===1 && nImg>1 && !(peek.files||[]).length)){
-          nativeImgs.forEach(b64=>{ if(b64) fileQ.push({b64}); });
-        }
+        (Array.isArray(peek.images)?peek.images:[]).forEach(b64=>{ if(b64) fileQ.push({b64}); });
       }
     }
     if(!pieces.some(x=>x.kind==='img')){
       if(fileQ.length){
         const head=src.txt && src.txt.trim() ? [{kind:'text', text:src.txt}] : [];
         pieces=head.concat(fileQ.map(f=>({kind:'img', ...f})));
+        fileQ.length=0;
       }else if(src.txt && src.txt.trim()){
         pieces=[{kind:'text', text:src.txt}];
       }
     }
     if(!pieces.length) return;
+    if(pieces.some(x=>x.kind==='img') || fileQ.length) flash(TR('图片上传中'));
     const resolved=[];
     let failed=0, imgs=0;
     for(const piece of pieces){
       if(piece.kind==='text'){ resolved.push(piece); continue; }
       imgs++;
-      const rel=await resolvePastedImg(t, piece, fileQ);
+      const rel=await resolvePastedImg(t, piece);
       if(rel) resolved.push({kind:'img', rel, alt:piece.alt||''});
       else failed++;
+    }
+    // HTML 里的地址下不下来（飞书临时链常见），剪贴板里还有位图就顶上。
+    if(!resolved.some(x=>x.kind==='img')){
+      failed=0;
+      while(fileQ.length){
+        const rel=await resolvePastedImg(t, fileQ.shift());
+        if(rel) resolved.push({kind:'img', rel});
+      }
     }
     restoreSel(md, keep);
     let htmlOut='';
@@ -8002,8 +8018,9 @@ async function pasteImg(t, file){
     if(!r.ok){ flash(r.错误||TR('图片没写进去')); return; }
     restoreSel(md, keep);
     const u=r.相对路径;
+    pasteLeaveHeading(md);
     document.execCommand('insertHTML', false,
-      `<img src="${esc(resolveRef(u, dirOf(t.path), true))}" alt="" title="" data-u="${esc(u)}" data-fresh="1">`);
+      `<p><img src="${esc(resolveRef(u, dirOf(t.path), true))}" alt="" title="" data-u="${esc(u)}" data-fresh="1"></p>`);
     settleImgs(md);
     t.touched=true; autoKick(t);
   }catch(err){ flash(TR('图片上传失败')); }
