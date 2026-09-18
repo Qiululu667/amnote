@@ -188,6 +188,8 @@ def export_icons(dest_dir):
 
 # ───────────────────────── 后台服务脚本（LaunchAgent 调用）─────────────────────────
 NATIVE_SRC = "app_shell.m"
+# 5.12.1 = 目录式列表标题牵到日期那串点收细一档：半径 1px / 周期 6px → 0.6px / 5px。
+# 壳本身一行没改，只跟版本号。
 # 5.12.0 = 目录式列表（开始页「最近打开」/ 已收藏页 / 文件夹页三处共用）左边那枚
 # 34px 的字符徽标换成两张珍珠玻璃 PNG（src/file-md.png / file-html.png，192×192
 # RGBA，用的是 codex 出的渲染原件，只抠掉白底、投影改由 CSS 的 --fi-shadow 画）；
@@ -245,7 +247,7 @@ NATIVE_SRC = "app_shell.m"
 # （20260903）。有 digest 核 sha256，解开后核对 bundle id。
 # 5.0.0 = 开源首发。
 # 版本号是唯一能在「关于 AM·Note」里看出来跑的是新壳还是旧壳的地方，改了壳就要动它。
-NATIVE_VERSION = ("5.12.0", "38")
+NATIVE_VERSION = ("5.12.1", "39")
 MIN_MACOS = "12.0"
 
 

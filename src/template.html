@@ -878,12 +878,15 @@ kbd{
    margin-bottom 8.5 ＋ 自身 2px 高，把点的中线抬到标题基线上方 5px
    （量出来：20px 行高 14px 字，末行基线在行盒底上方约 4.7；8.5 ＋ 1 ＝ 9.5 ≈ 4.7 ＋ 5）。
    为什么不是 border-bottom:1.5px dotted：dotted 的点距被浏览器锁死成「点径 ＝
-   间隙」，1.5px 下密得像一条发丝线，目录那种一粒一粒的感觉出不来。改成 6px
-   一粒的 repeating 圆点，点径和点距各自可调；Safari 15 认 radial-gradient。 */
+   间隙」，1.5px 下密得像一条发丝线，目录那种一粒一粒的感觉出不来。
+   5.10 起用 repeating radial-gradient，点径和点距各自可调；Safari 15 认。
+   5.12.1：1px / 6px 那档珠子偏大，标题右边一排抢视线。收到 0.6px / 5px
+   （实心到 0.6，透明到 0.75，周期 5）——点大约六成，间隙几乎不动，
+   线还在、不抢标题。2026-09-18 对照过三档，用户拍的这一档。 */
 .nleader{flex:1 1 auto;min-width:32px;height:2px;margin-bottom:8.5px;
   background-image:radial-gradient(circle at center,
-    var(--leader) 1px, rgba(0,0,0,0) 1.2px);
-  background-size:6px 2px;background-repeat:repeat-x;background-position:left center}
+    var(--leader) .6px, rgba(0,0,0,0) .75px);
+  background-size:5px 2px;background-repeat:repeat-x;background-position:left center}
 /* margin-bottom:-1px —— flex-end 对齐的是盒底，12px 的日期和 14px 的标题
    盒底齐时基线差仍是 ~0.8px（5.11 两边各收 1px，差值没变），补回来，
    日期与标题才真的坐在同一条线上。 */
