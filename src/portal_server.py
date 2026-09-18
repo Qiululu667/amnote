@@ -1992,12 +1992,24 @@ def _nb_pick_color():
     return min(NB_COLORS, key=lambda c: (used.get(c, 0), NB_COLORS.index(c)))
 
 
+def _nb_placeholder_root():
+    """壳首启占位空根：support dir 底下的 Welcome。不是笔记本。
+
+    还没选过库时壳把服务起在这儿，好让窗口出来画欢迎卡。路径在 AM·Note
+    自己的资料目录里，所以 `_nb_conflict` 会当成「自己的文件夹」拒掉；
+    启动时 `--root` 这一条由 `boot_vaults` 单独放行（不给 `--notebooks-file`
+    的那一趟）。添加、重新定位、列表加载仍走 `_nb_conflict`，照拒。
+    """
+    return os.path.realpath(os.path.join(SUPPORT_DIR, "Welcome"))
+
+
 def _nb_conflict(real, exclude=None):
     """这个位置跟已经挂上的那些冲不冲突。返回一句理由，没冲突返回空串。
 
     嵌套一律拒（在里面、包着都算）：两本套着的话同一份文件会有两个对外路径，
     索引、流水、废纸篓全要认两遍；同一个 realpath 登记两回更糟——两本共用一份
-    `fulltext.db` 却各拿一把锁。support dir 也拒，那是 AM·Note 自己的地盘。
+    `fulltext.db` 却各拿一把锁。support dir 也拒（含底下的 Welcome 占位根），
+    那是 AM·Note 自己的地盘。
 
     **不看文件夹在不在**：启动时离线的那些要留在列表里（存在与否由
     `_nb_check_root` 另外判），所以这条只比位置。
@@ -2206,6 +2218,10 @@ def boot_vaults(roots):
     但手改过的 notebooks.json（或者两个 `--root` 写成父子目录）绕得过去，
     而两条同 realpath 的记录共用一份 `fulltext.db` 却各拿一把锁，扫描会互相盖。
     挂不上的那一条丢掉并在 stderr 记一行——**不退出**，剩下的本还能用。
+
+    例外：没给 `--notebooks-file`、`--root` 又是 Welcome 占位根。那是壳的首启
+    路径（窗口要先出来画欢迎卡），列表只在内存里、不会落盘。给了列表就不能
+    放行——并集写回会把 Welcome 种进用户的笔记本名单。
     """
     global _nb_default
     entries, dflt = (nb_load_file(NOTEBOOKS_FILE) if NOTEBOOKS_FILE else ([], ""))
@@ -2244,6 +2260,8 @@ def boot_vaults(roots):
         if any(v.real_root == real for v in nb_all()):
             continue                              # 同一个位置已经在列表里，不用喊
         why = _nb_conflict(real)
+        if why and (not NOTEBOOKS_FILE) and real == _nb_placeholder_root():
+            why = ""                              # 首启占位根，见函数头那条例外
         if why:
             print(f"--root 这一个挂不上（{why}），这次跳过：{p}",
                   file=sys.stderr, flush=True)

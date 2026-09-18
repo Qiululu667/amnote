@@ -22,7 +22,8 @@ support-dir、token 文件、notebooks.json、AMNOTE_HOME 全指到临时目录�
     8 SIGTERM      口令文件收走
     9 笔记本对象   移除／重新定位撞上正在跑的扫描（直接 import fulltext，线程 ＋
                    事件模拟）；库根不在时扫一趟不清库
-    10 启动列表    手改过的 notebooks.json 里嵌套／重复的那几条，加载时丢掉
+    10 启动列表    手改过的 notebooks.json 里嵌套／重复的那几条，加载时丢掉；
+                   首启 --root 指到 support dir/Welcome 能起，给了列表则不并进去
 """
 
 import argparse
@@ -738,6 +739,10 @@ def step_crud(base, libs):
                str(r)[:120])
     r = s.post("/__notebooks", {"动作": "添加", "路径": [os.path.join(base, "sup")]})
     good &= ok(r.get("代码") == "not_dir", "support dir 不给当笔记本", str(r)[:120])
+    welcome = os.path.join(base, "sup", "Welcome")
+    os.makedirs(welcome, exist_ok=True)
+    r = s.post("/__notebooks", {"动作": "添加", "路径": [welcome]})
+    good &= ok(r.get("代码") == "not_dir", "Welcome 占位根不给当笔记本", str(r)[:120])
     r = s.post("/__notebooks", {"动作": "添加", "路径": [os.path.join(base, "没有这个")]})
     good &= ok(r.get("代码") == "not_dir", "路径不存在 → not_dir", str(r)[:120])
 
@@ -1068,6 +1073,45 @@ def step_boot(base, libs):
     data = json.loads(open(nb, encoding="utf-8").read())
     good &= ok(len(data["笔记本"]) == 2, "写回去的列表也只剩两本",
                json.dumps(data, ensure_ascii=False)[:200])
+
+    # 首启：壳把 --root 指到 support dir/Welcome，且不给 --notebooks-file。
+    # 这条根不是笔记本，但服务必须起得来，否则欢迎卡永远出不来。
+    welcome = os.path.join(base, "sup", "Welcome")
+    os.makedirs(os.path.join(welcome, ".amnote"), exist_ok=True)
+    w(os.path.join(welcome, ".amnote", "config.json"),
+      json.dumps({"端口范围": [PORT_FROM, PORT_TO]}, ensure_ascii=False))
+    s = Srv(base, "welcome", roots=[welcome])
+    if not ok(s.start(), "首启占位根 Welcome 起得来（不给 --notebooks-file）"):
+        return good
+    st = s.get("/__status")
+    good &= ok(st.get("ok") is True and st.get("模式") == "单",
+               "首启占位根能出 /__status，模式「单」",
+               json.dumps(st, ensure_ascii=False)[:200])
+    code, body = s.raw("/portal")
+    good &= ok(code == 200 and b"<html" in body.lower(),
+               "首启占位根能出 /portal", str(code))
+    s.stop()
+
+    # 给了列表就不能把 Welcome 并进去（并集写回会在用户名单里多种一本假的）
+    nb2 = os.path.join(base, "sup", "with-welcome.json")
+    w(nb2, json.dumps(
+        {"版本": 1,
+         "笔记本": [{"id": "aaaa1111", "名字": "工作", "路径": libs["工作"],
+                     "颜色": "blue", "加入": "2026-09-07 10:00:00"}],
+         "默认": "aaaa1111"}, ensure_ascii=False))
+    s = Srv(base, "welcome-skip", roots=[welcome], nbfile=nb2)
+    if not ok(s.start(), "列表 ＋ --root Welcome 起得来"):
+        return good
+    names = [x["名字"] for x in s.get("/__notebooks")["笔记本"]]
+    good &= ok(names == ["工作"], "给了列表时 Welcome 不并进名单", str(names))
+    err = s.stderr_text()
+    good &= ok("挂不上" in err, "stderr 记了 Welcome 被跳过",
+               err[:200].replace("\n", " ⏎ "))
+    s.stop()
+    data = json.loads(open(nb2, encoding="utf-8").read())
+    dumped = json.dumps(data, ensure_ascii=False)
+    good &= ok(len(data["笔记本"]) == 1 and "Welcome" not in dumped,
+               "写回去的列表没有 Welcome", dumped[:200])
     return good
 
 
