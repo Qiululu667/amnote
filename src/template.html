@@ -165,10 +165,17 @@
   --paper-b:#cdbbe3; --paper-line:#e7ecf0;
 
   /* 标签条底色，跟工具条/正文的 --win 分开：当前标签是从这块框架色里「挖」出来的
-     一张卡，底边直接淌进下一行的白。5.8.1 起加深一档（#f7f8fa→#eef0f4 / #22262d→#1e2127），
-     色差本身就是分界线，不再靠阴影把当前标签托起来。
-     必须和 app_shell.m 里 chromeColorForTheme 同步（浅 #eef0f4 / 深 #1e2127）。 */
-  --chrome:#eef0f4;
+     一张卡，底边直接淌进下一行的白。5.13 起框架从冷灰改成跟云朵 icon 同色温的
+     珍珠紫「玻璃洗」：--chrome 是条底的实色（外翻角和壳的 chromeColorForTheme
+     都指着它），--chrome-hi 是条顶的高光，--chrome-glow 是从品牌标渗出来的那团。
+     必须和 app_shell.m 里 chromeColorForTheme 同步（浅 #e6daf0 / 深 #2a2734）。
+     Safari 15 没有 color-mix，高光和胶囊一律写死。 */
+  --chrome:#e6daf0;
+  --chrome-hi:#efe4f7;
+  --chrome-glow:rgba(214,176,232,.42);
+  --chrome-search:#f5f0fa;
+  --chrome-hover:#f0e9f6;
+  --chrome-glow-x:24px;
   /* 顶栏当前标签的几何（5.8.1）：标签贴住条底，上两角圆 --tab-r2，下两角靠
      --flare 那两枚外翻角接进下一行。旧的 --tab-r（四角 9px 药丸）随之退役。 */
   --tab-h:36px;
@@ -180,7 +187,7 @@
   --bnr-h:0px;
 
   /* 浏览器壳高度 5.4 起只有标签条一行：地址栏（#toolbar）和书签栏（#bmbar）整条删了，
-     ‹ › ⌂ ／搜索胶囊／设置都并进标签条，路径搬进文档头。solo / shell 在 body 上改它。 */
+     ☁ ／搜索胶囊／设置都并进标签条，路径搬进文档头。solo / shell 在 body 上改它。 */
   --tabstrip-h:42px;
   /* 底部状态栏 5.4 起取消。变量留着不删：toast 的下边距、大纲栏的最大高度、
      窄窗里那两条侧栏的 bottom 都还在 calc 里引用它，删了会整片塌掉。 */
@@ -220,7 +227,9 @@
 
 /* ── 样张色板（深）── */
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){
-  --canvas:#1b1e24; --win:#252931; --side:#1b1e24; --chrome:#1e2127; --list:#1f232a;
+  --canvas:#1b1e24; --win:#252931; --side:#1b1e24; --chrome:#2a2734; --list:#1f232a;
+  --chrome-hi:#322a3c; --chrome-glow:rgba(198,163,224,.22);
+  --chrome-search:#353240; --chrome-hover:#3b3844;
   --win-blur:rgba(37,41,49,.94); --quote-b:#5f7d74;
   --hover:#303640; --sel:#303640;
   --t1:#e9edf3; --t2:#a4acb9; --t3:#929bab; --t4:#7d8593; --recent:#a4acb9; --accent:#c6a3e0;
@@ -269,7 +278,9 @@
   --nb-slate:#a3adbb;  --nb-slate-soft:#333944;
 }}
 :root[data-theme="dark"]{
-  --canvas:#1b1e24; --win:#252931; --side:#1b1e24; --chrome:#1e2127; --list:#1f232a;
+  --canvas:#1b1e24; --win:#252931; --side:#1b1e24; --chrome:#2a2734; --list:#1f232a;
+  --chrome-hi:#322a3c; --chrome-glow:rgba(198,163,224,.22);
+  --chrome-search:#353240; --chrome-hover:#3b3844;
   --win-blur:rgba(37,41,49,.94); --quote-b:#5f7d74;
   --hover:#303640; --sel:#303640;
   --t1:#e9edf3; --t2:#a4acb9; --t3:#929bab; --t4:#7d8593; --recent:#a4acb9; --accent:#c6a3e0;
@@ -326,7 +337,7 @@
   .resume:active,
   .hbtn:hover,.hbtn:active,.btn:hover,.btn:active,.dt-btn:hover,.dt-btn:active,
   .dirchip:hover,.resume:hover .continue svg,
-  #navHome:hover img{transform:none}
+  #navHome:hover img,.uchip:hover{transform:none}
   button:active:not([disabled]){transform:none}
 }
 /* 系统里关掉「透明」时，毛玻璃退回实色，别糊成一团。 */
@@ -345,7 +356,7 @@ body{background:var(--win);color:var(--t1);
   --chrome-h:var(--tabstrip-h)}
 /* 标签跟红绿灯同一行，左侧让出交通灯（约 78px）。多出来的标签由 layoutTabs
    整颗藏进 ▾，不再被左边距裁成半个。 */
-body.shell{--tabstrip-h:42px; --tab-left:80px}
+body.shell{--tabstrip-h:42px; --tab-left:80px; --chrome-glow-x:94px}
 body.solo{--tabstrip-h:0px; --status-h:0px}
 body.shell.solo{--tabstrip-h:52px; --status-h:0px}
 button{font:inherit;color:inherit;border:0;background:none;padding:0;margin:0;cursor:pointer;-webkit-appearance:none;
@@ -372,21 +383,26 @@ svg{fill:none;stroke:currentColor}
 #app{padding-top:var(--chrome-h)}
 
 /* ═══ 浏览器壳：只剩一条标签条 ═══════════
-   42px 一行装下全部窗口层控件：左 ☁ ‹ ›（壳里从红绿灯右缘 80px 起，云就是 ⌂），
+   42px 一行装下全部窗口层控件：左 ☁（壳里从红绿灯右缘 80px 起，云就是 ⌂），
    中间标签，右边搜索胶囊 ＋ ⚙。空处可拖窗口，控件一律 no-drag。
+   5.13 起前进后退从顶栏拿掉（⌘[ / ⌘] 仍走键盘和菜单），头像并进开始页问候。
    5.8.1 起整条改成 align-items:flex-end：所有标签一样高、底边贴住条底，当前那张
    点亮成 --win 并在左右下角长出外翻角，直接接进下一行（首页是 .pagebox 的白，
    阅读页是 .doc-toolbar 那层压在白上的毛玻璃，合成结果同样是 --win）。
-   导航组／＋／右侧组因此各自 margin-bottom:4px 垫回标签的中线。 */
-/* 5.4 起顶栏与正文之间不画线：--chrome（#eef0f4）和 --win（#fff）本来就差一档，
-   色差就是分界。要加回来的话记得用 inset 阴影，不要用 border——border 会额外
-   占 1px，而 --chrome-h 只算了标签条的高度，正文顶上就会被压掉一行的头。 */
-#chrome{position:fixed;top:0;left:0;right:0;z-index:20;background:var(--chrome);
+   导航组／＋ 仍 margin-bottom:4px 垫回标签的中线；搜索胶囊在框架里单独垫 7px，
+   28px 高的药丸在 42px 条里上下各 7px，不再贴着页缝。 */
+/* 5.4 起顶栏与正文之间不画线：--chrome 和 --win 本来就差一档，色差就是分界。
+   要加回来的话记得用 inset 阴影，不要用 border——border 会额外占 1px，而
+   --chrome-h 只算了标签条的高度，正文顶上就会被压掉一行的头。 */
+#chrome{position:fixed;top:0;left:0;right:0;z-index:20;
+  background:
+    radial-gradient(ellipse 340px 78px at var(--chrome-glow-x) 0, var(--chrome-glow), transparent 72%),
+    linear-gradient(180deg, var(--chrome-hi) 0%, var(--chrome) 100%);
   display:flex;flex-direction:column;box-shadow:none}
 body.solo #chrome{display:none!important}
 #tabstrip{
   height:var(--tabstrip-h);flex:none;position:relative;
-  background:var(--chrome);
+  background:transparent;
   display:flex;align-items:flex-end;
   width:100%;box-sizing:border-box;
   padding:0 12px 0 var(--tab-left);gap:5px;
@@ -401,9 +417,9 @@ body.solo #chrome{display:none!important}
 #tabcluster{
   display:flex;align-items:flex-end;gap:5px;
   flex:0 1 auto;min-width:0;
-  /* 右边那簇（搜索胶囊 ＋ ⚙ ＋ 26px 头像）加左边那三颗导航钮大概 316px，
+  /* 右边那簇（搜索胶囊 ＋ ⚙）加左边那颗云大概 220px，
      给标签留出上限，剩下的交给 flex 收缩和 layoutTabs 的 ▾ 收纳。 */
-  max-width:max(120px, calc(100% - 316px));
+  max-width:max(120px, calc(100% - 240px));
   transition:opacity var(--d-base) var(--ease-out);
 }
 #tabstrip .tabbar{
@@ -426,7 +442,7 @@ body.solo #chrome{display:none!important}
   overflow:visible;
   transition:background-color .16s ease,color .16s ease,box-shadow .18s ease;
 }
-#tabstrip .tab:hover{background:var(--hover);color:var(--t1)}
+#tabstrip .tab:hover{background:var(--chrome-hover);color:var(--t1)}
 /* 当前标签：Chrome 式外翻角。
    ① 上两角 --tab-r2 圆、下两角方，底色 = --win（下一行的实色）；
    ② ::before/::after 各一枚贴在左下/右下外侧，用 radial-gradient 把靠内的
@@ -483,7 +499,7 @@ body.solo #chrome{display:none!important}
   display:flex;align-items:center;justify-content:center;
   -webkit-app-region:no-drag;
 }
-#tabplus:hover{background:var(--hover);color:var(--t1)}
+#tabplus:hover{background:var(--chrome-hover);color:var(--t1)}
 #tabplus svg{width:15px;height:15px;stroke-width:1.6}
 #tabflex{
   flex:1 1 auto;min-width:8px;align-self:stretch;
@@ -492,9 +508,9 @@ body.solo #chrome{display:none!important}
 #tabstrip .tab,
 #tabstrip .tabmore{-webkit-app-region:no-drag}
 
-/* 导航钮：☁ ‹ › 三颗，5.4 起搬进标签条左端（壳里贴红绿灯右缘，浏览器里贴左缘）。 */
+/* 导航钮：5.13 起只剩云（回家）。壳里贴红绿灯右缘，浏览器里贴左缘。 */
 .navgrp{
-  display:flex;align-items:center;gap:2px;flex:none;margin:0 10px 4px 0;
+  display:flex;align-items:center;gap:2px;flex:none;margin:0 8px 4px 0;
   -webkit-app-region:no-drag;
 }
 .navb{
@@ -505,7 +521,7 @@ body.solo #chrome{display:none!important}
              transform var(--d-fast) var(--ease-out);
 }
 .navb:active:not([disabled]){transform:scale(.96)}
-.navb:hover:not([disabled]){background:var(--hover);color:var(--t1)}
+.navb:hover:not([disabled]){background:var(--chrome-hover);color:var(--t1)}
 .navb[disabled]{opacity:.28;pointer-events:none}
 .navb.on{background:var(--hover);color:var(--t1)}
 .navb svg{width:16px;height:16px;stroke-width:1.6}
@@ -513,23 +529,26 @@ body.solo #chrome{display:none!important}
    它不参与 syncChrome 的灰化——永远满不透明、永远可点；已经在开始页上时
    只把这一页滚回顶，不再顺手弹 ⌘K。壳色浅，阴影沿用原来那点淡紫，深浅两套通用。 */
 #navHome img{
-  width:20px;height:20px;border-radius:5px;display:block;
+  width:22px;height:22px;border-radius:6px;display:block;
   box-shadow:0 1px 2px rgba(58,48,80,.14);
   -webkit-user-drag:none;pointer-events:none;
   transition:transform var(--d-fast) var(--ease-out);
 }
 #navHome:hover img{transform:scale(1.06)}
 
-/* 标签条右端：搜索胶囊（⌘K 的唯一入口）＋ ⚙。品牌标 5.5 起挪去了左端当 ⌂。 */
+/* 标签条右端：搜索胶囊（⌘K 的唯一入口）＋ ⚙。品牌标 5.5 起挪去了左端当 ⌂。
+   5.13：头像离开这一簇。margin-bottom 7px 让 28px 药丸在 42px 条里上下对称，
+   不再贴着页缝（4px 时上面 10、下面 4，胶囊看起来沉在条底）。 */
 .rightgrp{
-  display:flex;align-items:center;gap:6px;flex:none;margin-bottom:4px;
+  display:flex;align-items:center;gap:6px;flex:none;margin-bottom:7px;
   -webkit-app-region:no-drag;
 }
-/* 搜索胶囊：不描边（无线条规则），--field 底靠色差立住，hover 抬 1px 加 --el-1。 */
+/* 搜索胶囊：不描边（无线条规则），--chrome-search 比框架浅一档才在玻璃洗上立住，
+   hover 抬 1px 加 --el-1。 */
 .topsearch{
   display:flex;align-items:center;gap:8px;flex:none;
   width:150px;height:28px;padding:0 11px;border-radius:999px;
-  background:var(--field);border:0;color:var(--t3);font-size:11px;
+  background:var(--chrome-search);border:0;color:var(--t3);font-size:11px;
   -webkit-app-region:no-drag;
   transition:background-color var(--d-base) ease,box-shadow var(--d-base) var(--ease-out),
              transform var(--d-base) var(--ease-out);
@@ -545,24 +564,31 @@ body.solo #chrome{display:none!important}
   .topsearch{width:28px;padding:0;gap:0;justify-content:center}
   .topsearch .lbl,.topsearch kbd{display:none}
 }
-/* ── 右上角那颗人 ────────────────────────
-   26px 圆：有头像就是头像，没有就是显示名的第一个字，--accent-soft 底 --accent 字。
-   两套色板里 --accent / --accent-soft 都已经有了，这里不引新色。 */
+/* ── 开始页问候旁那颗人 ──────────────────
+   5.13 起从顶栏右上角搬到「早晨，Lulu」左侧。40px 圆：有头像就是头像，
+   没有就是显示名的第一个字。阅读页没有问候，资料入口改走设置。 */
 .uchip{
-  width:26px;height:26px;border-radius:50%;flex:none;padding:0;border:0;overflow:hidden;
+  width:40px;height:40px;border-radius:50%;flex:none;padding:0;border:0;overflow:hidden;
   display:inline-flex;align-items:center;justify-content:center;
   background:var(--accent-soft);color:var(--accent-ink);
-  font:600 11.5px/1 var(--ui);letter-spacing:0;
-  -webkit-app-region:no-drag;
+  font:600 16px/1 var(--ui);letter-spacing:0;
+  box-shadow:0 0 0 1px rgba(58,48,80,.10), 0 1px 2px rgba(58,48,80,.08), 0 6px 14px rgba(58,48,80,.10);
   transition:box-shadow var(--d-fast) var(--ease-out),transform var(--d-fast) var(--ease-out);
 }
 .uchip img{width:100%;height:100%;object-fit:cover;display:block;-webkit-user-drag:none}
-.uchip svg{width:14px;height:14px;stroke-width:1.6}
-.uchip:hover{box-shadow:var(--el-1);transform:translateY(-1px)}
-.uchip:active{transform:translateY(0);box-shadow:none}
+.uchip svg{width:18px;height:18px;stroke-width:1.6}
+.uchip:hover{transform:scale(1.05);
+  box-shadow:0 0 0 1px rgba(58,48,80,.10), 0 0 0 4px var(--accent-soft), 0 8px 18px rgba(138,99,180,.16)}
+.uchip:active{transform:scale(1);box-shadow:0 0 0 1px rgba(58,48,80,.10), 0 1px 2px rgba(58,48,80,.08)}
 .uchip[aria-expanded="true"]{box-shadow:0 0 0 2px var(--accent)}
+:root[data-theme="dark"] .uchip{
+  box-shadow:0 0 0 1px rgba(255,255,255,.12), 0 1px 2px rgba(0,0,0,.35), 0 6px 14px rgba(0,0,0,.40);
+}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .uchip{
+  box-shadow:0 0 0 1px rgba(255,255,255,.12), 0 1px 2px rgba(0,0,0,.35), 0 6px 14px rgba(0,0,0,.40);
+}}
 
-/* 头像浮层：贴着芯片右缘往下掉一格。窗口右边挤不下就往里收，不出屏。 */
+/* 头像浮层：贴着问候旁头像左缘往下掉一格。窗口右边挤不下就往里收，不出屏。 */
 #userPop{
   position:fixed;z-index:110;display:none;width:236px;padding:14px 14px 10px;
   background:var(--card-face);border:0;border-radius:14px;
@@ -660,7 +686,8 @@ kbd{
    5.4 起底色是纯白 --win，一条描边都不画；--canvas 只留给引用块、代码块和
    内凹控件。 */
 .home{max-width:1050px;margin:0 auto;padding:32px 38px 40px}
-.home-greeting{display:flex;justify-content:space-between;align-items:flex-end;gap:16px;margin-bottom:20px}
+.home-greeting{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:20px}
+.greet-who{display:flex;align-items:center;gap:14px;min-width:0}
 .eyebrow{color:var(--t2);font-size:11px;display:flex;align-items:center;gap:7px;margin-bottom:8px}
 .eyebrow svg{width:13px;height:13px}
 /* 服务状态：这枚点＋一句话就是原来底部状态栏那一格。绿＝就绪，琥珀＝扫描中，灰＝服务没起。
@@ -671,7 +698,7 @@ kbd{
   transition:background-color var(--d-base) ease}
 .scan.scan-busy i{background:var(--folder)}
 .scan.scan-off i{background:var(--t4)}
-.home h1{font-weight:570;font-size:29px;letter-spacing:.02em;line-height:1.45;margin:0}
+.home h1{font-weight:570;font-size:29px;letter-spacing:.02em;line-height:1.2;margin:0}
 .home h1 .scan{font-size:.58em;font-weight:400;margin-left:.6em;vertical-align:middle;letter-spacing:0}
 .home h1 .scan:not(.scan-busy):not(.scan-off){display:none}
 .home-sub{color:var(--t3);margin:7px 0 0;font-size:12px}
@@ -963,6 +990,8 @@ kbd{
 @media (max-width:700px){
   .home{padding:24px 18px 40px}
   .home h1{font-size:23px}
+  .uchip{width:32px;height:32px;font-size:13px}
+  .greet-who{gap:10px}
   .paper-art{display:none}
   .home-greeting .hbtn .lbl{display:none}
   .tc-cols{grid-template-columns:minmax(0,1fr);gap:10px}
@@ -2359,13 +2388,7 @@ body.solo #chrome{display:none!important}
   <div id="tabstrip">
     <div class="navgrp">
       <button type="button" class="navb" id="navHome" title="AM·Note · 回到开始页" aria-label="回到开始页">
-        <img src="/icon-192.png" width="20" height="20" alt="">
-      </button>
-      <button type="button" class="navb" id="navBack" title="后退 ⌘[" aria-label="后退" disabled>
-        <i data-ic="left" data-sz="16"></i>
-      </button>
-      <button type="button" class="navb" id="navFwd" title="前进 ⌘]" aria-label="前进" disabled>
-        <i data-ic="right" data-sz="16"></i>
+        <img src="/icon-192.png" width="22" height="22" alt="">
       </button>
     </div>
     <div id="tabcluster">
@@ -2384,8 +2407,6 @@ body.solo #chrome{display:none!important}
       <button type="button" class="navb" id="navCfgTop" title="设置 ⌘," aria-label="设置">
         <i data-ic="gear" data-sz="16"></i>
       </button>
-      <button type="button" class="uchip" id="userChip" title="个人资料" aria-label="个人资料"
-        aria-haspopup="dialog" aria-expanded="false"><i data-ic="user" data-sz="14"></i></button>
     </div>
     <div class="loadbar" id="loadbar"></div>
   </div>
@@ -2977,7 +2998,7 @@ async function postProfile(patch){
     PROFILE=r; applyProfile(); return r;
   }catch(e){ notify(TR('服务没应答')); return null; }
 }
-/* 资料变了要动的三处：右上角芯片、设置页那块头像、开始页的问候。
+/* 资料变了要动的三处：开始页问候旁的芯片、设置页那块头像、开始页的问候。
    设置页只回填控件不重画整段——昵称输入框正在打字，重画会把焦点弄丢。 */
 function applyProfile(){
   syncUserChip();
@@ -3036,13 +3057,13 @@ function openUserPop(){
   b.setAttribute('aria-expanded','true');
   placeUserPop();
 }
-/* 贴着芯片右缘往下掉一格；窗口右边挤不下就往里收，浮层不出屏。 */
+/* 贴着问候旁头像的左缘往下掉一格；窗口右边挤不下就往里收，浮层不出屏。 */
 function placeUserPop(){
   const p=$('#userPop'), b=$('#userChip');
   if(!p || !b || !p.classList.contains('on')) return;
   const r=b.getBoundingClientRect(), w=p.offsetWidth||236;
-  p.style.left=Math.max(10, Math.min(r.right-w, innerWidth-w-10))+'px';
-  p.style.top=(r.bottom+7)+'px';
+  p.style.left=Math.max(10, Math.min(r.left, innerWidth-w-10))+'px';
+  p.style.top=(r.bottom+8)+'px';
 }
 
 /* ── 头像图片：裁方、缩到 256、转 PNG ──────
@@ -4005,6 +4026,7 @@ function paintPage(t, opt){
   else if(k==='folder') paintFolder(t, box);
   else if(k==='pins') paintPins(t, box);
   else paintStart(box);
+  wireAvatars(box);
   if(quiet) box.scrollTop=y;
   else pageEnter(box);
 }
@@ -4166,11 +4188,17 @@ function greetingHtml(ico, eyebrow, title, sub, opts){
   /* 聚焦某个笔记本时大标题后面淡淡带一笔「· ● 工作」（§4.1）。「全部」不带。 */
   const here = (opts&&opts.here)
     ? `<span class="here">· ${nbDot(opts.here)}${esc(opts.here)}</span>` : '';
+  const av = (opts&&opts.avatar)
+    ? `<button type="button" class="uchip" id="userChip" title="${esc(profileName() || TR('个人资料'))}" aria-label="${esc(TR('个人资料'))}" aria-haspopup="dialog" aria-expanded="false">${avatarHtml(22)}</button>`
+    : '';
   return `<div class="home-greeting">
-    <div>
-      ${eyebrow?`<div class="eyebrow">${ico} ${esc(eyebrow)}</div>`:''}
-      <h1>${esc(title)}${here}${scan}</h1>
-      ${sub?`<p class="home-sub">${esc(sub)}</p>`:''}
+    <div class="greet-who">
+      ${av}
+      <div>
+        ${eyebrow?`<div class="eyebrow">${ico} ${esc(eyebrow)}</div>`:''}
+        <h1>${esc(title)}${here}${scan}</h1>
+        ${sub?`<p class="home-sub">${esc(sub)}</p>`:''}
+      </div>
     </div>
     <button type="button" class="hbtn key hero-new" data-act="newnote">${icon('plus',16)}<span class="lbl">${esc(TR('新建随手记'))}</span></button>
   </div>`;
@@ -4442,7 +4470,7 @@ function paintStart(box){
       <button type="button" class="hbtn" data-act="revealvault">${icon('folder',15)}<span class="lbl">${esc(TR('在访达中打开这个文件夹'))}</span></button>`;
     box.innerHTML=`<div class="home">
       ${greetingHtml('','',
-        greetOn()?greetTitle():TR('今天，想记下什么？'),TR('笔记库已经就位，就差第一篇。'),{scan:true})}
+        greetOn()?greetTitle():TR('今天，想记下什么？'),TR('笔记库已经就位，就差第一篇。'),{scan:true, avatar:true})}
       ${nbStripHtml(NB.cur)}
       ${emptyHtml(TR('这里还空着'),esc(TR('把 Markdown 或网页放进笔记库，它们会自动出现在这里。'))+'<br>'+esc(TR('文件留在原地，不上传，不改格式。')),{big:true, buttons:btns})}
       </div>`;
@@ -4481,7 +4509,7 @@ function paintStart(box){
     ${rowsHtml(shown, emptyHtml(TR('这一类还没有'),esc(TR('换个类型看看，或者写点新的。'))), {opened:true})}`;
   box.innerHTML=`<div class="home">
     ${greetingHtml('','',
-      greetOn()?greetTitle():TR('今天，想记下什么？'),sub,{scan:true})}
+      greetOn()?greetTitle():TR('今天，想记下什么？'),sub,{scan:true, avatar:true})}
     ${nbStripHtml(cur)}
     ${(NB.multi && !cur) ? '' : startChipsHtml()}
     ${last?resumeHtml(last):''}
@@ -4654,14 +4682,10 @@ function newTab(){
   openStartTab();
 }
 
-/* 5.4 起标签条上只剩「能不能前进后退」要跟着当前标签走；
+/* 5.13 起顶栏不再摆前进后退，只剩云上的笔记本色点和开始页的扫描点。
    路径去了文档头的芯片，MD/HTML 小标签去了文档头的 .dt-tag。 */
 function syncChrome(){
   if(SOLO) return;
-  const t=active();
-  const back=$('#navBack'), fwd=$('#navFwd');
-  if(back) back.toggleAttribute('disabled', !canBack(t));
-  if(fwd)  fwd.toggleAttribute('disabled', !canForward(t));
   syncHomeDot();
   syncScanChip();
 }
@@ -8923,10 +8947,8 @@ function toggleBookmarks(){
 }
 
 (function wireChromeBtns(){
-  const back=$('#navBack'), fwd=$('#navFwd'), home=$('#navHome'), plus=$('#tabplus'),
-        sp=$('#topSearch'), cfg=$('#navCfgTop'), uc=$('#userChip');
-  if(back) back.onclick=()=>goHist(-1);
-  if(fwd) fwd.onclick=()=>goHist(1);
+  const home=$('#navHome'), plus=$('#tabplus'),
+        sp=$('#topSearch'), cfg=$('#navCfgTop');
   /* 品牌标：不在开始页就回开始页；已经在开始页就把这一页滚回顶——
      不弹 ⌘K，搜索只有右边那颗胶囊一个入口。 */
   if(home) home.onclick=()=>{
@@ -8943,7 +8965,12 @@ function toggleBookmarks(){
   if(plus) plus.onclick=()=>{ newTab(); plus.blur(); };
   if(sp) sp.onclick=()=>{ sp.blur(); AMN.quickOpen(); };
   if(cfg) cfg.onclick=()=>{ cfg.blur(); openCfg(); };
-  if(uc) uc.onclick=()=>{ userPopOn() ? closeUserPop() : openUserPop(); };
+  /* 头像在开始页问候里，paintStart 每次都会重画，所以点按走委托。 */
+  document.addEventListener('click', e=>{
+    const uc=e.target.closest('#userChip');
+    if(!uc) return;
+    userPopOn() ? closeUserPop() : openUserPop();
+  });
 })();
 
 /* ── ⌘K 直达 ────────────────────────────

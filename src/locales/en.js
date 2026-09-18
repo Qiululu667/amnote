@@ -434,8 +434,6 @@ window.AMN_I18N["en"] = {
   "跳过了 {names}（可在设置里调整）": "Skipped {names} (you can change that in Settings)",
   "开始使用": "Get Started",
   "正在打开…": "Opening…",
-  "后退": "Back",
-  "前进": "Forward",
   "新标签页": "New Tab",
   "设置": "Settings",
   "AM·Note · 回到开始页": "AM·Note · Start page",
