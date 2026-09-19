@@ -7812,10 +7812,22 @@ function htmlClipboardPieces(html){
     return /\bemoji\b|\bsticker\b|\bemoticon\b|\bemotion\b/i.test(hint);
   };
   const srcOf=img=>{
-    const s=(img.getAttribute('src')
+    const src=(img.getAttribute('src')||'').trim();
+    const lark=(img.getAttribute('data-lark-image-uri')||'').trim();
+    const key=(img.getAttribute('data-image-key')||'').trim();
+    // 飞书桌面复制：src 是 native-resource://，带 crypto；这个必须优先，
+    // 本地 data-origin-file 在别人容器里，别的进程读不了。
+    if(/^native-resource:/i.test(src) || /^imkey:/i.test(src)) return src;
+    if(/^native-resource:/i.test(lark) || /^imkey:/i.test(lark)) return lark;
+    if(key) return 'native-resource://sdk/image?key='+encodeURIComponent(key);
+    const s=(src
       || img.getAttribute('data-src')
       || img.getAttribute('data-origin-src')
       || img.getAttribute('data-original')
+      || img.getAttribute('origin-src')
+      || img.getAttribute('data-image-src')
+      || img.getAttribute('data-origin')
+      || img.getAttribute('data-origin-file')
       || '').trim();
     return s;
   };
@@ -7863,6 +7875,26 @@ function fileUrlToPath(u){
   }catch(e){ return ''; }
 }
 
+/* 飞书 Mac 客户端复制聊天：<img src="native-resource://sdk/image?key=img_v3_…&crypto=…">
+   改写成可下的 https，crypto 留在查询串里给服务端 AES-GCM 解。 */
+function feishuStaticUrl(src){
+  try{
+    const u=new URL(src);
+    let key='';
+    if(u.protocol==='imkey:'){
+      key=((u.hostname||'')+(u.pathname||'')).replace(/^\/*/,'').split('?')[0];
+    }else if(u.protocol==='native-resource:'){
+      key=u.searchParams.get('key')||'';
+    }else return '';
+    key=String(key||'').replace(/_MIDDLE_WEBP$/i,'');
+    if(!/^img_[A-Za-z0-9_.-]+$/.test(key)) return '';
+    const crypto=u.searchParams.get('crypto')||'';
+    let out='https://internal-api-lark-file.feishu.cn/static-resource/v1/'+key;
+    if(crypto) out+='?crypto='+encodeURIComponent(crypto);
+    return out;
+  }catch(e){ return ''; }
+}
+
 function dataUrlB64(src){
   const i=String(src||'').indexOf(',');
   return i<0 ? '' : src.slice(i+1).replace(/\s+/g,'');
@@ -7900,6 +7932,8 @@ async function resolvePastedImg(t, piece){
   if(piece.file) return trySpec({file:piece.file});
   if(piece.b64) return trySpec({b64:piece.b64});
   if(piece.path) return trySpec({path:piece.path});
+  const lark=feishuStaticUrl(src);
+  if(lark) return trySpec({url:lark});
   if(/^data:image\//i.test(src)){
     const b64=dataUrlB64(src);
     if(b64) return trySpec({b64});
@@ -7912,6 +7946,9 @@ async function resolvePastedImg(t, piece){
   }else if(/^file:/i.test(src)){
     const path=fileUrlToPath(src);
     if(path) return trySpec({path});
+  }else if(src.startsWith('/') && !src.startsWith('//')){
+    const rel=await trySpec({path:src});
+    if(rel) return rel;
   }else{
     let url=src;
     if(url.startsWith('//')) url='https:'+url;
@@ -7959,18 +7996,20 @@ async function pasteMixed(t, src){
     if(pieces.some(x=>x.kind==='img') || fileQ.length) flash(TR('图片上传中'));
     const resolved=[];
     let failed=0, imgs=0;
+    const extras=fileQ.slice();
     for(const piece of pieces){
       if(piece.kind==='text'){ resolved.push(piece); continue; }
       imgs++;
-      const rel=await resolvePastedImg(t, piece);
+      let rel=await resolvePastedImg(t, piece);
+      if(!rel && extras.length) rel=await resolvePastedImg(t, extras.shift());
       if(rel) resolved.push({kind:'img', rel, alt:piece.alt||''});
       else failed++;
     }
     // HTML 里的地址下不下来（飞书临时链常见），剪贴板里还有位图就顶上。
     if(!resolved.some(x=>x.kind==='img')){
       failed=0;
-      while(fileQ.length){
-        const rel=await resolvePastedImg(t, fileQ.shift());
+      while(extras.length){
+        const rel=await resolvePastedImg(t, extras.shift());
         if(rel) resolved.push({kind:'img', rel});
       }
     }

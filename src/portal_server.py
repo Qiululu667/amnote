@@ -874,13 +874,271 @@ class _HttpOnlyRedirect(urllib.request.HTTPRedirectHandler):
         return super().redirect_request(req, fp, code, msg, headers, newurl)
 
 
+LARK_FILE_HOST = "internal-api-lark-file.feishu.cn"
+
+
+def _pb_map(raw: bytes):
+    """极简 protobuf map。只认 varint 和 length-delimited，飞书 crypto 字段够用。"""
+    i, n, out = 0, len(raw), {}
+    while i < n:
+        key = raw[i]
+        i += 1
+        fn, wt = key >> 3, key & 7
+        if wt == 0:
+            v = s = 0
+            while i < n:
+                b = raw[i]
+                i += 1
+                v |= (b & 0x7F) << s
+                s += 7
+                if b < 0x80:
+                    break
+            out[fn] = v
+        elif wt == 2:
+            ln = s = 0
+            while i < n:
+                b = raw[i]
+                i += 1
+                ln |= (b & 0x7F) << s
+                s += 7
+                if b < 0x80:
+                    break
+            out[fn] = raw[i:i + ln]
+            i += ln
+        else:
+            break
+    return out
+
+
+def _lark_crypto_parts(raw64: str):
+    """飞书剪贴板 crypto= 是 protobuf：AES-256 key + 12 字节 nonce。"""
+    if not raw64:
+        return None, None
+    try:
+        outer = _pb_map(base64.b64decode(raw64))
+        inner = _pb_map(outer.get(2) or b"")
+        key, nonce = inner.get(1), inner.get(2)
+    except Exception:
+        return None, None
+    if not isinstance(key, (bytes, bytearray)) or len(key) not in (16, 24, 32):
+        return None, None
+    if not isinstance(nonce, (bytes, bytearray)) or len(nonce) != 12:
+        return None, None
+    return bytes(key), bytes(nonce)
+
+
+def _aes_gcm_decrypt(key: bytes, nonce: bytes, blob: bytes):
+    """AES-GCM。优先系统 CommonCrypto，不额外依赖。"""
+    if not blob or len(blob) < 17:
+        return None
+    ct, tag = blob[:-16], blob[-16:]
+    try:
+        import ctypes
+        lib = ctypes.CDLL("/usr/lib/libSystem.B.dylib")
+        fn = lib.CCCryptorGCMOneshotDecrypt
+        fn.restype = ctypes.c_int32
+        fn.argtypes = [
+            ctypes.c_uint32, ctypes.c_void_p, ctypes.c_size_t,
+            ctypes.c_void_p, ctypes.c_size_t,
+            ctypes.c_void_p, ctypes.c_size_t,
+            ctypes.c_void_p, ctypes.c_size_t,
+            ctypes.c_void_p, ctypes.c_void_p, ctypes.c_size_t,
+        ]
+        out = ctypes.create_string_buffer(len(ct))
+        st = fn(0, key, len(key), nonce, len(nonce), None, 0,
+                ct, len(ct), out, tag, 16)
+        if st == 0:
+            return out.raw[:len(ct)]
+    except Exception:
+        pass
+    try:
+        from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+        return AESGCM(key).decrypt(nonce, blob, None)
+    except Exception:
+        pass
+    try:
+        from Crypto.Cipher import AES
+        n = AES.new(key, AES.MODE_GCM, nonce=nonce)
+        return n.decrypt_and_verify(ct, tag)
+    except Exception:
+        return None
+
+
+def _lark_img_key(raw: str):
+    key = (raw or "").strip()
+    if key.endswith("_MIDDLE_WEBP"):
+        key = key[: -len("_MIDDLE_WEBP")]
+    if not re.fullmatch(r"img_[A-Za-z0-9_.-]+", key or ""):
+        return ""
+    return key
+
+
+def _lark_normalize_img_url(url: str):
+    """飞书桌面复制：src 是 native-resource://，图在加密 CDN 上。
+
+    返回 (https 地址, crypto 串)。crypto 空表示不用解。
+    """
+    url = (url or "").strip()
+    if not url:
+        return "", ""
+    p = urllib.parse.urlparse(url)
+    q = urllib.parse.parse_qs(p.query)
+    crypto = (q.get("crypto") or [""])[0]
+    key = _lark_img_key((q.get("key") or [""])[0])
+    if p.scheme in ("native-resource", "imkey"):
+        if not key:
+            hostpath = (p.netloc or "") + (p.path or "")
+            key = _lark_img_key(hostpath.lstrip("/").split("/")[-1])
+        if not key:
+            return "", ""
+        return f"https://{LARK_FILE_HOST}/static-resource/v1/{key}", crypto
+    if p.scheme in ("http", "https") and p.netloc:
+        if not key:
+            segs = [s for s in p.path.split("/") if s]
+            if segs:
+                key = _lark_img_key(segs[-1])
+        if key and "feishu" in (p.netloc or "").lower():
+            # 统一落到可下的那条 static-resource；带上 crypto 以便解。
+            return f"https://{LARK_FILE_HOST}/static-resource/v1/{key}", crypto
+        return url, crypto
+    return "", ""
+
+
+def _maybe_lark_decrypt(blob: bytes, crypto: str):
+    if not blob or _sniff_img(blob) or not crypto:
+        return blob
+    key, nonce = _lark_crypto_parts(crypto)
+    if not key:
+        return blob
+    pt = _aes_gcm_decrypt(key, nonce, blob)
+    return pt if pt else blob
+
+
+def _finish_img_blob(blob: bytes):
+    """下载之后的统一验收：空、超大、不是图。"""
+    if not blob:
+        return None, T("图片是空的")
+    if len(blob) > IMG_MAX:
+        return None, T("这张 {n} MB，上限 {m} MB",
+                       n=len(blob) // 1024 // 1024, m=IMG_MAX // 1024 // 1024)
+    if not _sniff_img(blob):
+        return None, T("只收 png / jpg / gif / webp")
+    return blob, None
+
+
+def _fetch_img_url_urllib(url: str, headers: dict):
+    """走 Python 自己的 TLS。python.org 的解释器不用钥匙串，公司中间人证书过不去。"""
+    req = urllib.request.Request(url, headers=headers)
+    opener = urllib.request.build_opener(_HttpOnlyRedirect)
+    with opener.open(req, timeout=IMG_FETCH_TIMEOUT) as resp:
+        final = urllib.parse.urlparse(resp.geturl() or "")
+        if final.scheme not in ("http", "https"):
+            return None, T("这个地址不是图片")
+        chunks = []
+        n = 0
+        while True:
+            b = resp.read(64 * 1024)
+            if not b:
+                break
+            n += len(b)
+            if n > IMG_MAX:
+                return None, T("这张超过 {m} MB 了",
+                               m=IMG_MAX // 1024 // 1024)
+            chunks.append(b)
+        return b"".join(chunks), None
+
+
+def _fetch_img_url_nsurl(url: str, headers: dict):
+    """macOS 钥匙串那条 TLS（含公司中间人证书）。PyObjC 没有就当没这条路。
+
+    必须能在 ThreadingHTTPServer 的工作线程里跑：NSURLSession 自己有队列，
+    用 Event 等完成即可，不必在主线程。
+    """
+    try:
+        from Foundation import NSURL, NSMutableURLRequest, NSURLSession
+    except Exception:
+        return None, None
+    nsurl = NSURL.URLWithString_(url)
+    if nsurl is None:
+        return None, T("只收 http / https 图片地址")
+    req = NSMutableURLRequest.requestWithURL_(nsurl)
+    req.setTimeoutInterval_(float(IMG_FETCH_TIMEOUT))
+    for k, v in headers.items():
+        req.setValue_forHTTPHeaderField_(v, k)
+    done = threading.Event()
+    box = {}
+
+    def complete(data, resp, err):
+        box["data"] = data
+        box["resp"] = resp
+        box["err"] = err
+        done.set()
+
+    try:
+        task = NSURLSession.sharedSession().dataTaskWithRequest_completionHandler_(
+            req, complete)
+        task.resume()
+    except Exception:
+        return None, T("拉不下来这张图")
+    if not done.wait(IMG_FETCH_TIMEOUT + 2):
+        try:
+            task.cancel()
+        except Exception:
+            pass
+        return None, T("拉不下来这张图")
+    if box.get("err") is not None:
+        return None, T("拉不下来这张图")
+    resp = box.get("resp")
+    try:
+        status = int(resp.statusCode())
+    except Exception:
+        status = 0
+    if status and not (200 <= status < 400):
+        return None, T("拉不下来这张图")
+    try:
+        final = urllib.parse.urlparse(str(resp.URL().absoluteString() or ""))
+        if final.scheme not in ("http", "https"):
+            return None, T("这个地址不是图片")
+    except Exception:
+        pass
+    data = box.get("data")
+    if data is None:
+        return b"", None
+    try:
+        n = int(data.length())
+    except Exception:
+        n = 0
+    if n > IMG_MAX:
+        return None, T("这张超过 {m} MB 了", m=IMG_MAX // 1024 // 1024)
+    try:
+        return bytes(data), None
+    except Exception:
+        return None, T("拉不下来这张图")
+
+
 def _fetch_img_url(url: str):
     """把剪贴板 HTML 里的远程图拉下来。失败返回 (None, 错误)。
 
-    只认 http / https，跟跳也是。不带本机口令，也不把飞书的 cookie 带出去——
-    签过名的 CDN 地址常常能直接下；要登录的临时链就会失败，前端再换别的来源。
+    只认 http / https（飞书桌面的 native-resource:// 会先改写成
+    internal-api-lark-file.feishu.cn）。不带本机口令，也不把飞书 cookie
+    带出去。CDN 正文常是 AES-GCM，crypto= 在查询串里，解开再 sniff。
+
+    HTTPS 先走 urllib，证书过不去（本机 python.org 解释器常见）再走
+    NSURLSession：那条用钥匙串，飞书 / 公司网才能下到图。
     """
     url = (url or "").strip()
+    crypto = ""
+    p0 = urllib.parse.urlparse(url)
+    if p0.scheme in ("native-resource", "imkey") or (
+            p0.scheme in ("http", "https") and "feishu" in (p0.netloc or "").lower()
+            and "static-resource" in (p0.path or "")):
+        url, crypto = _lark_normalize_img_url(url)
+        if not url:
+            return None, T("只收 http / https 图片地址")
+    elif p0.scheme in ("http", "https") and p0.netloc:
+        crypto = (urllib.parse.parse_qs(p0.query).get("crypto") or [""])[0]
+    else:
+        return None, T("只收 http / https 图片地址")
     p = urllib.parse.urlparse(url)
     if p.scheme not in ("http", "https") or not p.netloc:
         return None, T("只收 http / https 图片地址")
@@ -893,32 +1151,21 @@ def _fetch_img_url(url: str):
     if "feishu" in host or "larksuite" in host or host.endswith(".lark.com") \
             or "larkoffice" in host:
         headers["Referer"] = "https://www.feishu.cn/"
-    req = urllib.request.Request(url, headers=headers)
-    opener = urllib.request.build_opener(_HttpOnlyRedirect)
+    blob, err = None, None
     try:
-        with opener.open(req, timeout=IMG_FETCH_TIMEOUT) as resp:
-            final = urllib.parse.urlparse(resp.geturl() or "")
-            if final.scheme not in ("http", "https"):
-                return None, T("这个地址不是图片")
-            chunks = []
-            n = 0
-            while True:
-                b = resp.read(64 * 1024)
-                if not b:
-                    break
-                n += len(b)
-                if n > IMG_MAX:
-                    return None, T("这张超过 {m} MB 了",
-                                   m=IMG_MAX // 1024 // 1024)
-                chunks.append(b)
-            blob = b"".join(chunks)
+        blob, err = _fetch_img_url_urllib(url, headers)
     except Exception:
-        return None, T("拉不下来这张图")
-    if not blob:
-        return None, T("图片是空的")
-    if not _sniff_img(blob):
-        return None, T("只收 png / jpg / gif / webp")
-    return blob, None
+        blob, err = None, T("拉不下来这张图")
+    if blob is None and p.scheme == "https":
+        blob2, err2 = _fetch_img_url_nsurl(url, headers)
+        if blob2 is not None:
+            blob, err = blob2, None
+        elif err2:
+            err = err2
+    if blob:
+        blob = _maybe_lark_decrypt(blob, crypto)
+        return _finish_img_blob(blob)
+    return None, err or T("拉不下来这张图")
 
 
 def _read_local_img(path: str):
@@ -1040,13 +1287,26 @@ def save_img(req: dict):
         return _bad(T("只收 png / jpg / gif / webp"))
 
     d = os.path.join(os.path.dirname(md_full), IMG_SUB)
-    name = datetime.now().strftime("%Y%m%d-%H%M%S-%f")[:-3] + "." + ext
     try:
         os.makedirs(d, exist_ok=True)
-        with open(os.path.join(d, name), "xb") as f:
-            f.write(blob)
     except OSError as e:
         return _bad(T("图片写不进去：{e}", e=e))
+    name = None
+    for i in range(32):
+        name = datetime.now().strftime("%Y%m%d-%H%M%S-%f")[:-3] + "." + ext
+        if i:
+            stem, _dot, _ = name.rpartition(".")
+            name = "%s-%02d.%s" % (stem, i, ext)
+        try:
+            with open(os.path.join(d, name), "xb") as f:
+                f.write(blob)
+            break
+        except FileExistsError:
+            continue
+        except OSError as e:
+            return _bad(T("图片写不进去：{e}", e=e))
+    else:
+        return _bad(T("图片写不进去：{e}", e="exists"))
     # 返回相对这份 md 的路径，前端照原样写进 markdown，渲染时按 md 所在目录解
     return {"ok": True, "相对路径": f"{IMG_SUB}/{name}", "字节": len(blob)}
 

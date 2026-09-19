@@ -104,6 +104,7 @@
 #import <AppKit/AppKit.h>
 #import <WebKit/WebKit.h>
 #import <CommonCrypto/CommonDigest.h>
+#import <objc/message.h>
 #import <signal.h>
 #import <stdlib.h>
 #import <unistd.h>
@@ -1112,9 +1113,18 @@ static void applySeamlessChrome(NSWindow *window) {
 /// Esc 转给门户。壳自己不处理 Esc 的语义（关面板 / 关浮层 / 退编辑 / 关预览 的优先级
 /// 全在门户里），只负责把键送过去。
 @property (nonatomic, copy) void (^onEscape)(void);
+/// ⌘V / 菜单粘贴进 WKWebView 之前先拍一版系统剪贴板。WebKit 随后可能改写
+/// public.html（剥掉 <img> / data URI），clipPeek 必须读这一拍，不能再读现场。
+@property (nonatomic, copy) void (^onPasteSnap)(void);
 @end
 
 @implementation PortalWebView
+
+- (void)paste:(id)sender {
+    if (self.onPasteSnap) self.onPasteSnap();
+    struct objc_super s = { self, [WKWebView class] };
+    ((void (*)(struct objc_super *, SEL, id))objc_msgSendSuper)(&s, @selector(paste:), sender);
+}
 
 /// WKWebView 默认右键菜单里有「重新载入 / 后退 / 前进」，门户是单页应用，这几项
 /// 点了只会把状态弄乱。留下拷贝、查找、检查元素这些有用的。
@@ -1278,6 +1288,10 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
     /// 两类窗靠 window.identifier 分（amn.solo / amn.browser）：⌘W 和 Esc 语义不同。
     NSMutableArray<WKWebView *> *_soloWebs;
     NSMutableArray<NSWindow *>  *_soloWins;
+
+    /// 粘贴那一拍拍下的剪贴板。clipPeek 优先用它，避免 WebKit 改写 HTML。
+    NSDictionary   *_clipSnap;
+    NSTimeInterval  _clipSnapAt;
 }
 
 // MARK: 启动
@@ -1664,6 +1678,7 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
     if (@available(macOS 13.3, *)) { w.inspectable = YES; }  // 调门户要用 Safari 检查器
     __weak typeof(self) weakSelf = self;
     w.onEscape = ^{ [weakSelf amn:@"escape" args:nil]; };
+    [self attachPasteSnap:w];
 
     [_win.contentView addSubview:w positioned:NSWindowBelow relativeTo:_findBar];
     _web = w;
@@ -1684,6 +1699,7 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
     _web.navigationDelegate = nil;
     _web.UIDelegate = nil;
     _web.onEscape = nil;
+    _web.onPasteSnap = nil;
     // 独立文稿窗口跟主窗口共用同一个 userContentController（WebKit 要求新窗口用
     // 传进来的那份 configuration）。主窗口关了但还有独立窗口开着时不能摘 handler，
     // 摘了那几个窗口的标题和脏点就不再更新。
@@ -1871,7 +1887,11 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
             [w stopLoading];
             w.navigationDelegate = nil;
             w.UIDelegate = nil;
-            if ([w isKindOfClass:PortalWebView.class]) ((PortalWebView *)w).onEscape = nil;
+            if ([w isKindOfClass:PortalWebView.class]) {
+                PortalWebView *pw = (PortalWebView *)w;
+                pw.onEscape = nil;
+                pw.onPasteSnap = nil;
+            }
             [w removeFromSuperview];
             [_soloWebs removeObject:w];
         }
@@ -2493,7 +2513,8 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
 
 /// 飞书／网页那种图文剪贴板：WKWebView 的 clipboardData 常常只给纯文本，
 /// 图在 public.html 的 <img> 里，或者另放成 PNG/TIFF / 文件。粘贴时门户
-/// 发 clipPeek，这里把 HTML、本地文件路径、位图（base64）一次性回给它。
+/// 发 clipPeek，这里把 HTML、本地文件路径一次性回给它。
+/// 位图写成临时文件，不走 base64——evaluateJavaScript 塞几 MB 会静默失败。
 static NSString *AMNImgKind(NSData *data) {
     if (data.length < 12) return nil;
     const unsigned char *b = data.bytes;
@@ -2517,21 +2538,103 @@ static NSData *AMNPngFromImageData(NSData *data) {
     return [rep representationUsingType:NSBitmapImageFileTypePNG properties:@{}];
 }
 
+static NSString *AMNClipDir(void) {
+    static NSString *dir;
+    static dispatch_once_t once;
+    dispatch_once(&once, ^{
+        dir = [NSTemporaryDirectory() stringByAppendingPathComponent:
+               [NSString stringWithFormat:@"amnote-clip-%d", getpid()]];
+    });
+    return dir;
+}
+
+static int gClipSeq = 0;
+
+static void AMNResetClipDir(void) {
+    NSString *dir = AMNClipDir();
+    NSFileManager *fm = NSFileManager.defaultManager;
+    [fm removeItemAtPath:dir error:nil];
+    [fm createDirectoryAtPath:dir withIntermediateDirectories:YES attributes:nil error:nil];
+    gClipSeq = 0;
+}
+
+static NSString *AMNWriteClipImg(NSData *data) {
+    if (!data.length || data.length > 12u * 1000u * 1000u) return nil;
+    NSData *out = AMNPngFromImageData(data);
+    if (!out.length || out.length > 12u * 1000u * 1000u) return nil;
+    NSString *kind = AMNImgKind(out) ?: @"png";
+    NSString *name = [NSString stringWithFormat:@"%03d.%@", ++gClipSeq, kind];
+    NSString *path = [AMNClipDir() stringByAppendingPathComponent:name];
+    if (![out writeToFile:path atomically:YES]) return nil;
+    return path;
+}
+
+static NSString *AMNRewriteDataURIs(NSString *html, NSMutableArray *outFiles) {
+    if (!html.length) return html;
+    NSRegularExpression *re = [NSRegularExpression regularExpressionWithPattern:
+        @"src\\s*=\\s*(['\"])(data:image/(?:png|jpe?g|gif|webp);base64,([A-Za-z0-9+/=\\r\\n]+))\\1"
+        options:NSRegularExpressionCaseInsensitive error:nil];
+    if (!re) return html;
+    NSArray *ms = [re matchesInString:html options:0 range:NSMakeRange(0, html.length)];
+    if (!ms.count) return html;
+    NSMutableString *out = [html mutableCopy];
+    NSMutableArray *written = [NSMutableArray array];
+    for (NSTextCheckingResult *m in ms.reverseObjectEnumerator) {
+        if (m.numberOfRanges < 4) continue;
+        NSString *b64 = [html substringWithRange:[m rangeAtIndex:3]];
+        NSString *compact = [[b64 componentsSeparatedByCharactersInSet:
+            NSCharacterSet.whitespaceAndNewlineCharacterSet] componentsJoinedByString:@""];
+        NSData *raw = [[NSData alloc] initWithBase64EncodedString:compact options:0];
+        NSString *path = AMNWriteClipImg(raw);
+        if (!path.length) continue;
+        [written addObject:path];
+        NSString *fileURL = [NSURL fileURLWithPath:path].absoluteString;
+        [out replaceCharactersInRange:[m rangeAtIndex:2] withString:fileURL];
+    }
+    if (outFiles) {
+        for (NSString *path in written.reverseObjectEnumerator) [outFiles addObject:path];
+    }
+    return out;
+}
+
+- (void)attachPasteSnap:(PortalWebView *)w {
+    if (!w) return;
+    __weak typeof(self) weakSelf = self;
+    w.onPasteSnap = ^{ [weakSelf snapshotPasteboard]; };
+}
+
+- (void)snapshotPasteboard {
+    _clipSnap = [self clipboardRich];
+    _clipSnapAt = NSProcessInfo.processInfo.systemUptime;
+}
+
+- (NSDictionary *)clipboardPeekPayload {
+    if (_clipSnap && (NSProcessInfo.processInfo.systemUptime - _clipSnapAt) < 8.0)
+        return _clipSnap;
+    return [self clipboardRich];
+}
+
 - (void)clipPeek:(NSDictionary *)m from:(WKWebView *)web {
     if (!web) return;
     NSString *rid = [m[@"id"] isKindOfClass:NSString.class] ? m[@"id"] : nil;
     if (!rid.length) return;
-    [self amnOn:web fn:@"clipPeekReply" args:@[rid, [self clipboardRich]]];
+    [self amnOn:web fn:@"clipPeekReply" args:@[rid, [self clipboardPeekPayload]]];
 }
 
 - (NSDictionary *)clipboardRich {
     NSPasteboard *pb = NSPasteboard.generalPasteboard;
+    AMNResetClipDir();
     NSString *html = [pb stringForType:NSPasteboardTypeHTML] ?: @"";
     NSString *text = [pb stringForType:NSPasteboardTypeString] ?: @"";
+    NSMutableArray *dataFiles = [NSMutableArray array];
+    html = AMNRewriteDataURIs(html, dataFiles);
     // 飞书整段 data URI 能把 HTML 撑到好几 MB，evaluateJavaScript 会卡住。
-    // 那种情况位图已经在 images 里，JS 自己的 clipboardData 也还有一份 HTML。
-    if (html.length > 800000) html = @"";
+    // 抽成临时文件之后还这么长，就丢掉 HTML，把抽出来的文件交给 files。
     NSMutableArray *files = [NSMutableArray array];
+    if (html.length > 800000) {
+        html = @"";
+        [files addObjectsFromArray:dataFiles];
+    }
     NSMutableArray *images = [NSMutableArray array];
     NSMutableSet *seen = [NSMutableSet set];
     const NSUInteger cap = 12u * 1000u * 1000u;
@@ -2550,14 +2653,14 @@ static NSData *AMNPngFromImageData(NSData *data) {
     }
 
     void (^addImg)(NSData *) = ^(NSData *data) {
-        if (!data.length || data.length > cap || images.count >= 8) return;
+        if (!data.length || data.length > cap || files.count >= 8) return;
         NSString *fp = [NSString stringWithFormat:@"%lu:%lu",
                         (unsigned long)data.length, (unsigned long)data.hash];
         if ([seen containsObject:fp]) return;
-        NSData *out = AMNPngFromImageData(data);
-        if (!out.length || out.length > cap) return;
+        NSString *path = AMNWriteClipImg(data);
+        if (!path.length) return;
         [seen addObject:fp];
-        [images addObject:[out base64EncodedStringWithOptions:0]];
+        [files addObject:path];
     };
 
     NSArray *items = pb.pasteboardItems ?: @[];
@@ -2569,19 +2672,22 @@ static NSData *AMNPngFromImageData(NSData *data) {
                     || [types containsObject:@"public.html"];
         [(hasHtml ? htmlItems : otherItems) addObject:item];
     }
+    NSUInteger filesBefore = files.count;
     void (^harvest)(NSArray *) = ^(NSArray *list) {
         for (NSPasteboardItem *item in list) {
             NSData *png = [item dataForType:NSPasteboardTypePNG];
             if (png) { addImg(png); continue; }
             NSData *jpeg = [item dataForType:@"public.jpeg"];
             if (jpeg) { addImg(jpeg); continue; }
+            NSData *gif = [item dataForType:@"public.gif"];
+            if (gif) { addImg(gif); continue; }
             NSData *tiff = [item dataForType:NSPasteboardTypeTIFF];
             if (tiff) addImg(tiff);
         }
     };
     harvest(otherItems);
-    if (images.count == 0) harvest(htmlItems);
-    if (images.count == 0) {
+    if (files.count == filesBefore) harvest(htmlItems);
+    if (files.count == filesBefore) {
         NSData *png = [pb dataForType:NSPasteboardTypePNG];
         if (png) addImg(png);
         else {
@@ -3971,6 +4077,7 @@ static BOOL isBenignNavError(NSError *e) {
     __weak NSWindow *weakWin = win;
     // 独立窗口里 Esc 没有别的语义（没有列表可退回、没有面板可关），就是关掉它
     web.onEscape = ^{ [weakWin performClose:nil]; };
+    [self attachPasteSnap:web];
 
     [content addSubview:web];
     [_soloWebs addObject:web];
@@ -4028,6 +4135,7 @@ static BOOL isBenignNavError(NSError *e) {
     __weak typeof(self) weakSelf = self;
     // 跟主窗一样：Esc 交给网页自己的浮层 / 编辑链，不能把整窗关掉。
     web.onEscape = ^{ [weakSelf amn:@"escape" args:nil]; };
+    [self attachPasteSnap:web];
 
     [content addSubview:web];
     [_soloWebs addObject:web];

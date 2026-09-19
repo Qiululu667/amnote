@@ -246,6 +246,8 @@ NATIVE_SRC = "app_shell.m"
 # kChromeH 52→90；显示菜单去掉书签栏，⌘L 改名「搜索」。
 # 5.2.0 = 浏览器壳界面：地址栏搜库、书签栏是顶层文件夹、新标签是随手记。
 # 5.1.1 = 云朵便签图标（20260904）。母版 src/icon-master-1024.png。
+# 5.13.5 = 飞书聊天复制：图是 native-resource:// + AES-GCM，不是普通 https。
+# 5.13.4 = HTTPS 图改走钥匙串 TLS；粘贴前拍系统剪贴板；位图走临时文件。
 # 5.13.3 = 首启 Welcome 占位根被 support-dir 校验拒掉，新装窗口出不来。
 # 5.13.2 = 飞书 Mac 复制经常只有 PNG：WKWebView 拿不到 files 时改读原生剪贴板。
 # 5.13.1 = 聊天图文混贴：飞书/网页复制带图的消息，图落到 _图/，文字按原顺序留下。
@@ -253,7 +255,7 @@ NATIVE_SRC = "app_shell.m"
 # （20260903）。有 digest 核 sha256，解开后核对 bundle id。
 # 5.0.0 = 开源首发。
 # 版本号是唯一能在「关于 AM·Note」里看出来跑的是新壳还是旧壳的地方，改了壳就要动它。
-NATIVE_VERSION = ("5.13.3", "43")
+NATIVE_VERSION = ("5.13.5", "45")
 MIN_MACOS = "12.0"
 
 
