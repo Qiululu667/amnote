@@ -3464,6 +3464,123 @@ function joinLines(arr){
 /* 列表项 ─ 缩进、有序无序、序号、正文 */
 const LIRE = /^(\s*)([-*+]|(\d+)[.)])\s+(.*)$/;
 
+/* 这些字符写在正文里会被渲染器认成标记。存盘时如果屏幕上就是这几个字
+   （不是工具栏加出来的加粗／斜体），把它换成数字实体再写回，渲染时换回来。
+   不用反斜杠：库里的笔记本来就有 \* 、\| 这种字面写法，认了反斜杠会改掉它们。
+   实体只在「这段文字再渲染会变样」时才加上，普通句子一个都不加。 */
+const MD_ENT = {'`':'&#96;','*':'&#42;','~':'&#126;','[':'&#91;',']':'&#93;','<':'&#60;','>':'&#62;'};
+const MD_ENT_REV = {'96':'`','42':'*','126':'~','91':'[','93':']','60':'<','62':'>','41':')'};
+
+/* 表格里的竖线会把一格拆成两格。只在切表格行时把 \| 当成「这一格里的竖线」，
+   正文里的反斜杠一律不动。 */
+function splitRow(r){
+  let s = String(r||'').trim();
+  if(s.charAt(0)==='|') s = s.slice(1);
+  if(s.charAt(s.length-1)==='|' && s.charAt(s.length-2)!=='\\') s = s.slice(0,-1);
+  const cells = [];
+  let cur = '';
+  for(let i=0;i<s.length;i++){
+    if(s.charAt(i)==='\\' && s.charAt(i+1)==='|'){ cur += '|'; i++; continue; }
+    if(s.charAt(i)==='|'){ cells.push(cur.trim()); cur = ''; continue; }
+    cur += s.charAt(i);
+  }
+  cells.push(cur.trim());
+  return cells;
+}
+
+/* 段落若整行长得像标题、列表、引用、分隔线、代码围栏，写回去会被当成那种块。
+   行首加一个零宽空格当记号，渲染时剥掉，屏幕上仍是原来那一行字。 */
+function isStructLine(line){
+  const s = String(line||'');
+  return /^(#{1,6})\s/.test(s)
+    || /^>/.test(s)
+    || /^```/.test(s)
+    || /^([-*_])\s*\1\s*\1[\s\-*_]*$/.test(s)
+    || LIRE.test(s);
+}
+function unguardLine(line){
+  if(!line || line.charAt(0)!=='\u200b') return null;
+  const rest = line.slice(1);
+  return isStructLine(rest) ? rest : null;
+}
+
+/* <strong data-amn="1"> 是写回时兜底用的，只包「普通标记拼不回去」的加粗／斜体／删除线／代码。
+   用户打出同样一串会被 protectPlain 换成实体，进不到这里。 */
+function takeAmn(s, amn){
+  let out = '', i = 0;
+  while(i<s.length){
+    if(s.charAt(i)!=='<'){ out += s.charAt(i); i++; continue; }
+    const m = /^<(strong|em|del|code) data-amn="1">/i.exec(s.slice(i));
+    if(!m){ out += s.charAt(i); i++; continue; }
+    const tag = m[1].toLowerCase();
+    const openLen = m[0].length;
+    const close = '</' + tag + '>';
+    let depth = 1, j = i + openLen;
+    while(j<s.length && depth>0){
+      const rest = s.slice(j);
+      if(rest.toLowerCase().startsWith('<'+tag+' data-amn="1">')){
+        depth++; j += openLen; continue;
+      }
+      if(rest.toLowerCase().startsWith(close)){
+        depth--;
+        if(depth===0) break;
+        j += close.length; continue;
+      }
+      j++;
+    }
+    if(depth!==0){ out += s.charAt(i); i++; continue; }
+    out += '\uE002' + (amn.push({tag:tag, inner:s.slice(i+openLen, j)}) - 1) + '\uE002';
+    i = j + close.length;
+  }
+  return out;
+}
+
+/* 行内。base 是这份 md 所在目录，图片和链接靠它解相对路径。 */
+function inl(t, base){
+  const lit = [], amn = [], code = [];
+  let s = String(t==null?'':t).replace(/[\uE000\uE001\uE002]/g,'');
+  s = takeAmn(s, amn);
+  s = s.replace(/&#(96|42|126|91|93|60|62|41);/g, (m,n)=>
+    '\uE001' + (lit.push(MD_ENT_REV[n]) - 1) + '\uE001');
+  s = esc(s)
+    .replace(/`([^`]+)`/g, (m,c)=>'\uE000'+(code.push(c)-1)+'\uE000')
+    .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (m,a,u)=>{
+      const src = resolveRef(u, base, true);
+      return src ? `<img src="${esc(src)}" alt="${a}" title="${a}" data-u="${u}">`
+                 : `<span class="imgbad">${esc(TR('图片地址不合法：{u}', {u:a||u}))}</span>`;
+    })
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (m,a,u)=>
+      `<a href="${esc(resolveRef(u,base,false))}" data-u="${u}" target="_blank" rel="noopener">${a}</a>`)
+    .replace(/\[\[([^\[\]\n]{1,80})\]\]/g, (m,n)=>`<a class="wl" data-wl="${n}">${n}</a>`)
+    .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
+    .replace(/~~([^~]+)~~/g, '<del>$1</del>')
+    .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
+    .replace(/&lt;br\s*\/?&gt;/gi, '<br>')
+    .replace(/\uE002(\d+)\uE002/g, (m,n)=>{
+      const a = amn[+n];
+      if(!a) return '';
+      if(a.tag==='code'){
+        const raw = a.inner.replace(/&#38;/g,'&').replace(/&#60;/g,'<').replace(/&#62;/g,'>');
+        return `<code>${esc(raw)}</code>`;
+      }
+      return `<${a.tag}>${inl(a.inner, base)}</${a.tag}>`;
+    })
+    .replace(/\uE000(\d+)\uE000/g, (m,n)=>`<code>${code[+n]||''}</code>`)
+    .replace(/\uE001(\d+)\uE001/g, (m,n)=>esc(lit[+n]||''));
+  return s;
+}
+
+/* 这段纯文字再渲染会不会变样。会，就把会认的字符换成实体。
+   <br>、*重点*、`代码`、[文字](地址) 打在正文里都走这里，看起来还是打进去的那几个字。 */
+function protectPlain(s, force){
+  s = String(s==null?'':s);
+  if(!s) return '';
+  const danger = /<[A-Za-z/!]/.test(s);
+  if(!force && !danger && !/[`*~\[\]<>]/.test(s)) return s;
+  if(!force && !danger && inl(s, '')===esc(s)) return s;
+  return s.replace(/[`*~\[\]<>]/g, ch=>MD_ENT[ch]||ch);
+}
+
 /* off0 不给＝整篇渲染，自己剥 frontmatter 算偏移；
    给了＝只渲染中间的一段（收起编辑框时用），偏移由调用方按绝对行号给。
    一段里不可能含 frontmatter：标签块从来不参与渲染，也就没有 data-l0 落在它身上。 */
@@ -3480,39 +3597,10 @@ function md2html(src, base, off0){
       src = src.slice(cut);
     }
   }
-  /* 行内代码先抽成占位符，跑完图片／链接／加粗／斜体再还原成 <code>。
-     以前是就地换成 <code>、图片和链接的正则排在后面，于是行内代码里举例写的
-     `![](图示/x.svg)` 会被当成真图片渲染：正文冒出一行「图片没找到」，控制台刷一串 404。
-     占位符里不能出现 ` [ ] ( ) * 这些后面几条正则要认的字符，否则轮到它自己被改。
-     用私用区的 \uE000：MD 正文里不会有，且写成转义序列还是写成字符都等价，
-     不像 \u0000 落成真字节会被 HTML 解析器吞掉。进来先清掉源文里的 \uE000，杜绝撞号。 */
-  const inl = t => {
-    const code = [];
-    return esc(t).replace(/\uE000/g,'')
-    .replace(/`([^`]+)`/g,(m,c)=>'\uE000'+(code.push(c)-1)+'\uE000')
-    .replace(/!\[([^\]]*)\]\(([^)]+)\)/g,(m,a,u)=>{
-      // data-u 记的是源码里原来写的那串地址。渲染时地址被解成了库根下的绝对路径
-      // （不解图片出不来），而写回文件要的是原来那一串；没有它，改一段带图带链接的
-      // 正文就会把相对路径换成一长条绝对路径，文件一搬位置就全断。
-      const s=resolveRef(u,base,true);
-      // 不加 loading="lazy"。库里的图示是 width="100%" 的 SVG，没有固有尺寸，
-      // 渲染出来是 0×0；0×0 永远不进视口，lazy 就永远不去加载，死锁（20260817 实测）。
-      return s ? `<img src="${esc(s)}" alt="${a}" title="${a}" data-u="${u}">`
-               : `<span class="imgbad">${esc(TR('图片地址不合法：{u}', {u:a||u}))}</span>`;
-    })
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g,(m,a,u)=>
-      `<a href="${esc(resolveRef(u,base,false))}" data-u="${u}" target="_blank" rel="noopener">${a}</a>`)
-    /* [[题名]]（v15）：按标题或文件名指库内那一份，点了才解析（openWiki）。
-       写回时 inlMd 的 A 分支认 data-wl，原样还原成 [[题名]]，不过反解。 */
-    .replace(/\[\[([^\[\]\n]{1,80})\]\]/g,(m,n)=>`<a class="wl" data-wl="${n}">${n}</a>`)
-    .replace(/\*\*([^*]+)\*\*/g,'<strong>$1</strong>')
-    .replace(/~~([^~]+)~~/g,'<del>$1</del>')
-    .replace(/(^|[^*])\*([^*\n]+)\*/g,'$1<em>$2</em>')
-    /* 只放行 <br> 这一个标签。库里的表格靠它在格子里换行，以前原样显示成
-       「<br>」四个字（README「还没做的」里记着的老问题）。其余裸 HTML 仍当文字。 */
-    .replace(/&lt;br\s*\/?&gt;/gi,'<br>')
-    .replace(/\uE000(\d+)\uE000/g,(m,n)=>`<code>${code[n]}</code>`);
-  };
+  /* 行内规则在 inl()。这里绑上这份文档的目录，图片和链接的相对路径才解得对。
+     data-u 记源码里原来那串地址：渲染时要解成库根下的路径图才出得来，
+     写回文件要的是原来那一串，不然一改正文相对路径就变成绝对路径。 */
+  const inlB = s => inl(s, base);
 
   const L = src.split('\n'), o=[]; let i=0;
   // 每个块挂上它在原文里的行号区间。块级就地编辑靠这个把改动切回去，
@@ -3534,7 +3622,7 @@ function md2html(src, base, off0){
       continue;
     }
     if(/^\s*\|/.test(l) && i+1<L.length && /^\s*\|[\s:\-|]+\|\s*$/.test(L[i+1])){
-      const cs=r=>r.trim().replace(/^\||\|$/g,'').split('|').map(c=>c.trim());
+      const cs=splitRow;
       const hd=cs(l);
       // 对齐位记进 data-al。库里 1800 多份带表，右对齐（---:）用得很多，
       // 丢了它，改一格数字整张表就从右对齐塌回左对齐
@@ -3546,10 +3634,15 @@ function md2html(src, base, off0){
       i+=2; const rs=[];
       while(i<L.length&&/^\s*\|/.test(L[i])){rs.push(cs(L[i]));i++}
       push(`<div class="tw"><table data-al="${esc(al.join(','))}"><thead><tr>`
-        +hd.map((c,n)=>`<th${sty(n)}>${inl(c)}</th>`).join('')
-        +'</tr></thead><tbody>'+rs.map(r=>'<tr>'+r.map((c,n)=>`<td${sty(n)}>${inl(c)}</td>`).join('')+'</tr>').join('')
+        +hd.map((c,n)=>`<th${sty(n)}>${inlB(c)}</th>`).join('')
+        +'</tr></thead><tbody>'+rs.map(r=>'<tr>'+r.map((c,n)=>`<td${sty(n)}>${inlB(c)}</td>`).join('')+'</tr>').join('')
         +'</tbody></table></div>', s0, i-1);
       continue;
+    }
+    /* 以竖线开头、下一行又不是分隔行：不是表。以前段落收集器见竖线就停，
+       这一行接着被跳过，整行从正文里消失，改一个字就过不了存盘自检。 */
+    if(/^\s*\|/.test(l)){
+      push(`<p>${inlB(l.trim())}</p>`, s0, i); i++; continue;
     }
     const h=l.match(/^(#{1,6})\s+(.*)$/);
     // 标题 id 走一个只增不减、跨渲染不重置的全局号。
@@ -3558,11 +3651,12 @@ function md2html(src, base, off0){
     // 撞号之后篇内目录会跳到另一个标题上。篇内目录每次都从实时 DOM 重建，
     // 所以 id 只要此刻唯一就够，不需要跨渲染稳定。
     if(h){const n=h[1].length; const id='h'+(++HID);
-      push(`<h${n} id="${id}">${inl(h[2])}</h${n}>`, s0, i); i++; continue}
+      push(`<h${n} id="${id}">${inlB(h[2])}</h${n}>`, s0, i); i++; continue}
     if(/^\s*([-*_])\s*\1\s*\1[\s\-*_]*$/.test(l)){push('<hr>', s0, i); i++; continue}
     if(/^\s*>/.test(l)){const b=[];
       while(i<L.length&&/^\s*>/.test(L[i])){b.push(L[i].replace(/^\s*>\s?/,''));i++}
-      push('<blockquote>'+b.filter(Boolean).map(x=>`<p>${inl(x)}</p>`).join('')+'</blockquote>', s0, i-1);continue}
+      // 空的「>」行留着。滤掉的话，引用里空一行再存，自检会对不上，整段卡住。
+      push('<blockquote>'+b.map(x=>`<p>${inlB(x)}</p>`).join('')+'</blockquote>', s0, i-1);continue}
     // 列表。以前是把连续的列表行拉平成一层，源码里的缩进全丢；现在按缩进建层级，
     // 顺带认 - [ ] / - [x] 勾选框。一个 li 只吃一行——库里没有续行写法，
     // 吃续行会让行号对不回原文。
@@ -3573,14 +3667,17 @@ function md2html(src, base, off0){
         rows.push({ind:m[1].replace(/\t/g,'  ').length, ord:!!m[3], num:+m[3]||1, txt:m[4]});
         i++;
       }
-      push(listHtml(rows, inl, rows[0].ind), s0, i-1); continue;
+      push(listHtml(rows, inlB, rows[0].ind), s0, i-1); continue;
     }
     if(l.trim()){const b=[];
       while(i<L.length&&L[i].trim()
             &&!/^\s*(\||#{1,6}\s|>|```)/.test(L[i])
             &&!LIRE.test(L[i])
-            &&!/^\s*([-*_])\s*\1\s*\1[\s\-*_]*$/.test(L[i])){b.push(L[i].trim());i++}
-      if(b.length) push(`<p>${inl(joinLines(b))}</p>`, s0, i-1); else i++;
+            &&!/^\s*([-*_])\s*\1\s*\1[\s\-*_]*$/.test(L[i])){
+        const u=unguardLine(L[i]);
+        b.push((u===null?L[i]:u).trim()); i++;
+      }
+      if(b.length) push(`<p>${inlB(joinLines(b))}</p>`, s0, i-1); else i++;
       continue}
     i++;
   }
@@ -3630,38 +3727,91 @@ function listHtml(rows, inl, base){
      ② 没动过的块不反解，原样抄源码字节（见 serializeBody 的 registry）；
      ③ 存盘前再自检一次（verifyDirty），改出歧义会先拦一次。 */
 
-function inlMd(node){
+function codeMd(text){
+  text = String(text==null?'':text);
+  // 空的，或者里面自己就有反引号：单反引号包不住，用标记兜住，里面不再当 markdown 解析。
+  if(!text || text.includes('`')){
+    const body = text.replace(/&/g,'&#38;').replace(/</g,'&#60;').replace(/>/g,'&#62;');
+    return '<code data-amn="1">' + body + '</code>';
+  }
+  return '`' + text + '`';
+}
+function inlineIs(md, tag){
+  const html = inl(md, '');
+  const box = document.createElement('div');
+  box.innerHTML = html;
+  if(box.childNodes.length!==1) return false;
+  const n = box.firstChild;
+  return n.nodeType===1 && n.tagName===String(tag).toUpperCase();
+}
+/* 加粗套斜体这类，单靠 ** 和 * 拼出来再渲染对不回原来的标签。
+   对得上就写 markdown；对不上就用 data-amn 包一层，打开时还是原来的样子。 */
+function markWrap(node, open, close, tag, opt){
+  const inner = inlMd(node, opt);
+  // 只有空白：* * 这种会被渲染成空的斜体，trim 掉标记再渲染就对不回去。
+  if(!String(inner).trim())
+    return '<' + tag + ' data-amn="1">' + inner + '</' + tag + '>';
+  const md = open + inner + close;
+  if(inlineIs(md, tag)) return md;
+  return '<' + tag + ' data-amn="1">' + inner + '</' + tag + '>';
+}
+function inlMd(node, opt){
+  opt = opt || {};
   let out = '';
   node.childNodes.forEach(n => {
-    if(n.nodeType === 3){ out += n.nodeValue; return; }
+    if(n.nodeType === 3){
+      let s = protectPlain(n.nodeValue, opt.force);
+      if(opt.table) s = s.replace(/\|/g, '\\|');
+      out += s;
+      return;
+    }
     if(n.nodeType !== 1) return;
     const t = n.tagName;
     if(t === 'BR'){ out += '<br>'; return; }
-    if(t === 'IMG'){ out += `![${n.getAttribute('alt')||''}](${n.dataset.u || n.getAttribute('src') || ''})`; return; }
+    if(t === 'IMG'){
+      const alt = (n.getAttribute('alt')||'').replace(/\]/g,'&#93;');
+      out += `![${alt}](${n.dataset.u || n.getAttribute('src') || ''})`;
+      return;
+    }
     if(t === 'A'){
       // [[题名]] 原样写回，别把它降级成普通链接——那会把「按名找」变成死路径
       if(n.dataset.wl!==undefined){ out += `[[${n.dataset.wl}]]`; return; }
-      out += `[${inlMd(n)}](${n.dataset.u || n.getAttribute('href') || ''})`; return; }
-    if(t === 'CODE'){ out += '`' + n.textContent + '`'; return; }
-    if(t === 'STRONG' || t === 'B'){ const s=inlMd(n); out += s.trim()?'**'+s+'**':s; return; }
-    if(t === 'EM' || t === 'I'){ const s=inlMd(n); out += s.trim()?'*'+s+'*':s; return; }
-    if(t === 'DEL' || t === 'S' || t === 'STRIKE'){ const s=inlMd(n); out += s.trim()?'~~'+s+'~~':s; return; }
+      let text = inlMd(n, opt).replace(/\]/g,'&#93;').replace(/\[/g,'&#91;');
+      const u = n.dataset.u || n.getAttribute('href') || '';
+      out += `[${text}](${String(u).replace(/\)/g,'&#41;')})`;
+      return;
+    }
+    if(t === 'CODE'){
+      // 格子里的代码若含竖线，得写成 \|，否则切表时会把这一格拆开。
+      let c = codeMd(n.textContent);
+      if(opt.table) c = c.replace(/\|/g, '\\|');
+      out += c;
+      return;
+    }
+    if(t === 'STRONG' || t === 'B'){ out += markWrap(n, '**', '**', 'strong', opt); return; }
+    if(t === 'EM' || t === 'I'){ out += markWrap(n, '*', '*', 'em', opt); return; }
+    if(t === 'DEL' || t === 'S' || t === 'STRIKE'){ out += markWrap(n, '~~', '~~', 'del', opt); return; }
     if(t === 'INPUT') return;                       // 勾选框在 liMd 里单独处理
-    out += inlMd(n);                                // span 之类的壳：只取里面的字
+    out += inlMd(n, opt);                           // span 之类的壳：只取里面的字
   });
   // 块末尾那个 <br> 不写出去。浏览器在空段落里塞它当光标位，显示上等于没有；
   // 写进文件就会在正文里留一串字面上的「<br>」。
   return out.replace(/(?:<br>)+$/, '');
 }
 
-function tableMd(tb){
+function tableMd(tb, opt){
   if(!tb) return '';
+  opt = opt || {};
   const al = (tb.dataset.al || '').split(',');
-  const rows = [...tb.rows].map(r => [...r.cells].map(c => inlMd(c).trim()));
+  const cellOpt = {table:true, force:!!opt.force};
+  const rows = Array.from(tb.querySelectorAll('tr')).map(r =>
+    Array.from(r.children).filter(c => c.tagName==='TD' || c.tagName==='TH').map(c => inlMd(c, cellOpt).trim()));
   if(!rows.length) return '';
-  const n = Math.max(...rows.map(r => r.length));
-  const fill = cs => cs.concat(Array(Math.max(0, n - cs.length)).fill(''));
-  const line = cs => '| ' + fill(cs).join(' | ') + ' |';
+  // 按每一行自己的格数写，不把短行补成空格。补了再渲染，表头会多出一串空列，
+  // 存盘自检对不上，格子里本来就有竖线的表整张存不进去。
+  // 分隔行保留原来的对齐位数：表头两格、分隔行三格这种不齐的表，缩掉一格再渲染会对不上。
+  const n = Math.max(rows[0].length, al.length || 0, 1);
+  const line = cs => '| ' + cs.join(' | ') + ' |';
   const sep = Array.from({length:n}, (_,k) => {
     const a = al[k] || '';
     return a==='center' ? ':---:' : a==='right' ? '---:' : a==='left' ? ':---' : '---';
@@ -3669,7 +3819,7 @@ function tableMd(tb){
   return [line(rows[0]), '| ' + sep.join(' | ') + ' |', ...rows.slice(1).map(line)].join('\n');
 }
 
-function listMd(list, ind){
+function listMd(list, ind, opt){
   const ord = list.tagName === 'OL';
   let n = +(list.getAttribute('start') || 1);
   const out = [];
@@ -3682,17 +3832,21 @@ function listMd(list, ind){
       if(c.tagName==='UL' || c.tagName==='OL' || c.tagName==='INPUT') c.remove();
     });
     const mark = ord ? (n++) + '.' : '-';
-    out.push(ind + mark + ' ' + (cb ? '[' + (cb.checked?'x':' ') + '] ' : '') + inlMd(clone).trim());
-    subs.forEach(s => out.push(listMd(s, ind + '  ')));
+    // 勾着没有，属性和 property 有一个算一个：解析出来的框有时只在属性上，
+    // 点一下又是 property 先翻。只认一边的话，存盘自检会对不上，整段存不进去。
+    const on = cb && (cb.checked || cb.hasAttribute('checked'));
+    out.push(ind + mark + ' ' + (cb ? '[' + (on?'x':' ') + '] ' : '') + inlMd(clone, opt).trim());
+    subs.forEach(s => out.push(listMd(s, ind + '  ', opt)));
   });
   return out.join('\n');
 }
 
 /* 一个顶层块 → markdown。返回的不带块与块之间的空行，那个由 serializeBody 管。 */
-function blkMd(el){
+function blkMdRaw(el, opt){
+  opt = opt || {};
   if(!el || el.nodeType !== 1) return '';
   const t = el.tagName;
-  if(/^H[1-6]$/.test(t)) return '#'.repeat(Math.min(6, +t[1])) + ' ' + inlMd(el).trim();
+  if(/^H[1-6]$/.test(t)) return '#'.repeat(Math.min(6, +t[1])) + ' ' + inlMd(el, opt).trim();
   if(t === 'HR') return '---';
   if(t === 'PRE'){
     const code = el.querySelector('code');
@@ -3701,19 +3855,43 @@ function blkMd(el){
   }
   if(t === 'BLOCKQUOTE'){
     const ps = [...el.children];
-    return (ps.length ? ps : [el]).map(c => '> ' + inlMd(c).trim()).join('\n');
+    return (ps.length ? ps : [el]).map(c => '> ' + inlMd(c, opt).trim()).join('\n');
   }
-  if(t === 'UL' || t === 'OL') return listMd(el, '');
-  if(t === 'TABLE') return tableMd(el);
-  if(t === 'DIV' && el.classList.contains('tw')) return tableMd(el.querySelector('table'));
+  if(t === 'UL' || t === 'OL') return listMd(el, '', opt);
+  if(t === 'TABLE') return tableMd(el, opt);
+  if(t === 'DIV' && el.classList.contains('tw')) return tableMd(el.querySelector('table'), opt);
   // 顶层裸 <img>。光标停在段首或段末时，浏览器的 insertHTML 会把图甩出段落、
   // 直接挂到正文根上（Chromium 和 WKWebView 都这样）。img 没有子节点，走下面那条
   // inlMd 会得到空串，序列化时被当空块丢掉——屏幕上看得见，存进文件就没了。
   // 正常路径由 settleImg 当场把它包回 <p>，这条是兜底：不让任何一条路静默丢图。
-  if(t === 'IMG')
-    return `![${el.getAttribute('alt')||''}](${el.dataset.u || el.getAttribute('src') || ''})`;
+  if(t === 'IMG'){
+    const alt = (el.getAttribute('alt')||'').replace(/\]/g,'&#93;');
+    return `![${alt}](${el.dataset.u || el.getAttribute('src') || ''})`;
+  }
   // P，以及浏览器在 contenteditable 里自己造出来的 DIV
-  return inlMd(el).trim();
+  return inlMd(el, opt).trim();
+}
+function guardPara(el, md){
+  if(!el || el.nodeType!==1 || !md) return md;
+  const t = el.tagName;
+  if(t!=='P' && !(t==='DIV' && !el.classList.contains('tw'))) return md;
+  return md.split('\n').map(line => isStructLine(line) ? '\u200b'+line : line).join('\n');
+}
+function htmlSame(el, md, base){
+  const box = document.createElement('div');
+  box.innerHTML = md2html(md, base||'', 0);
+  return box.children.length===1 && normHtml(box.innerHTML)===normHtml(el.outerHTML);
+}
+/* 段落整行若长得像另一种块，行首加零宽空格，避免存下去变成标题或列表。
+   第一遍按屏幕上的加粗斜体写；对不上再把纯文字里的标记字符换成实体。
+   排版按钮要的是去掉标记后的正文，走 blkMdRaw，不加这个记号。 */
+function blkMd(el, base){
+  const b = base || '';
+  const once = guardPara(el, blkMdRaw(el));
+  if(!el || htmlSame(el, once, b)) return once;
+  const twice = guardPara(el, blkMdRaw(el, {force:true}));
+  if(htmlSame(el, twice, b)) return twice;
+  return once;
 }
 
 /* 比两段 HTML 是不是同一个东西。行号、块号、脏标记、标题 id 都是运行时贴上去的，
@@ -3738,7 +3916,7 @@ function normHtml(h){
    只能点「改源码」按源码改——那是 v10 走的老路，不会有人被改坏。 */
 function safeBlock(el, base){
   try{
-    const md = blkMd(el);
+    const md = blkMd(el, base);
     if(!md.trim()) return false;
     const box = document.createElement('div');
     box.innerHTML = md2html(md, base, 0);
@@ -6772,7 +6950,7 @@ function serializeBody(t){
     if(el.nodeType!==1 || el.tagName==='TEXTAREA' || el.dataset.chrome) return;
     const bid=el.dataset.bid;
     const keep = bid!==undefined && reg.blocks[+bid] && !el.dataset.dirty;
-    const src = keep ? reg.blocks[+bid].src : blkMd(el).split('\n');
+    const src = keep ? reg.blocks[+bid].src : blkMd(el, dirOf(t.path)).split('\n');
     if(!src.join('').trim()) return;                  // 空块不写出去
     ent.push({bid: bid===undefined?null:+bid, src});
   });
@@ -7224,7 +7402,7 @@ const MARK={p:'', h1:'# ', h2:'## ', h3:'### ', h4:'#### ',
             h5:'##### ', h6:'###### ',
             quote:'> ', ul:'- ', ol:'1. ', task:'- [ ] '};
 
-const plainOf = el => blkMd(el)
+const plainOf = el => blkMdRaw(el)
   .replace(/^#{1,6}\s+/,'')
   .replace(/^>\s?/,'')
   .replace(/^([-*+]|\d+[.)])\s+/,'')
@@ -8552,7 +8730,7 @@ function verifyDirty(t){
   const md=paneOf(t).querySelector('.md'), base=dirOf(t.path), bad=[];
   [...md.children].forEach(el=>{
     if(el.nodeType!==1 || !el.dataset.dirty || el.hasAttribute('data-lock')) return;
-    const s=blkMd(el); if(!s.trim()) return;
+    const s=blkMd(el, base); if(!s.trim()) return;
     const box=document.createElement('div');
     box.innerHTML=md2html(s, base, 0);
     if(box.children.length!==1 || normHtml(box.innerHTML)!==normHtml(el.outerHTML))
@@ -11511,6 +11689,9 @@ function onbBoot(){
 }
 
 /* ═══ 起步 ═══════════════════════════════ */
+/* mdrt＝只跑写回自检，不拉库、不开轮询，无头浏览器才能把页面吐出来。 */
+const MDRT = /[?&]mdrt(?:[=&]|$)/.test(location.search);
+if(!MDRT){
 bootI18n();                 // 写死在 <body> 里的字，先按当前语言换掉
 if(EMBED){
   const t=makeTab(makeEntry('md', {path:EMBED.路径, title:EMBED.标题}));
@@ -11552,6 +11733,7 @@ applyST();
 applyPref();
 syncRel();
 onbBoot();
+}
 /* 上一轮在壳里换了语言：菜单已经重建过，但 AppKit 自带的那几项要下次启动才跟上。
    记号只消费一次，说完就抹掉。 */
 (function langSwitchedNote(){
@@ -11560,6 +11742,103 @@ onbBoot();
   if(f && SHELL) setTimeout(()=>notify(TR('系统菜单里的少数项目会在下次启动后换成新语言')), 900);
 })();
 post({type:'ready'});
+
+/* 地址栏带 mdrt 才跑：富文本写回 markdown 再渲染，必须还是屏幕上那一块。
+   平时一个断言都不执行。 */
+if(MDRT){
+  const rtBox = document.createElement('div');
+  function rtHtml(md){
+    rtBox.innerHTML = md2html(md, 'notes', 0);
+    return [...rtBox.children];
+  }
+  function blockOk(el){
+    const s = blkMd(el);
+    const back = document.createElement('div');
+    back.innerHTML = md2html(s, 'notes', 0);
+    const ok = back.children.length===1 && normHtml(back.innerHTML)===normHtml(el.outerHTML);
+    return {ok, s, a:normHtml(el.outerHTML), b:back.children.length===1?normHtml(back.innerHTML):('N='+back.children.length+' '+back.innerHTML)};
+  }
+  function rtMd(md){
+    const els = rtHtml(md);
+    if(els.length!==1) return {ok:false, md, s:'', a:'blocks='+els.length, b:els.map(e=>e.tagName).join(',')};
+    const r = blockOk(els[0]);
+    r.md = md;
+    return r;
+  }
+  function rtDom(html){
+    const box = document.createElement('div');
+    box.innerHTML = html;
+    const el = box.firstElementChild;
+    const r = blockOk(el);
+    r.md = html;
+    return r;
+  }
+  const fails = [];
+  const expect = (name, cond, detail) => { if(!cond) fails.push(name+(detail?': '+detail:'')); };
+  [
+    '# 标题','## 二级','普通一段','**加粗**','*斜体*','~~删除~~','`代码`',
+    '3*4=12','路径里的 \\* 号','- 一项','- [ ] 待办','- [x] 已办',
+    '1. 有序','> 引用','---',
+    '```js\nconst a=1;\n```',
+    '| 项目 | 备注 |\n| --- | ---: |\n| 甲 | 1 |\n| 乙 | 2 |',
+    '| 起\\|止 | 说明 |\n| --- | --- |\n| a\\|b | 还在一格 |',
+    '[[周会]]','[链接](https://example.com/a)','见 <br> 这里',
+    '一行\n接着一行',
+    '![](图示/a.png)',
+  ].forEach(md => { const r = rtMd(md); if(!r.ok) fails.push('md '+JSON.stringify(md).slice(0,80)+'\n  '+r.s+'\n  A '+r.a+'\n  B '+r.b); });
+  [
+    '<p>*重点*</p>','<p>**加粗**</p>','<p>3*4=12</p>','<p>a * b * c</p>',
+    '<p>`代码`</p>','<p>~~删~~</p>','<p>[文字](https://example.com)</p>',
+    '<p>未定稿 \\*</p>','<p>- 这不是列表</p>','<p># 这不是标题</p>',
+    '<p>&gt; 这不是引用</p>','<p>---</p>','<p>| 不是表格</p>',
+    '<p><strong>加粗</strong></p>','<p><em>斜体</em></p>','<p><strong><em>又粗又斜</em></strong></p>',
+    '<p><strong>前 <em>中</em> 后</strong></p>','<p><strong>甲</strong><em>乙</em></p>',
+    '<p><code>a*b</code></p>','<p><code>a`b</code></p>','<p><del>删</del></p>',
+    '<p><a href="https://example.com/a)b" data-u="https://example.com/a)b" target="_blank" rel="noopener">链</a></p>',
+  ].forEach(html => {
+    const box = document.createElement('div');
+    box.innerHTML = html;
+    const p = box.firstElementChild;
+    if(p && p.textContent==='<br>' || html==='<p><br></p>'){} 
+    const r = rtDom(html);
+    if(!r.ok) fails.push('dom '+html+'\n  '+r.s+'\n  A '+r.a+'\n  B '+r.b);
+  });
+  /* 打出来的 <br> 四个字要还是四个字，不能变成换行。 */
+  {
+    const p = document.createElement('p');
+    p.appendChild(document.createTextNode('<br>'));
+    const r = blockOk(p);
+    expect('literal br text', r.ok && r.b.indexOf('<br>')<0 && /&lt;br&gt;/.test(r.a||''), r.s+' || '+r.b);
+  }
+  /* 只有一个光标位的空段：不写进文件，自检也不该把它当成存不进去。 */
+  {
+    const p = document.createElement('p');
+    p.appendChild(document.createElement('br'));
+    expect('empty paragraph skipped', !blkMd(p, 'notes').trim());
+  }
+  /* 表格格子里的竖线留在这一格。 */
+  {
+    const html = '<div class="tw"><table data-al=","><thead><tr><th>项目</th><th>备注</th></tr></thead><tbody><tr><td>起|止</td><td>说明</td></tr></tbody></table></div>';
+    const r = rtDom(html);
+    expect('cell pipe', r.ok && r.s.includes('\\|') && !r.b.includes('</td><td>止'), r.s);
+  }
+  /* 老写法 \| 打开时应是一格里的竖线，不是从这里拆开。 */
+  {
+    const els = rtHtml('| 格式「起\\|止」 | 说明 |\n| --- | --- |\n| 甲 | 乙 |');
+    const cells = [...els[0].querySelectorAll('td,th')].map(c=>c.textContent);
+    expect('legacy escaped pipe', cells[0]==='格式「起|止」' && cells.length===4, cells.join(' / '));
+  }
+  /* 反斜杠星号仍是反斜杠星号，不当成转义。 */
+  {
+    const els = rtHtml('未定稿一律打 \\*');
+    expect('literal backslash star', els.length===1 && els[0].textContent==='未定稿一律打 \\*', els[0]&&els[0].textContent);
+  }
+  const pre = document.createElement('pre');
+  pre.id = 'mdrt-out';
+  pre.textContent = fails.length ? ('FAIL '+fails.length+'\n'+fails.join('\n---\n')) : 'OK';
+  document.body.appendChild(pre);
+  window.__mdrt = {ok:!fails.length, fails};
+}
 </script>
 </body>
 </html>
