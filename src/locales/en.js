@@ -168,6 +168,30 @@ window.AMN_I18N["en"] = {
   },
   "有冲突，先处理一下": "There's a conflict — sort it out first",
   "没存进去，改动还在": "Not saved; your changes are still here",
+  "源码框里改的还没收起 · 按 ⌘↩ 收起": "The source box has changes you haven't applied · press ⌘↩ to apply them",
+  "代码块还没收尾，补上一行 {fence} 再收起": "This code block isn't closed yet — add a line with {fence} before closing the box",
+  "放回原处会跟前后文连成一块，存下去跟现在看到的不一样，改一改再收起": "Put back in place, this would run into the text around it and be saved differently from what you see — adjust it before closing the box",
+  "没存上 · 点重试": "Not saved · retry",
+  "没存上：{why}": "Not saved: {why}",
+  "有一段按存下的样子重排了": "Tidied a paragraph to match what's saved",
+  "有一段的格式存不下，已按纯文字存好": "Couldn't keep a paragraph's formatting — saved it as plain text",
+  "代码块里放不了图": "Pictures can't go in a code block",
+  "有 {n} 处存不进，这篇的改动先没存，文件还是 {time} 存下的样子。": {
+    "one": "{n} block can't be saved, so this note's changes aren't saved yet. The file is still as saved at {time}.",
+    "other": "{n} blocks can't be saved, so this note's changes aren't saved yet. The file is still as saved at {time}."
+  },
+  "有 {n} 处存不进，这篇的改动先没存，文件还是打开时的样子。": {
+    "one": "{n} block can't be saved, so this note's changes aren't saved yet. The file is still as it was when you opened it.",
+    "other": "{n} blocks can't be saved, so this note's changes aren't saved yet. The file is still as it was when you opened it."
+  },
+  "没存进去的改动会丢掉，文件还是 {time} 存下的样子。": "Changes that weren't saved will be lost. The file stays as saved at {time}.",
+  "这份改动还没存进去，关掉就丢了；文件还是 {time} 存下的样子。": "These changes haven't been saved — closing loses them. The file stays as saved at {time}.",
+  "有 {n} 处改动存不进": {
+    "one": "{n} change can't be saved",
+    "other": "{n} changes can't be saved"
+  },
+  "切到源码后，这几处显示的是能存下来的样子，可能和你现在看到的排法不一样；之后以源码为准。": "In source view, these show as the version that can be saved, which may be laid out differently from what you see now. From then on, the source is what counts.",
+  "继续": "Continue",
   "已保存，继续阅读。": "Saved. Back to reading.",
   "已进入专注阅读 · 按 Esc 返回": "Focus mode on · press Esc to leave",
   "已回到浏览模式": "Focus mode off",
@@ -219,15 +243,6 @@ window.AMN_I18N["en"] = {
   "要放弃这次修改吗？": "Discard your changes?",
   "改过的内容会回到打开时的样子。": "The note goes back to the way it was when you opened it.",
   "放弃修改": "Discard Changes",
-  "有 {n} 块存下去会变样，仍然保存吗？": {
-    "one": "{n} block will look different once saved. Save anyway?",
-    "other": "{n} blocks will look different once saved. Save anyway?"
-  },
-  "多半是打了 markdown 会认的记号，比如表格格子里的竖线、落单的星号：": "Usually it's a character Markdown treats as markup — a pipe inside a table cell, a stray asterisk:",
-  "…还有 {n} 块": {
-    "one": "…and {n} more block",
-    "other": "…and {n} more blocks"
-  },
   "仍然保存": "Save Anyway",
   "这份在外部被改过了，仍然保存吗？": "This file changed outside AM·Note. Save anyway?",
   "外部那一版会被你这一版覆盖，覆盖前会先留档。": "Your version will replace the other one. A copy is archived first.",

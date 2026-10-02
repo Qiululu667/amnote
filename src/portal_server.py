@@ -1332,12 +1332,18 @@ def _rename_md(rel: str, new_rel: str):
         return rel, ""
     if os.path.dirname(new_rel) != os.path.dirname(rel):
         return rel, T("只能改文件名")
-    dest, err = _edit_full(new_rel, must_exist=False)
-    if err:
-        return rel, err
-    src, err = _edit_full(rel, must_exist=True)
-    if err:
-        return rel, err
+    # 判路径也可能抛的不是 OSError：新名字里有孤立代理项（标题切在 emoji 中间），
+    # realpath 抛 UnicodeEncodeError。冒到 do_POST 的兜底就成了「保存失败」——可正文
+    # 已经写进去了，前端拿着过期的「基于」再存，就跟自己冲突。改不成名就不改，正文照算存上。
+    try:
+        dest, err = _edit_full(new_rel, must_exist=False)
+        if err:
+            return rel, err
+        src, err = _edit_full(rel, must_exist=True)
+        if err:
+            return rel, err
+    except (OSError, ValueError) as e:            # UnicodeError 是 ValueError 的子类
+        return rel, T("改名失败：{e}", e=e)
     try:
         note_portal_write(new_rel)
         # 旧名字在下一趟同步里是一条 removed。不记这一笔就落成「删除／外部」——
@@ -1345,7 +1351,7 @@ def _rename_md(rel: str, new_rel: str):
         # 改名不动 mtime，所以走搬动表（note_portal_write 那张按 mtime 认领，对不上）。
         fulltext.note_portal_move(rel, agent=cur_agent())
         os.rename(src, dest)
-    except OSError as e:
+    except (OSError, ValueError) as e:
         fulltext.take_portal_move(rel)            # 没改成，把刚记的那笔收回来
         return rel, T("改名失败：{e}", e=e)
     return new_rel, ""

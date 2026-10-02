@@ -1517,6 +1517,15 @@ body.focus-mode .relpanel{opacity:0;pointer-events:none}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .md img{background:#f6f6f6;padding:6px}}
 .md .imgbad{display:inline-block;padding:2px 8px;border-radius:4px;
   background:var(--field);color:var(--t2);font-size:12px}
+/* 编辑态里取不到的图：图元素留着（存盘照原样写回 ![alt](地址)），画成一个虚线框。
+   按 alt 字收窄（inline-block、宽度自动），最小 120×32；不撑满整行。深色那两份 .md img 规则
+   （#f6f6f6 底、6px 内边距，特异性更高）会把它盖成一条亮色整宽条，下面两条同样特异性再盖回来（H 轮 §5） */
+.md img.imgmiss{display:inline-block;width:auto;max-width:100%;min-width:120px;min-height:32px;margin:6px 0;padding:0;
+  vertical-align:middle;border:1px dashed var(--t4);border-radius:6px;background:var(--field);color:var(--t3);font-size:12px}
+:root[data-theme="dark"] .md img.imgmiss{background:var(--field);padding:0}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]) .md img.imgmiss{background:var(--field);padding:0}}
+/* 「有 N 处存不进」点过去：那一块闪一下 */
+.md .stuckflash{outline:2px solid var(--folder);outline-offset:4px;border-radius:4px;transition:outline-color .6s}
 /* 长字符串折行。库里正文常带超长飞书 URL、长行内 code、以及「图片没找到：<长地址>」
    这一条提示，不折行的话正文栏自己会横滚（0829 D 路实测最大 453px）。
    用 anywhere 不用 break-word：只有 anywhere 会把 min-content 宽度也算进去，
@@ -2519,6 +2528,11 @@ const EMBED = window.__EMBED__ || null;
 const $ = s => document.querySelector(s);
 const $$ = s => [...document.querySelectorAll(s)];
 const esc = s => String(s==null?'':s).replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+/* 代码块里粘多行时换行的占位符（见 preInsert）：U+FDD0，Unicode 的非字符，只给程序内部用 */
+const PRE_PH='\uFDD0';
+const PRE_PH_RE=/\uFDD0/g;
+/* 围栏判定的缓存（见 tildeCloseMax）：放在文件靠前，渲染器在哪儿被调到都已经有了 */
+const TILDE_CLOSE=new WeakMap();
 
 /* ═══ 界面语言 ═══════════════════════════
    键＝简体中文源串本身（含 {占位符}）。译文在 /__i18n/en.js、/__i18n/zh-HK.js 里，
@@ -3461,15 +3475,21 @@ function joinLines(arr){
   return out;
 }
 
+/* 削掉首尾空白，但全角空格（U+3000）不削——段落的段首缩进「　　」是正文（CommonMark 同口径） */
+function trimKeepWide(s){ return String(s==null?'':s).replace(/^[^\S\u3000]+|[^\S\u3000]+$/g, ''); }
+
 /* 列表项 ─ 缩进、有序无序、序号、正文 */
 const LIRE = /^(\s*)([-*+]|(\d+)[.)])\s+(.*)$/;
 
 /* 这些字符写在正文里会被渲染器认成标记。存盘时如果屏幕上就是这几个字
    （不是工具栏加出来的加粗／斜体），把它换成数字实体再写回，渲染时换回来。
    不用反斜杠：库里的笔记本来就有 \* 、\| 这种字面写法，认了反斜杠会改掉它们。
-   实体只在「这段文字再渲染会变样」时才加上，普通句子一个都不加。 */
+   实体只在「这段文字再渲染会变样」时才加上，普通句子一个都不加。
+   &#38; 是字面的 &：正文里手打的「&#60;」这种实体文字，写回时把 & 换成它，
+   不然渲染器会把那串字解成 <（8c3770d 起这几个数字实体是认的），字就变了。
+   &#33; 是字面的 !：一个「!」后面紧跟着链接时写成它，不然「![字](地址)」成了图片。 */
 const MD_ENT = {'`':'&#96;','*':'&#42;','~':'&#126;','[':'&#91;',']':'&#93;','<':'&#60;','>':'&#62;'};
-const MD_ENT_REV = {'96':'`','42':'*','126':'~','91':'[','93':']','60':'<','62':'>','41':')'};
+const MD_ENT_REV = {'96':'`','42':'*','126':'~','91':'[','93':']','60':'<','62':'>','41':')','38':'&','33':'!'};
 
 /* 表格里的竖线会把一格拆成两格。只在切表格行时把 \| 当成「这一格里的竖线」，
    正文里的反斜杠一律不动。 */
@@ -3494,9 +3514,44 @@ function isStructLine(line){
   const s = String(line||'');
   return /^(#{1,6})\s/.test(s)
     || /^>/.test(s)
-    || /^```/.test(s)
+    || !!fenceOpen(s)
     || /^([-*_])\s*\1\s*\1[\s\-*_]*$/.test(s)
     || LIRE.test(s);
+}
+/* 代码围栏（CommonMark 口径）：``` 或 ~~~，三个起；反引号围栏后面的语言串里不能再有
+   反引号（那是一行行内代码，不是围栏）。收尾那道：同一种字符、不短于开头、后面只有空白。
+   以前见 ``` 开头的行就开、见 ``` 开头的行就收：代码里写 markdown 教程（一行 ```、
+   一行 ```python）代码块在那儿就断了，后半截掉出来当正文（R 报告 P0-2）；~~~ 围栏也不认。 */
+function fenceOpen(line){
+  const m = /^\s*(`{3,}|~{3,})(.*)$/.exec(String(line||''));
+  if(!m || (m[1][0]==='`' && m[2].includes('`'))) return null;
+  return {ch:m[1][0], n:m[1].length, lang:m[2].trim().split(/\s+/)[0]||''};
+}
+function fenceClose(line, fo){
+  const m = /^\s*(`{3,}|~{3,})\s*$/.exec(String(line||''));
+  return !!(m && m[1][0]===fo.ch && m[1].length>=fo.n);
+}
+/* 第 i 行是不是一道围栏的开头（带上下文判）。反引号围栏跟 HEAD 一样：开了就算，收不上一直到文末。
+   波浪线围栏只有后面真找得到收尾（同一种字符、不短于开头）才算——不然一行 ~~~~~~ 当分隔线、
+   开头写 ~~~删除~~~ 的老笔记，后面整篇都会被画进代码块（H 轮 P2-B）。 */
+function fenceAt(L, i){
+  const fo = fenceOpen(L[i]);
+  if(!fo || fo.ch==='`') return fo;
+  return tildeCloseMax(L)[i+1] >= fo.n ? fo : null;
+}
+/* 每一行往后（含这一行）最长的那道 ~~~ 收尾有几个字：一趟从后往前算好、按这一份行数组记住。
+   以前每一行 ~~~ 开头的都往后扫到底，一篇里两千行「~~~删除线~~~」要两百毫秒（R 终审 P3-2） */
+function tildeCloseMax(L){
+  let a=TILDE_CLOSE.get(L);
+  if(!a){
+    a=new Int32Array(L.length+1);
+    for(let j=L.length-1; j>=0; j--){
+      const m=/^\s*(~{3,})\s*$/.exec(String(L[j]||''));
+      a[j]=Math.max(a[j+1], m ? m[1].length : 0);
+    }
+    TILDE_CLOSE.set(L, a);
+  }
+  return a;
 }
 function unguardLine(line){
   if(!line || line.charAt(0)!=='\u200b') return null;
@@ -3535,23 +3590,40 @@ function takeAmn(s, amn){
   return out;
 }
 
-/* 行内。base 是这份 md 所在目录，图片和链接靠它解相对路径。 */
+/* 行内。base 是这份 md 所在目录，图片和链接靠它解相对路径。
+   四种占位：\uE000 行内代码、\uE001 字面字符、\uE002 data-amn 兜底、\uE003 先收起来的标签。 */
 function inl(t, base){
-  const lit = [], amn = [], code = [];
-  let s = String(t==null?'':t).replace(/[\uE000\uE001\uE002]/g,'');
+  const lit = [], amn = [], code = [], tag = [];
+  // 正文里本来就有的私用区字符先当字面字收起来，别跟下面的占位撞车。
+  // 以前是直接删掉——打进去的这几个字一存就没了，自检也永远对不上。
+  let s = String(t==null?'':t).replace(/[\uE000-\uE003]/g, ch=>'\uE001'+(lit.push(ch)-1)+'\uE001');
   s = takeAmn(s, amn);
-  s = s.replace(/&#(96|42|126|91|93|60|62|41);/g, (m,n)=>
+  // 行内代码先收：反引号里的是字，里面写的 &#60; 之类照字面显示（CommonMark 同）。
+  // 以前实体先解，`&#60;` 显示成 <，那一段一改就存不进；被转义成 &#96; 的反引号不是
+  // 反引号，凑不成代码，下面照常当字面解出来。
+  s = s.replace(/`([^`]+)`/g, (m,c)=>'\uE000'+(code.push(esc(c))-1)+'\uE000');
+  s = s.replace(/&#(96|42|126|91|93|60|62|41|38|33);/g, (m,n)=>
     '\uE001' + (lit.push(MD_ENT_REV[n]) - 1) + '\uE001');
+  // 图片、链接的开头标签、双链整个先收起来，再跑加粗斜体那几条正则。
+  // 不收的话 alt 里的 *a*、地址里的星号、双链名里的星号会被套上 <em>——
+  // 套在属性值里，图的说明成了一串标签字，存盘自检永远对不上。
+  const keep = h => '\uE003' + (tag.push(h) - 1) + '\uE003';
+  // 收起来的那几样里反引号是字、不是代码：代码占位还原回原文；字面字符的占位也还原
+  // （地址里写成 &#41; 的 )，不还原的话 resolveRef 拿到的是占位符，href/src 编出一串乱码）
+  const raw = x => String(x).replace(/\uE000(\d+)\uE000/g, (m,n)=>'`'+(code[+n]||'')+'`')
+                            .replace(/\uE001(\d+)\uE001/g, (m,n)=>esc(lit[+n]||''));
   s = esc(s)
-    .replace(/`([^`]+)`/g, (m,c)=>'\uE000'+(code.push(c)-1)+'\uE000')
     .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, (m,a,u)=>{
+      a = raw(a); u = raw(u);
       const src = resolveRef(u, base, true);
-      return src ? `<img src="${esc(src)}" alt="${a}" title="${a}" data-u="${u}">`
-                 : `<span class="imgbad">${esc(TR('图片地址不合法：{u}', {u:a||u}))}</span>`;
+      return keep(src ? `<img src="${esc(src)}" alt="${a}" title="${a}" data-u="${u}">`
+                      : `<span class="imgbad">${esc(TR('图片地址不合法：{u}', {u:a||u}))}</span>`);
     })
-    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (m,a,u)=>
-      `<a href="${esc(resolveRef(u,base,false))}" data-u="${u}" target="_blank" rel="noopener">${a}</a>`)
-    .replace(/\[\[([^\[\]\n]{1,80})\]\]/g, (m,n)=>`<a class="wl" data-wl="${n}">${n}</a>`)
+    .replace(/\[([^\]]+)\]\(([^)]+)\)/g, (m,a,u)=>{
+      u = raw(u);
+      return keep(`<a href="${esc(resolveRef(u,base,false))}" data-u="${u}" target="_blank" rel="noopener">`)+a+'</a>';
+    })
+    .replace(/\[\[([^\[\]\n]{1,80})\]\]/g, (m,n)=>{ n = raw(n); return keep(`<a class="wl" data-wl="${n}">${n}</a>`); })
     .replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>')
     .replace(/~~([^~]+)~~/g, '<del>$1</del>')
     .replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>')
@@ -3565,20 +3637,34 @@ function inl(t, base){
       }
       return `<${a.tag}>${inl(a.inner, base)}</${a.tag}>`;
     })
+    .replace(/\uE003(\d+)\uE003/g, (m,n)=>tag[+n]||'')
     .replace(/\uE000(\d+)\uE000/g, (m,n)=>`<code>${code[+n]||''}</code>`)
     .replace(/\uE001(\d+)\uE001/g, (m,n)=>esc(lit[+n]||''));
   return s;
 }
 
 /* 这段纯文字再渲染会不会变样。会，就把会认的字符换成实体。
-   <br>、*重点*、`代码`、[文字](地址) 打在正文里都走这里，看起来还是打进去的那几个字。 */
+   <br>、*重点*、`代码`、[文字](地址) 打在正文里都走这里，看起来还是打进去的那几个字。
+   只换真正闹事的那一种记号，别一处要换就把整段的 ` * ~ [ ] < > 全换掉（文件里一片实体）。
+   渲染器本来就当字面显示的不换：<kbd>⌘</kbd>、<https://…> 这种行内 HTML／自动链接
+   原样写回，文件里原来是什么还是什么，换个编辑器打开也不坏（8c3770d 把它们改写成了实体）。
+   手打的「&#60;」这种实体文字：& 写成 &#38;，不然渲染器会把它解成 <。 */
+const ENT_TEXT = /&(?=#(?:96|42|126|91|93|60|62|41|38|33);)/g;
+const MD_CLASS = [/\*/g, /~/g, /`/g, /[\[\]]/g, /[<>]/g];
 function protectPlain(s, force){
-  s = String(s==null?'':s);
-  if(!s) return '';
-  const danger = /<[A-Za-z/!]/.test(s);
-  if(!force && !danger && !/[`*~\[\]<>]/.test(s)) return s;
-  if(!force && !danger && inl(s, '')===esc(s)) return s;
-  return s.replace(/[`*~\[\]<>]/g, ch=>MD_ENT[ch]||ch);
+  const orig = String(s==null?'':s);
+  if(!orig) return '';
+  const ent = x => x.replace(/[`*~\[\]<>]/g, ch=>MD_ENT[ch]||ch);
+  const out = orig.replace(ENT_TEXT, '&#38;');
+  if(force) return ent(out);
+  if(!/[`*~\[\]<>]/.test(out)) return out;
+  const want = esc(orig);
+  if(inl(out, '')===want) return out;
+  for(const re of MD_CLASS){
+    const o = out.replace(re, ch=>MD_ENT[ch]||ch);
+    if(o!==out && inl(o, '')===want) return o;
+  }
+  return ent(out);                                  // 几种记号缠在一起：全换
 }
 
 /* off0 不给＝整篇渲染，自己剥 frontmatter 算偏移；
@@ -3612,13 +3698,15 @@ function md2html(src, base, off0){
     const s0=i, l=L[i];
     // 代码块。原来是先用一个全局正则把 ``` 段整个抠走换成占位符、再按行走，
     // 那样后面每一行的行号都塌了，块级编辑对不回原文。改成在循环里按行吃。
-    if(/^\s*```/.test(l)){
+    const fo=fenceAt(L, i);
+    if(fo){
       // 语言记进 data-lang。丢了它，改一个 ```js 存回去就变成裸 ```
-      const lang=(l.match(/^\s*```\s*(\S*)/)||[])[1]||'';
+      const lang=fo.lang;
       const b=[]; i++;
-      while(i<L.length && !/^\s*```/.test(L[i])){ b.push(L[i]); i++; }
-      if(i<L.length) i++;                       // 吃掉收尾那行 ```
-      push(`<pre${lang?` data-lang="${esc(lang)}"`:''}><code>${esc(b.join('\n'))}</code></pre>`, s0, i-1);
+      while(i<L.length && !fenceClose(L[i], fo)){ b.push(L[i]); i++; }
+      if(i<L.length) i++;                       // 吃掉收尾那道围栏
+      // ~~~ 围栏记一笔（data-fc），改了这一块写回去还用 ~~~，别平白把整道围栏换成反引号
+      push(`<pre${lang?` data-lang="${esc(lang)}"`:''}${fo.ch==='~'?' data-fc="~"':''}><code>${esc(b.join('\n'))}</code></pre>`, s0, i-1);
       continue;
     }
     if(/^\s*\|/.test(l) && i+1<L.length && /^\s*\|[\s:\-|]+\|\s*$/.test(L[i+1])){
@@ -3642,7 +3730,7 @@ function md2html(src, base, off0){
     /* 以竖线开头、下一行又不是分隔行：不是表。以前段落收集器见竖线就停，
        这一行接着被跳过，整行从正文里消失，改一个字就过不了存盘自检。 */
     if(/^\s*\|/.test(l)){
-      push(`<p>${inlB(l.trim())}</p>`, s0, i); i++; continue;
+      push(`<p>${inlB(trimKeepWide(l))}</p>`, s0, i); i++; continue;   // 全角空格留着（同段落）
     }
     const h=l.match(/^(#{1,6})\s+(.*)$/);
     // 标题 id 走一个只增不减、跨渲染不重置的全局号。
@@ -3671,11 +3759,11 @@ function md2html(src, base, off0){
     }
     if(l.trim()){const b=[];
       while(i<L.length&&L[i].trim()
-            &&!/^\s*(\||#{1,6}\s|>|```)/.test(L[i])
+            &&!/^\s*(\||#{1,6}\s|>)/.test(L[i]) &&!fenceAt(L, i)
             &&!LIRE.test(L[i])
             &&!/^\s*([-*_])\s*\1\s*\1[\s\-*_]*$/.test(L[i])){
         const u=unguardLine(L[i]);
-        b.push((u===null?L[i]:u).trim()); i++;
+        b.push(trimKeepWide(u===null?L[i]:u)); i++;
       }
       if(b.length) push(`<p>${inlB(joinLines(b))}</p>`, s0, i-1); else i++;
       continue}
@@ -3696,12 +3784,17 @@ function listHtml(rows, inl, base){
       ? `<li class="task"><input type="checkbox"${/[xX]/.test(m[1])?' checked':''}><span>${inl(m[2])||'<br>'}</span></li>`
       : `<li>${inl(r.txt)||'<br>'}</li>`;
   };
-  const build = (k, ind) => {
+  /* 最外层（top）吃到最后一行为止：缩进比第一行还浅的行（「  - a⏎- b」这种
+     第一行缩得更深的写法）就从那一行起把这一层的基准往回挪——跟 CommonMark 一样，
+     a、b 排在同一层。以前到这儿就停了，后面几行根本没画出来：阅读时看不见，
+     改一下这一块再存，它们就从文件里删掉了（个人库 23 份有这种形状）。 */
+  const build = (k, ind, top) => {
     const ord = rows[k].ord;
     const tag = ord ? 'ol' : 'ul';
     let h = `<${tag}${ord && rows[k].num!==1 ? ` start="${rows[k].num}"` : ''}>`;
     let n = k;
-    while(n < rows.length && rows[n].ind >= ind){
+    while(n < rows.length && (top || rows[n].ind >= ind)){
+      if(top && rows[n].ind < ind) ind = rows[n].ind;
       if(rows[n].ind > ind){                       // 更深一层，塞进上一个 li 里
         const sub = build(n, rows[n].ind);
         h = h.replace(/<\/li>$/, sub.html + '</li>');
@@ -3712,7 +3805,7 @@ function listHtml(rows, inl, base){
     }
     return {html: h + `</${tag}>`, next: n};
   };
-  return build(0, base).html;
+  return build(0, base, true).html;
 }
 /* ═══ Markdown ← HTML ═══════════════════
    富文本编辑要把改完的正文写回 markdown，这一段就是那个反向器。
@@ -3729,8 +3822,11 @@ function listHtml(rows, inl, base){
 
 function codeMd(text){
   text = String(text==null?'':text);
-  // 空的，或者里面自己就有反引号：单反引号包不住，用标记兜住，里面不再当 markdown 解析。
-  if(!text || text.includes('`')){
+  // 空的：一个字都没有就什么都不写。以前写成 <code data-amn="1"></code>，
+  // 项末是代码时回车，新项里那个空壳一停笔就判「存不进」（A 报告 R1）。
+  if(!text) return '';
+  // 里面自己就有反引号：单反引号包不住，用标记兜住，里面不再当 markdown 解析。
+  if(text.includes('`')){
     const body = text.replace(/&/g,'&#38;').replace(/</g,'&#60;').replace(/>/g,'&#62;');
     return '<code data-amn="1">' + body + '</code>';
   }
@@ -3748,6 +3844,8 @@ function inlineIs(md, tag){
    对得上就写 markdown；对不上就用 data-amn 包一层，打开时还是原来的样子。 */
 function markWrap(node, open, close, tag, opt){
   const inner = inlMd(node, opt);
+  // 一个字都没有（只剩光标位 <br> 的空壳）：显示上等于没有，什么都不写
+  if(inner==='') return '';
   // 只有空白：* * 这种会被渲染成空的斜体，trim 掉标记再渲染就对不回去。
   if(!String(inner).trim())
     return '<' + tag + ' data-amn="1">' + inner + '</' + tag + '>';
@@ -3755,29 +3853,53 @@ function markWrap(node, open, close, tag, opt){
   if(inlineIs(md, tag)) return md;
   return '<' + tag + ' data-amn="1">' + inner + '</' + tag + '>';
 }
+/* 段落一类的块被套进了行里（li>p、跨块格式、粘贴）：前后各断一行，字一个不丢 */
+const INL_BLOCK = /^(P|DIV|H[1-6]|BLOCKQUOTE|LI|DT|DD|SECTION|ARTICLE)$/;
 function inlMd(node, opt){
   opt = opt || {};
-  let out = '';
+  let out = '', brk = false;
   node.childNodes.forEach(n => {
     if(n.nodeType === 3){
-      let s = protectPlain(n.nodeValue, opt.force);
+      // &nbsp; 写成普通空格：浏览器在块边、连续空格处塞的就是它，显示上是空格，
+      // 写进文件却是一个别的编辑器看不见的字符。换行在这里也只是一个空格。
+      const v = n.nodeValue.replace(/[\u00a0\n\r]/g, ' ').replace(PRE_PH_RE, '');   // 代码块粘贴的占位符漏到这里：不要（见 preInsert）
+      if(brk){ if(!v.trim()) return; out += '<br>'; brk = false; }
+      let s = protectPlain(v, opt.force);
       if(opt.table) s = s.replace(/\|/g, '\\|');
+      // 链接文字里的方括号写成实体，不然 [ ] 把链接拆错。只换字里的，行内代码、图片不动
+      // （代码先于链接收起来，里面的 ] 碍不着；换成实体反倒照字面显示成 &#93;）
+      if(opt.link) s = s.replace(/\]/g,'&#93;').replace(/\[/g,'&#91;');
       out += s;
       return;
     }
     if(n.nodeType !== 1) return;
     const t = n.tagName;
+    if(INL_BLOCK.test(t)){
+      const inner = inlMd(n, opt).trim();
+      if(out.trim() && !/<br>$/.test(out)) out += '<br>';
+      out += inner; brk = true;
+      return;
+    }
+    // 块后面紧跟的 <br> 就是那一处断行，别再多断一行
+    if(brk){ brk = false; out += '<br>'; if(t === 'BR') return; }
     if(t === 'BR'){ out += '<br>'; return; }
     if(t === 'IMG'){
       const alt = (n.getAttribute('alt')||'').replace(/\]/g,'&#93;');
-      out += `![${alt}](${n.dataset.u || n.getAttribute('src') || ''})`;
+      // 地址里的 ) 写成 &#41;（同链接），不然 ![a](x(1).png) 在第一个 ) 就断了
+      out += `![${alt}](${wellFormed(n.dataset.u || n.getAttribute('src') || '').replace(/\)/g,'&#41;')})`;
       return;
     }
+    // 「图片没找到」之类界面换出来的提示不是正文，一个字都不写（自检会把这一块判成存不进）
+    if(t === 'SPAN' && n.classList.contains('imgbad')) return;
     if(t === 'A'){
+      // 前面紧挨着一个字面的「!」：写成 &#33;，不然「![字](地址)」被认成图片（「![[名]]」在
+      // Obsidian 里是嵌入）
+      if(/!$/.test(out)) out = out.slice(0, -1) + '&#33;';
       // [[题名]] 原样写回，别把它降级成普通链接——那会把「按名找」变成死路径
       if(n.dataset.wl!==undefined){ out += `[[${n.dataset.wl}]]`; return; }
-      let text = inlMd(n, opt).replace(/\]/g,'&#93;').replace(/\[/g,'&#91;');
-      const u = n.dataset.u || n.getAttribute('href') || '';
+      const text = inlMd(n, Object.assign({}, opt, {link:true}));
+      // 地址里混进半个 emoji（孤立代理项）：渲染时 encodeURIComponent 会抛，整块反解失败
+      const u = wellFormed(n.dataset.u || n.getAttribute('href') || '');
       out += `[${text}](${String(u).replace(/\)/g,'&#41;')})`;
       return;
     }
@@ -3841,6 +3963,24 @@ function listMd(list, ind, opt){
   return out.join('\n');
 }
 
+/* 代码块里的字：<code> 里外都算（段首退格会把下一段并进 <pre>、落在 <code> 外面，
+   以前只取 <code> 那一截，并进来的字一存就没了），<br> 当换行。 */
+function preText(el){
+  let s = '';
+  const walk = n => n.childNodes.forEach(c=>{
+    if(c.nodeType===3){ s += c.nodeValue; return; }
+    if(c.nodeType!==1) return;
+    if(c.tagName==='BR'){ s += '\n'; return; }
+    // 段落一类的块进了代码块（插进来的 HTML、并段）：各占一行，别挤成一行
+    const blk = /^(P|DIV|LI|H[1-6]|TR|BLOCKQUOTE)$/.test(c.tagName);
+    if(blk && s && !s.endsWith('\n')) s += '\n';
+    walk(c);
+    if(blk && !s.endsWith('\n')) s += '\n';
+  });
+  walk(el);
+  return s;
+}
+
 /* 一个顶层块 → markdown。返回的不带块与块之间的空行，那个由 serializeBody 管。 */
 function blkMdRaw(el, opt){
   opt = opt || {};
@@ -3849,13 +3989,34 @@ function blkMdRaw(el, opt){
   if(/^H[1-6]$/.test(t)) return '#'.repeat(Math.min(6, +t[1])) + ' ' + inlMd(el, opt).trim();
   if(t === 'HR') return '---';
   if(t === 'PRE'){
-    const code = el.querySelector('code');
-    const body = (code ? code.textContent : el.textContent).replace(/\n$/, '');
-    return '```' + (el.dataset.lang || '') + '\n' + body + '\n```';
+    const body = preText(el).replace(PRE_PH_RE, '\n').replace(/\n$/, '');   // 占位符兜底换回换行（见 preInsert）
+    // 围栏挑一道比内容里任何一行行首的反引号串都长的（至少三个）：代码里写着 ``` 的时候
+    // 还用 ``` 包，那一行就把代码块提前收尾了（R 报告 P0-2）
+    // 原来是 ~~~ 的照旧用 ~~~（同样挑得比内容里的 ~ 串长）
+    const ch = el.dataset.fc === '~' ? '~' : '`';
+    let n = 3;
+    (body.match(ch === '~' ? /^[ \t]*~{3,}/gm : /^[ \t]*`{3,}/gm) || []).forEach(x => { n = Math.max(n, x.trim().length + 1); });
+    const f = ch.repeat(n);
+    return f + (el.dataset.lang || '') + '\n' + body + '\n' + f;
   }
   if(t === 'BLOCKQUOTE'){
-    const ps = [...el.children];
-    return (ps.length ? ps : [el]).map(c => '> ' + inlMd(c, opt).trim()).join('\n');
+    // 每一段一行。夹在段落之间的散字（浏览器并段、粘贴造出来的）自成一行，
+    // 以前只认元素子节点，那些字一存就没了。
+    const lines = [];
+    let run = null;
+    // 引用里一行的行首全角空格也留着（同段落，见 trimKeepWide）
+    const flush = () => { if(run){ lines.push('> ' + trimKeepWide(inlMd(run, opt))); run = null; } };
+    el.childNodes.forEach(c => {
+      if(c.nodeType===1 && INL_BLOCK.test(c.tagName)){ flush(); lines.push('> ' + trimKeepWide(inlMd(c, opt))); return; }
+      if(!run){
+        if(c.nodeType===3 && !c.nodeValue.trim()) return;
+        if(c.nodeType===1 && c.tagName==='BR') return;
+        run = document.createElement('p');
+      }
+      run.appendChild(c.cloneNode(true));
+    });
+    flush();
+    return lines.length ? lines.join('\n') : '> ';
   }
   if(t === 'UL' || t === 'OL') return listMd(el, '', opt);
   if(t === 'TABLE') return tableMd(el, opt);
@@ -3868,8 +4029,17 @@ function blkMdRaw(el, opt){
     const alt = (el.getAttribute('alt')||'').replace(/\]/g,'&#93;');
     return `![${alt}](${el.dataset.u || el.getAttribute('src') || ''})`;
   }
+  // 跑到顶层的裸行内元素（<strong>、<a>……）：连它自己一起当一段的内容，
+  // 别只取里面的字——那样加粗、链接一存就没了
+  if(t !== 'P' && t !== 'DIV'){
+    const w = document.createElement('p');
+    w.appendChild(el.cloneNode(true));
+    return trimKeepWide(inlMd(w, opt));
+  }
   // P，以及浏览器在 contenteditable 里自己造出来的 DIV
-  return inlMd(el, opt).trim();
+  // 段首段尾的全角空格（中文排版的段首缩进「　　」）留着：CommonMark 也不削它，别的编辑器里看得见；
+  // 以前 .trim() 连它一起削，一改这一段缩进就没了（H 轮，R 的 g_flows W1）
+  return trimKeepWide(inlMd(el, opt));
 }
 function guardPara(el, md){
   if(!el || el.nodeType!==1 || !md) return md;
@@ -3877,10 +4047,11 @@ function guardPara(el, md){
   if(t!=='P' && !(t==='DIV' && !el.classList.contains('tw'))) return md;
   return md.split('\n').map(line => isStructLine(line) ? '\u200b'+line : line).join('\n');
 }
-function htmlSame(el, md, base){
+/* md 渲染回来，跟这一块看起来是不是一个样子（见下面 visSig） */
+function visSame(el, md, base){
   const box = document.createElement('div');
   box.innerHTML = md2html(md, base||'', 0);
-  return box.children.length===1 && normHtml(box.innerHTML)===normHtml(el.outerHTML);
+  return visSig([el])===visSig(box.children);
 }
 /* 段落整行若长得像另一种块，行首加零宽空格，避免存下去变成标题或列表。
    第一遍按屏幕上的加粗斜体写；对不上再把纯文字里的标记字符换成实体。
@@ -3888,19 +4059,331 @@ function htmlSame(el, md, base){
 function blkMd(el, base){
   const b = base || '';
   const once = guardPara(el, blkMdRaw(el));
-  if(!el || htmlSame(el, once, b)) return once;
+  if(!el || visSame(el, once, b)) return once;
   const twice = guardPara(el, blkMdRaw(el, {force:true}));
-  if(htmlSame(el, twice, b)) return twice;
+  if(visSame(el, twice, b)) return twice;
   return once;
+}
+
+/* ═══ 看得见的样子 ══════════════════════
+   存盘自检、进编辑时锁不锁，比的都是这个，不再比 HTML 字符串（normHtml 全等）。
+   编辑器里能出现的 DOM 比渲染器造得出来的多得多：块边的 &nbsp;、块尾占位 <br>、
+   浏览器包的 <span>、工具栏造的 <a>、洗白剥掉的 class……字符串全等只对「渲染器
+   自己的输出」成立，对「被人编辑过的输出」不成立——「打个空格停两秒就红」的根在这儿。
+   这里只比读者看得见的：块的种类和语义属性（标题级、列表有序／起始号／勾选、
+   表格对齐、代码语言），加一串行内 run（字＋它身上的标记：粗、斜、删、代码、
+   链接地址 data-u、双链 data-wl）。
+     · 空白：&nbsp;、制表、换行都当空格，连着的并成一个；块首块尾、换行前后的空白看不见
+     · 块尾的 <br>（不论几个）、子列表前面那几个 <br> 看不见
+     · 相邻同标记的字并成一段；<strong><em> 跟 <em><strong> 一样；空的行内壳等于没有
+     · 只有空白的那一截不算粗、不算斜（看不出来）
+     · href / target / rel / class 是派生的不比；sup、mark、span 这些认不得的壳只看里面的字
+   真的变化照样抓得住：字变了、字丢了、标记真变了（粗了、成了列表、成了标题、链到别处）。
+   「两个空格变一个」这类所有 markdown 渲染器都会折叠的差别放过去，可以接受。 */
+const VIS_TEXTBLK = /^(P|DIV|H[1-6]|LI|BLOCKQUOTE|TD|TH|DT|DD|SECTION|ARTICLE)$/;
+const VIS_HEAVY = /^(UL|OL|TABLE|PRE|HR)$/;
+function visSig(nodes){
+  const out = [];
+  [...nodes].forEach(n => visBlk(n, out));
+  return out.join('\n');
+}
+function visBlk(n, out){
+  if(n.nodeType===3){                              // 顶层的散字：按一段算
+    if(visTxt(n.nodeValue).trim()) out.push('p'+visRuns([n], true));
+    return;
+  }
+  if(n.nodeType!==1) return;
+  const t = n.tagName;
+  if(t==='HR'){ out.push('hr'); return; }
+  if(/^H[1-6]$/.test(t)){ out.push(t.toLowerCase()+visRuns(n.childNodes)); return; }
+  // 代码块末尾的空行看不见（最后那个换行不起新行；Chromium 在代码块里回车还会垫一个占位 <br>）
+  if(t==='PRE'){ out.push('pre:'+(n.dataset.lang||'')+'|'+preText(n).replace(/\n+$/,'')); return; }
+  if(t==='UL' || t==='OL'){ out.push(visList(n)); return; }
+  if(t==='TABLE' || (t==='DIV' && n.classList.contains('tw'))){
+    out.push(visTable(t==='TABLE' ? n : n.querySelector('table'))); return;
+  }
+  if(t==='BLOCKQUOTE'){
+    const inner = [];
+    let run = [];
+    const flush = () => { if(run.length){ inner.push('p'+visRuns(run)); run = []; } };
+    n.childNodes.forEach(c => {
+      if(c.nodeType===1 && (VIS_TEXTBLK.test(c.tagName) || VIS_HEAVY.test(c.tagName))){ flush(); visBlk(c, inner); return; }
+      if(!run.length && c.nodeType===3 && !visTxt(c.nodeValue).trim()) return;
+      run.push(c);
+    });
+    flush();
+    out.push('q{'+inner.join('\n')+'}');
+    return;
+  }
+  // P、浏览器造的 DIV、跑到顶层的裸行内元素（img、strong……）：都按一段算
+  out.push('p'+visRuns(t==='P' || t==='DIV' ? n.childNodes : [n], true));
+}
+function visList(list){
+  const ord = list.tagName==='OL';
+  let s = (ord ? 'ol'+(+(list.getAttribute('start')||1)) : 'ul')+'[';
+  list.childNodes.forEach(li => {
+    if(li.nodeType===3){ if(visTxt(li.nodeValue).trim()) s += 'li'+visRuns([li])+';'; return; }
+    if(li.nodeType!==1) return;
+    if(li.tagName!=='LI'){ s += 'li'+visRuns([li])+';'; return; }   // 浏览器塞进来的别的东西：当一项
+    const cb = li.querySelector(':scope > input[type=checkbox]');
+    s += 'li'+(cb ? ((cb.checked || cb.hasAttribute('checked')) ? '[x]' : '[ ]') : '')+visRuns(li.childNodes)+';';
+  });
+  return s+']';
+}
+function visTable(tb){
+  if(!tb) return 'table';
+  const al = (tb.dataset.al||'').split(',');
+  return 'table'+JSON.stringify([...tb.querySelectorAll('tr')].map(r => [...r.children]
+    .filter(c => c.tagName==='TD' || c.tagName==='TH')
+    .map((c,k) => c.tagName+(al[k]||'')+visRuns(c.childNodes))));
+}
+/* 读者眼里的字：&nbsp;、制表、换行都是空格，零宽空格看不见 */
+function visTxt(s){
+  return String(s||'').replace(/[\u200b\ufeff]/g, '').replace(/[ \t\n\r\f\u00a0]+/g, ' ');
+}
+function visMark(m, k){ return m.indexOf(k)>=0 ? m : m.concat([k]).sort(); }
+/* wide：段落（P／DIV／正文根上的散字）——块首块尾的全角空格是正文、看得见，不削（见 trimKeepWide） */
+function visRuns(nodes, wide){
+  const tk = [];                                   // {k:'t',m,s} ｜ {k:'br'} ｜ {k:'sb'} 软断行 ｜ {k:'x',s,blk}
+  const walk = (n, m) => {
+    if(n.nodeType===3){ const s = visTxt(n.nodeValue); if(s) tk.push({k:'t', m, s}); return; }
+    if(n.nodeType!==1) return;
+    const t = n.tagName;
+    if(t==='BR'){ tk.push({k:'br'}); return; }
+    if(t==='INPUT'){
+      // 待办项自己的勾选框在 visList 里单独比；别处的（并段把勾选框带进了段落）也得算一样东西，
+      // 不然它被当成没有、判「对得上」，存下去勾选框就静默没了（R 复审 P3-3）
+      const own = n.parentElement && n.parentElement.tagName==='LI'
+                  && n.parentElement.querySelector(':scope > input[type=checkbox]')===n;
+      if(!own && n.type==='checkbox') tk.push({k:'x', s:'cb'+((n.checked || n.hasAttribute('checked'))?1:0)});
+      return;
+    }
+    if(t==='IMG'){
+      tk.push({k:'x', s:'img:'+(n.getAttribute('alt')||'')+'|'+(n.getAttribute('data-u')||n.getAttribute('src')||'')+'|'+m.join(' ')});
+      return;
+    }
+    if(t==='SPAN' && n.classList.contains('imgbad')){ tk.push({k:'x', s:'imgbad:'+n.textContent}); return; }
+    if(VIS_HEAVY.test(t)){ const o = []; visBlk(n, o); tk.push({k:'x', s:'{'+o.join('\n')+'}', blk:true}); return; }
+    /* 行里／列表项里／格子里套进了整块的引用或标题（拖放造得出来：td>blockquote、li>h2、p>blockquote）：
+       屏幕上是一块引用、一个大标题，写进 md 只能是一行普通字——块的种类算进签名，判对不上
+       （走严格闸，结构块里就是存不进），别当软断行放过去、悄悄存成纯文字（J 轮，R 终审 P3-2）。
+       渲染器自己从来不在这些地方造引用和标题，正常文档不受影响。 */
+    if(t==='BLOCKQUOTE' || /^H[1-6]$/.test(t)){
+      const k = t==='BLOCKQUOTE' ? 'q' : t.toLowerCase();
+      tk.push({k:'x', s:'<'+k, blk:true}); n.childNodes.forEach(c => walk(c, m)); tk.push({k:'x', s:k+'>', blk:true});
+      return;
+    }
+    if(VIS_TEXTBLK.test(t)){ tk.push({k:'sb'}); n.childNodes.forEach(c => walk(c, m)); tk.push({k:'sb'}); return; }
+    let m2 = m;
+    if(t==='STRONG' || t==='B') m2 = visMark(m, 'b');
+    else if(t==='EM' || t==='I') m2 = visMark(m, 'i');
+    else if(t==='DEL' || t==='S' || t==='STRIKE') m2 = visMark(m, 's');
+    else if(t==='CODE') m2 = visMark(m, 'c');
+    else if(t==='A'){
+      if(n.dataset.wl!==undefined) m2 = visMark(m, 'w:'+n.dataset.wl);
+      else if(n.hasAttribute('data-u')) m2 = visMark(m, 'a:'+n.getAttribute('data-u'));
+      else if(n.hasAttribute('href')) m2 = visMark(m, 'a:'+n.getAttribute('href'));
+    }
+    n.childNodes.forEach(c => walk(c, m2));
+  };
+  [...nodes].forEach(n => walk(n, []));
+  // 字按空白切开；空白那一截不算粗斜
+  let a = [];
+  tk.forEach(x => {
+    if(x.k!=='t'){ a.push(x); return; }
+    x.s.split(/( +)/).forEach(p => {
+      if(!p) return;
+      if(p[0]===' ') a.push({k:'t', m:x.m.filter(k => k!=='b' && k!=='i'), s:' '});
+      else a.push({k:'t', m:x.m, s:p});
+    });
+  });
+  // 连着的断行算一组：有硬 <br> 按 <br> 的个数，只有软断行（段落套进行里）算一个；
+  // 开头的软断行、子列表这类块前面的 <br>、末尾所有的断行都看不见
+  const b = [];
+  for(let i=0; i<a.length; ){
+    if(a[i].k!=='br' && a[i].k!=='sb'){ b.push(a[i++]); continue; }
+    let j = i, hard = 0;
+    while(j<a.length && (a[j].k==='br' || a[j].k==='sb')){ if(a[j].k==='br') hard++; j++; }
+    const head = !b.some(x => x.k!=='t' || x.s!==' ');
+    const tail = j>=a.length || (a[j].k==='x' && a[j].blk);
+    const n = tail ? 0 : hard ? hard : head ? 0 : 1;
+    for(let k=0; k<n; k++) b.push({k:'br'});
+    i = j;
+  }
+  // 空白：连着的并成一个（不论身上什么标记）；块首块尾、断行和块前后的看不见
+  const sp = x => x && x.k==='t' && x.s===' ';
+  const c0 = [];
+  b.forEach(x => { if(!(sp(x) && sp(c0[c0.length-1]))) c0.push(x); });
+  const edge = x => !x || x.k==='br' || (x.k==='x' && x.blk);
+  const c = c0.filter((x, i) => !(sp(x) && (edge(c0[i-1]) || edge(c0[i+1]))));
+  // 块首块尾再按 JS 的 trim 削一遍（跟序列化出口一致：段落留全角空格，别的块连它一起削），削空了的整截拿掉
+  const lead = wide ? /^[^\S\u3000]+/ : /^\s+/, trail = wide ? /[^\S\u3000]+$/ : /\s+$/;
+  while(c.length && c[0].k==='t'){
+    const s = c[0].s.replace(lead, '');
+    if(s){ c[0] = {k:'t', m:c[0].m, s}; break; }
+    c.shift();
+  }
+  // 块尾：削空了的字、因此露到末尾的 <br> 一并拿掉（序列化先剥 <br> 再 trim，再渲染也看不见）
+  while(c.length && (c[c.length-1].k==='t' || c[c.length-1].k==='br')){
+    const L = c.length-1;
+    if(c[L].k==='br'){ c.pop(); continue; }
+    const s = c[L].s.replace(trail, '');
+    if(s){ c[L] = {k:'t', m:c[L].m, s}; break; }
+    c.pop();
+  }
+  // 相邻同标记的字并起来
+  const d = [];
+  c.forEach(x => {
+    if(x.k==='t' && !x.s) return;
+    const pv = d[d.length-1];
+    if(x.k==='t' && pv && pv.k==='t' && pv.m.join(' ')===x.m.join(' ')){ d[d.length-1] = {k:'t', m:pv.m, s:pv.s+x.s}; return; }
+    d.push(x);
+  });
+  return JSON.stringify(d.map(x => x.k==='t' ? [x.m.join(' '), x.s] : x.k==='br' ? 'br' : x.s));
+}
+
+/* 看得见的字（空白、零宽字符不算；一张图算一个字）。判「空块」用。 */
+function visChars(nodes){
+  let s = '';
+  const walk = n => {
+    if(n.nodeType===3){ s += n.nodeValue.replace(/[\s\u200b\ufeff]/g, ''); return; }
+    if(n.nodeType!==1) return;
+    if(n.tagName==='IMG'){ s += '\ufffc'; return; }
+    n.childNodes.forEach(walk);
+  };
+  [...nodes].forEach(walk);
+  return s;
+}
+/* 严格不丢闸认的东西：每个看得见的字（链接里的字带上链接地址，双链里的带上双链目标）、
+   每张图（地址＋alt）、每个勾选框勾没勾。空白、零宽字符不算。
+   「图片没找到」这类界面换出来的提示（span.imgbad）不是正文：给它一个重画里永远不会有的
+   记号，这一块就过不了闸，绝不会把那串提示字照存进文件（R 报告 P0-1）。 */
+function strictItems(nodes){
+  const out = [];
+  const walk = (n, link) => {
+    if(n.nodeType===3){
+      for(const ch of n.nodeValue.replace(/[\s\u200b\ufeff]/g, '')) out.push(link ? ch+'\u0001'+link : ch);
+      return;
+    }
+    if(n.nodeType!==1) return;
+    const t = n.tagName;
+    if(t==='IMG'){
+      out.push('\ufffc'+(n.getAttribute('data-u')||n.getAttribute('src')||'')+'\u0001'+(n.getAttribute('alt')||'')+'\u0001'+link);
+      return;
+    }
+    if(t==='SPAN' && n.classList.contains('imgbad')){ out.push('\ufffdimgbad'); return; }
+    if(t==='INPUT'){ if(n.type==='checkbox') out.push((n.checked || n.hasAttribute('checked')) ? '\u2611' : '\u2610'); return; }
+    let l = link;
+    if(t==='A'){
+      if(n.dataset.wl!==undefined) l = 'w:'+n.dataset.wl;
+      else if(n.hasAttribute('data-u')) l = 'a:'+n.getAttribute('data-u');
+      else if(n.hasAttribute('href')) l = 'a:'+n.getAttribute('href');
+    }
+    n.childNodes.forEach(c => walk(c, l));
+  };
+  [...nodes].forEach(n => walk(n, ''));
+  return out;
+}
+/* 编辑器里的那些东西，重画出来是不是全都在、顺序一致（exact：一个不多、一个不少） */
+function strictKeeps(el, box, exact){
+  const a = strictItems([el]), b = strictItems(box.childNodes);
+  if(exact) return a.length===b.length && a.every((x,i)=>x===b[i]);
+  let j = 0;
+  for(let i=0; i<b.length && j<a.length; i++) if(b[i]===a[j]) j++;
+  return j===a.length;
+}
+/* 纯文字块：段落、标题、只有文字行的引用。有结构的块（代码块、列表、表格、分隔线，
+   以及里面套了列表／表格／代码块的段落和引用）对不上一律不兜底、不压平。 */
+function isPureText(el){
+  if(!el || el.nodeType!==1) return false;
+  const t = el.tagName;
+  if(t!=='P' && !/^H[1-6]$/.test(t) && t!=='BLOCKQUOTE') return false;
+  // 按白名单认：里面只许有行内的东西（引用底下那一层 <p> 除外）。混进了别的块——
+  // 列表、代码、落单的格子／表格行（插 HTML 插出来的）——就不是纯文字，不走照存＋重画
+  return [...el.querySelectorAll('*')].every(n => /^(STRONG|EM|DEL|CODE|A|IMG|BR|SPAN)$/.test(n.tagName)
+    || (t==='BLOCKQUOTE' && n.tagName==='P' && n.parentNode===el));
+}
+/* 纯文字兜底（只给纯文字块）：字、图、链接、双链原样，加粗斜体这类格式不要了；
+   会被认成标记的字符一律换成实体；块里的换行写成 <br>；标题保留级别，引用一段一行。 */
+function plainMd(el){
+  const inline = node => {
+    let out = '';
+    node.childNodes.forEach(n => {
+      if(n.nodeType===3){ out += protectPlain(n.nodeValue.replace(/[\s\u00a0]+/g, ' '), true); return; }
+      if(n.nodeType!==1) return;
+      const t = n.tagName;
+      if(t==='BR'){ out += '<br>'; return; }
+      if(t==='INPUT' || (t==='SPAN' && n.classList.contains('imgbad'))) return;
+      if(t==='IMG'){
+        const alt = (n.getAttribute('alt')||'').replace(/[`*~\[\]<>]/g, ch=>MD_ENT[ch]||ch);
+        out += `![${alt}](${wellFormed(n.getAttribute('data-u') || n.getAttribute('src') || '').replace(/\)/g,'&#41;')})`;
+        return;
+      }
+      if(t==='A' && n.dataset.wl!==undefined){
+        if(/!$/.test(out)) out = out.slice(0, -1) + '&#33;';
+        out += `[[${n.dataset.wl}]]`; return;
+      }
+      if(t==='A' && (n.hasAttribute('data-u') || n.hasAttribute('href'))){
+        if(/!$/.test(out)) out = out.slice(0, -1) + '&#33;';
+        const u = wellFormed(n.getAttribute('data-u') ?? n.getAttribute('href') ?? '');
+        out += '[' + inline(n) + '](' + u.replace(/\)/g,'&#41;') + ')';
+        return;
+      }
+      out += inline(n);
+    });
+    return trimKeepWide(out.replace(/(?:<br>)+$/, ''));      // 行首全角空格留着（同段落）
+  };
+  if(el.tagName==='BLOCKQUOTE'){
+    const lines = [];
+    let run = null;
+    const flush = () => { if(run){ lines.push('> ' + inline(run)); run = null; } };
+    el.childNodes.forEach(c => {
+      if(c.nodeType===1 && /^(P|DIV)$/.test(c.tagName)){ flush(); lines.push('> ' + inline(c)); return; }
+      if(!run){ if(c.nodeType===3 && !c.nodeValue.trim()) return; run = document.createElement('p'); }
+      run.appendChild(c.cloneNode(true));
+    });
+    flush();
+    return lines.length ? lines.join('\n') : '> ';
+  }
+  const md = inline(el);
+  if(/^H[1-6]$/.test(el.tagName)) return '#'.repeat(+el.tagName[1]) + ' ' + md;
+  return isStructLine(md) ? '\u200b'+md : md;
+}
+/* 一块要写进文件的 md，以及它过没过自检（编排者定的口径，G-fix §0）：
+     ok      看得见的样子（visSig）对得上：照常
+     !ok     纯文字块对不上，但严格不丢闸成立（字、图地址和 alt、链接地址、双链目标、勾选都在、
+             顺序一致）：照写这份 md；光标离开这一块时按它重画（屏幕＝文件），提示一句
+     lossy   纯文字块、严格闸不成立：改写成纯文字兜底（plainMd），兜底再按「一个不多一个不少」
+             验一遍；过了照写、离开时重画
+     stuck   其余一切——有结构的块（代码块、列表、表格）对不上，或者兜底也验不过：
+             这一块不写、文件里留它原来的字节，其余各块照存；胶囊「有 N 处存不进」，dirty 一直为真
+   stuck 时 md 只是参考（编辑器眼里的样子，源码框里给人看），不进文件。 */
+function blockVerdict(el, base){
+  const b = base || '';
+  const md = blkMd(el, b);
+  const box = document.createElement('div');
+  if(md.trim()) box.innerHTML = md2html(md, b, 0);
+  else if(!visChars([el]) && !el.querySelector('img,input,span.imgbad')) return {md, ok:true};   // 空块：不写出去，也不用管
+  const a = visSig([el]), s = visSig(box.children);
+  if(a===s) return {md, ok:true};
+  if(isPureText(el)){
+    if(strictKeeps(el, box)) return {md, ok:false, a, s};
+    const fb = plainMd(el);
+    const box2 = document.createElement('div');
+    box2.innerHTML = md2html(fb, b, 0);
+    if(strictKeeps(el, box2, true)) return {md:fb, ok:false, lossy:true, a, s};
+  }
+  return {md, ok:false, stuck:true, a, s};
 }
 
 /* 比两段 HTML 是不是同一个东西。行号、块号、脏标记、标题 id 都是运行时贴上去的，
    不参与比较；贴着标签的那些空白也不算——库里很多行末尾挂着两个空格
    （别处 markdown 的「硬换行」写法，这里的渲染器不认，显示上等于没有）。
-   词与词中间的空白照比，代码块里的缩进和换行也照比。 */
+   词与词中间的空白照比，代码块里的缩进和换行也照比。
+   存盘自检已经改比 visSig（看得见的样子），这个只剩 ?mdrt 自检和测试台在用。 */
 function normHtml(h){
   return String(h)
-    .replace(/\s(data-(l0|l1|bid|dirty|lock|ph)|contenteditable|id)="[^"]*"/g, '')
+    .replace(/\s(data-(l0|l1|bid|be|dirty|lock|ph)|contenteditable|id)="[^"]*"/g, '')
     // 块末尾那一个 <br> 不参与比较：浏览器拿它当光标位，显示上等于没有，
     // inlMd 出口处本来就不写出去。留着比会让「按一次换行再贴图」这种正常操作
     // 在存盘自检里报一次假警。连着两个以上是真的空行，照旧比，报警是对的。
@@ -3911,7 +4394,7 @@ function normHtml(h){
     .trim();
 }
 
-/* 这一块能不能当富文本改：反解成 markdown 再渲染回来，跟现在长得一模一样才算能。
+/* 这一块能不能当富文本改：反解成 markdown 再渲染回来，跟现在看起来一模一样才算能。
    对不上的（裸 HTML、认不出的表格写法、md2html 覆盖不到的语法）就锁住，
    只能点「改源码」按源码改——那是 v10 走的老路，不会有人被改坏。 */
 function safeBlock(el, base){
@@ -3920,7 +4403,7 @@ function safeBlock(el, base){
     if(!md.trim()) return false;
     const box = document.createElement('div');
     box.innerHTML = md2html(md, base, 0);
-    return box.children.length === 1 && normHtml(box.innerHTML) === normHtml(el.outerHTML);
+    return visSig([el])===visSig(box.children);
   }catch(e){ return false; }
 }
 
@@ -5210,7 +5693,9 @@ async function closeTab(id, opt){
   const t=TABS.find(x=>x.id===id); if(!t) return true;
   if(t.editing && dirty(t)){
     if(!(await saveBeforeLeave(t))){                // 存住了 saveBeforeLeave 自己会收编辑态
-      if(!ask(TR('要关掉「{title}」吗？',{title:t.title||''}), TR('这份改动还没存进去，关掉就丢了。'), TR('不保存并关闭'), TR('取消'), true)) return false;
+      const why=t.savedAt ? TR('这份改动还没存进去，关掉就丢了；文件还是 {time} 存下的样子。',{time:t.savedAt})
+                          : TR('这份改动还没存进去，关掉就丢了。');
+      if(!ask(TR('要关掉「{title}」吗？',{title:t.title||''}), why, TR('不保存并关闭'), TR('取消'), true)) return false;
       clearTimeout(t.autoT); t.autoT=null;
       endEdit(t);
     }
@@ -5475,19 +5960,23 @@ function drawDocBar(t){
 }
 
 /* 保存状态 pill。状态源全是现成的：
-   t.conflict（外部改过）／ t.pendingBad（自检拦下）／ t.saving（请求在飞）／
+   t.conflict（外部改过）／ t.pendingBad（自检拦下，正常编辑到不了，见 blockVerdict）／
+   t.saving（请求在飞）／ t.saveErr（服务端拒写、请求没回来；会自己隔一会儿再试）／
    t.touched·t.autoT（有没有正在等落盘的改动）／ t.savedAt（这一趟最后一次写进
    文件的时刻，没存过就是空）。 */
 function paintSaveState(t){
   const p=t && paneOf(t); if(!p) return;
   const el=p.querySelector('.save-state'); if(!el) return;
   el.className='save-state';
+  el.removeAttribute('title');
   if(!t.editing){ el.textContent=''; return; }
   if(t.pendingBad && t.pendingBad.length){
     el.textContent=TR('有 {n} 处存不进 · 点看',{n:t.pendingBad.length}); el.classList.add('act'); return;
   }
   if(t.conflict){ el.textContent=TR('有冲突 · 点看'); el.classList.add('act'); return; }
   if(t.saving){ el.textContent=TR('正在保存…'); el.classList.add('pending'); return; }
+  // 没存上：别停在「正在保存…」——那句话是在说谎，请求早就失败了
+  if(t.saveErr){ el.textContent=TR('没存上 · 点重试'); el.classList.add('act'); el.title=t.saveErr; return; }
   // 这里看 touched / autoT 两个便宜的标记，不调 dirty()——它每次都要把正文重新反解一遍，
   // 而这一格是每敲一个字都要刷的。
   if(t.touched || t.autoT){ el.textContent=TR('正在编辑'); el.classList.add('pending'); return; }
@@ -5502,7 +5991,15 @@ function savePillClick(t){
     else bnr('conflict', true);
     return;
   }
-  if(t.pendingBad && t.pendingBad.length) saveEdit(false);
+  if(t.saveErr){ retrySave(t); return; }
+  if(t.pendingBad && t.pendingBad.length) showStuck(t);
+}
+/* 点「没存上 · 点重试」：先说原因（服务端回的那句话），再马上试一次 */
+function retrySave(t){
+  if(!t || !t.editing) return;
+  notify(TR('没存上：{why}',{why:t.saveErr||TR('写失败')}));
+  clearTimeout(t.retryT); t.retryT=null;
+  if(!t.saving) saveEdit(false, {tab:t, auto:true});
 }
 
 /* /__raw 和 /__save 回的「改于」是 "YYYY-MM-DD HH:MM:SS" 这种字符串，
@@ -5645,8 +6142,7 @@ function tblAddCol(t, cell){
 /* 收编辑态之前先把改动落盘；没落成就不收，返回假（原因已经提示过了）。
    **必须等真的写进文件**：endEdit 会把工作副本丢掉、按 t.raw 重画，没存成就收
    等于把这次改的字扔了。所以这里 await 到有结果为止，冲突／写失败一律留在编辑态。
-   走的是 saveEdit 而不是 flushSave：flushSave 带 keepalive，那条路上不改名，
-   而且 keepalive 的请求体有 64KiB 上限，长笔记会直接发不出去。
+   走的是 saveEdit 而不是 flushSave：flushSave 卸页时会带 keepalive，那条路上不改名。
    「完成」、同标签跳转、前进后退、回开始页四条出口都走这里，报的话一模一样。 */
 async function saveBeforeLeave(t){
   if(!t || !t.editing || t.trashing) return false;   // 同 autoKick
@@ -5669,6 +6165,9 @@ async function saveBeforeLeave(t){
   }
   if(t.conflict){ syncBar(); notify(TR('有冲突，先处理一下')); return false; }
   if(!ok){ syncBar(); notify(TR('没存进去，改动还在')); return false; }
+  /* 块源码框里打了字、还没收起（⌘W、⌘Q 这类按键不会让框失焦）：别的都存好了，框里的字没落，
+     不走——关标签那条会问一句「不保存并关闭」（J 轮，R 终审 P2-1）。以前照样收编辑态，框里的字就没了。 */
+  if(srcBlkPending(t)){ syncBar(); notify(TR('源码框里改的还没收起 · 按 ⌘↩ 收起')); return false; }
   /* 存住了就在这儿收编辑态，别留给调用方。四个出口都是 .then(ok=>{ if(ok) 再走一遍 })，
      而重入那一遍的判据里有「源码框开着」这一条——t 不是当前标签时上面那句
      toggleSrc 不会跑，.src 一直挂着，于是每一遍都判成「有东西要存」，无限重入。 */
@@ -5859,13 +6358,18 @@ function newPane(t){
     if(b && b.parentElement===md0 && !b.dataset.chrome) t.hover=b;
   });
   // 正文本身就是编辑区，打字直接落在这上面。这里只挂几件浏览器不管的事。
-  md0.addEventListener('keydown', e=>{ if(t.editing && !p.classList.contains('src')) edKey(t, e); });
+  /* 块源码框（textarea）里的按键、输入、粘贴冒泡上来的不归正文管：框里是纯文字，浏览器自己处理就对了。
+     以前粘贴走了正文那条路（insertHTML 一段段 <p>），粘进框里的每一行之间都多出空行，代码被拆散（K 轮） */
+  const inBox=e=>!!(e.target && e.target.closest && e.target.closest('textarea'));
+  md0.addEventListener('keydown', e=>{ if(t.editing && !p.classList.contains('src') && !inBox(e)) edKey(t, e); });
   md0.addEventListener('input', e=>{
-    if(!t.editing || p.classList.contains('src')) return;
+    if(!t.editing || p.classList.contains('src') || inBox(e)) return;
+    // 撤销／重做把代码块粘贴那串带占位符的字原样插回来了：当场换回换行（见 preInsert）
+    if(e.inputType==='historyRedo' || e.inputType==='historyUndo') fixPreHolders(md0);
     syncPh(t);
     if(!COMPOSING){ tryMdShortcut(t); maybeSlash(t); }
   });
-  md0.addEventListener('paste', e=>{ if(t.editing && !p.classList.contains('src')) onPaste(t, e); });
+  md0.addEventListener('paste', e=>{ if(t.editing && !p.classList.contains('src') && !inBox(e)) onPaste(t, e); });
   md0.addEventListener('click', e=>{
     if(!t.editing || p.classList.contains('src')) return;
     // 勾选框。浏览器自己会切 checked，但不动 attribute，这里补上那一半
@@ -5938,7 +6442,10 @@ function offsetAtPoint(blk, e){
     return pre.toString().length;
   }catch(err){ return undefined; }
 }
-/* 光标落到某一块里第 n 个字符处 */
+/* 光标落到某一块里第 n 个字符处。
+   落点在原子元素（双链：contenteditable=false）里的话挪到它外面——
+   光标停在不可编辑的字里，接着敲的字浏览器一个都不收（两个内核实测）。
+   在它的字中间或末尾 → 放到它后面；在开头 → 放到它前面。 */
 function caretAtOffset(el, n){
   if(!el) return false;
   const w=document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
@@ -5950,12 +6457,22 @@ function caretAtOffset(el, n){
   }
   try{
     const r=document.createRange();
-    if(node) r.setStart(node, Math.max(0, Math.min(off, node.nodeValue.length)));
+    const lock=node && atomOf(node, el);
+    if(lock){ if(off>0 || node!==lock.firstChild) r.setStartAfter(lock); else r.setStartBefore(lock); }
+    else if(node) r.setStart(node, Math.max(0, Math.min(off, node.nodeValue.length)));
     else { r.selectNodeContents(el); r.collapse(false); }
     r.collapse(true);
     const s=getSelection(); s.removeAllRanges(); s.addRange(r);
     return true;
   }catch(e){ return false; }
+}
+/* n 在不在一个原子元素（双链）里；在就返回那个元素 */
+function atomOf(n, root){
+  for(let x=n && (n.nodeType===1 ? n : n.parentNode); x && x!==root && x.nodeType===1; x=x.parentNode){
+    if(x.tagName==='A' && x.getAttribute('contenteditable')==='false') return x;
+    if(x.classList && x.classList.contains('md')) return null;
+  }
+  return null;
 }
 
 /* 打开文档＝正文栏出现。 */
@@ -6119,10 +6636,19 @@ function flashHit(t, ts){
 /* 图片取不到时把 <img> 换成一行带路径的提示——MD 里图片路径写错是常事。 */
 function wireImg(root){
   root.querySelectorAll('img').forEach(im => im.addEventListener('error', () => {
-    const s = document.createElement('span');
-    s.className = 'imgbad';
     let p = im.getAttribute('src') || '';
     try{ p = decodeURI(p); }catch(e){}
+    /* 编辑态：图留着，只加一层「取不到」的样子（虚线框，悬停看原因），别换成一段字。
+       换成字的话这一换就被当成正文改动：块盖脏、两秒后自动保存，「图片没找到：…」这串
+       界面字连同丢掉的 alt 写进文件——进编辑一个字不打也会（R 报告 P0-1）。
+       加 class、title 是属性变化，改动观察器只看子树和字，这一下不算用户改动。 */
+    if(im.closest('[contenteditable="true"]')){
+      im.classList.add('imgmiss');
+      im.title = TR('图片没找到：{path}',{path:p});
+      return;
+    }
+    const s = document.createElement('span');
+    s.className = 'imgbad';
     s.textContent = TR('图片没找到：{path}',{path:p});
     im.replaceWith(s);
   }, {once:true}));
@@ -6144,7 +6670,12 @@ async function loadMd(t){
     t.rawAt='';
     if(!t.ext) await refreshRawAt(t);
     const r=await fetch(url(t.path)); if(!r.ok) throw 0;
-    t.raw=await r.text();
+    const txt=await r.text();
+    /* 这一会儿已经进了编辑（开文档还没画完就 ⌘E）：startEdit 自己读过 /__raw、画好了
+       编辑态，台账、锁、原子都在上面。再按这一份重画会把它们整个冲掉，观察器把每一块
+       都当成「动过」——一个字没打整篇被重写，本该锁住的块也照写（R 报告 P2-1）。 */
+    if(t.editing) return;
+    t.raw=txt;
     renderMd(md, t.raw, dirOf(t.path));
     decorateHistory(md, t);
   }catch(err){
@@ -6920,74 +7451,202 @@ function wireRel(p, t){
    壳菜单和老调用方都还可能喊 AMN.toggleLists，留一颗空壳，点了什么也不做。 */
 function toggleLists(){}
 
-/* 块台账。每一块在原文里是哪几行（src），和下一块之间隔着哪几行（gap）。
+/* 块台账。每一块在原文里是哪几行（src），和下一块之间隔着哪几行（gap），下一块是谁（nx，块号）。
    头（frontmatter 和它后面的空行）和尾（末尾的空行）单独留着，原样带出去。
-   这三样拼起来一定等于进来时的 t.work，一个字节不差。 */
+   这三样拼起来一定等于进来时的 t.work，一个字节不差。
+   块源码框收起时会在台账末尾补新块（见 srcBlkCommit），块号不再跟文件里的先后一致，
+   「谁挨着谁」只认 nx。 */
 function buildRegistry(t){
   const md=paneOf(t).querySelector('.md');
   const lines=t.work.split('\n');
   const els=[...md.children].filter(e=>e.nodeType===1 && e.hasAttribute('data-l0'));
   const reg={head:[], tail:[], blocks:[]};
+  // 台账的「代」：块号只在同一代里算数。撤销会把早先删掉的块原样插回来，它身上是旧台账的块号，
+  // 编号换过之后可能正好指着另一块的原文——代对不上就当新块（H 轮）
+  t.regEpoch=(t.regEpoch||0)+1;
   if(!els.length){ reg.head=lines; return (t.reg=reg); }
   reg.head=lines.slice(0, +els[0].getAttribute('data-l0'));
   els.forEach((el,k)=>{
     const l0=+el.getAttribute('data-l0'), l1=+el.getAttribute('data-l1');
     const nx=els[k+1] ? +els[k+1].getAttribute('data-l0') : null;
-    reg.blocks.push({src:lines.slice(l0,l1+1), gap:nx===null?null:lines.slice(l1+1,nx)});
-    el.dataset.bid=k;
+    reg.blocks.push({src:lines.slice(l0,l1+1), gap:nx===null?null:lines.slice(l1+1,nx), nx:nx===null?null:k+1});
+    el.dataset.bid=k; el.dataset.be=t.regEpoch;
     delete el.dataset.dirty;
   });
   reg.tail=lines.slice(+els[els.length-1].getAttribute('data-l1')+1);
   return (t.reg=reg);
 }
 
-/* 正文 DOM → 整份文件的文本。顺序完全按 DOM 走，
-   所以删一块、在中间插一块、把一段拆成两段都对得上。 */
-function serializeBody(t){
-  const p=paneOf(t); if(!p || !t.reg) return t.work;
-  const md=p.querySelector('.md'), reg=t.reg, ent=[];
-  [...md.children].forEach(el=>{
-    if(el.nodeType!==1 || el.tagName==='TEXTAREA' || el.dataset.chrome) return;
-    const bid=el.dataset.bid;
-    const keep = bid!==undefined && reg.blocks[+bid] && !el.dataset.dirty;
-    const src = keep ? reg.blocks[+bid].src : blkMd(el, dirOf(t.path)).split('\n');
-    if(!src.join('').trim()) return;                  // 空块不写出去
-    ent.push({bid: bid===undefined?null:+bid, src});
+/* 这一块在台账里的块号：有、在台账里、而且是这一代台账记的（见 buildRegistry 的 regEpoch），否则 null */
+function blockBid(t, el){
+  const b=el && el.dataset ? el.dataset.bid : undefined;
+  if(b===undefined || !t.reg || !t.reg.blocks[+b]) return null;
+  if(String(el.dataset.be)!==String(t.regEpoch)) return null;
+  return +b;
+}
+/* 正文 DOM → 整份文件的文本（I 轮：回到整篇写）。顺序完全按 DOM 走。
+   台账 t.reg＝{head, blocks:[{src, gap}], tail} 是进编辑时文件按块切开的样子，编辑期间不变；
+   DOM 里每一块的 data-bid 指回台账里它那一块。没动过的块抄台账原字节（它在文件里一直就是这几行）；
+   动过的、新的、块号重了的（浏览器劈段会把块号抄给新块）按自检结论写（blockPlan）。
+   块源码框（⌥⌘E）开着的那块：没动过的照台账写；动过的照开框那一刻它该写的样子写（ta._md）；
+   原来就存不进的，框开着也算存不进（ta._stuck）——收起（⌘↩）或 ⌘S 时才把框里的字落回去
+   （⌘S 落过之后框开着就照落下的那一份写，ta._md）。框里正在打、还没落的字不写。
+   源码框收起后渲染出来的几块各有各的块号、各有一份台账（J 轮，见 srcBlkCommit）；
+   同一个块号出现在好几块上（浏览器劈段、撤销插回来的）一律按块号重了算，每一块按眼前的样子写。
+   两块之间的空白：台账里前一块的下一块（nx）正好是后一块，就照原样写那几行，别的情况给一个空行。
+   存不进（stuck）：这一次整篇不写（saveEdit 见 stuck 就不发 /__save），文件保持上次存下的样子。
+   H 轮按锚点分段、stuck 的那段写原字节——拖放、并段、源码框都会让内容在块之间挪，锚点认的是元素
+   不是内容，三轮都被找出丢字或写重，I 轮整个拿掉。这里只有切整篇源码（draft，toggleSrc 先问过人）
+   才会把存不进的块按编辑器眼里的样子写出来；不是 draft 时 text 里它照台账写（尽力而为，不会拿去写盘）。
+   probe（K 轮，只给 srcBlkFits 用）：假装块源码框 probe.ta 已经落下、框里是 probe.lines，往后接空白按
+   probe.link（落框以后末一块的 gap／nx）；probe.pad＝框跟前后文之间一个空行都没有的地方补一个。
+   返回 {text, stuck:[判成存不进的块…]}；有 probe 时多给 at（框里第一行落在第几行，没写出去是 -1）
+   和 inLink（框前面那一块往后接空白认的那一条台账）。 */
+function bodyPlan(t, over, draft, probe){
+  const p=paneOf(t), md=p.querySelector('.md'), reg=t.reg, base=dirOf(t.path);
+  const kids=[...md.children].filter(el=>el.nodeType===1 && !el.dataset.chrome);
+  const units=kids.map(el=>{
+    const bid=blockBid(t, el), ta=el.tagName==='TEXTAREA';
+    return {el, bid, ta, clean:bid!==null && (ta || !el.dataset.dirty)};
+  });
+  const cnt=new Map();
+  units.forEach(u=>{ if(u.bid!==null) cnt.set(u.bid, (cnt.get(u.bid)||0)+1); });
+  const stuck=[], ent=[];
+  units.forEach(u=>{
+    // 块号重了：每一块都按眼前的样子写，台账那一份谁也不抄（不然原文写两遍）
+    const el=u.el, dup=u.bid!==null && cnt.get(u.bid)>1, isProbe=!!(probe && el===probe.ta);
+    let src=null, last=u.bid;                       // last：往后接哪一块的空白，按台账里哪一块的 nx／gap 算
+    if(isProbe) src=probe.lines;
+    else if(u.ta && draft){                          // 切整篇源码：框里眼下的字原样进源码（K 轮），往后接空白按开框那一刻
+      src=String(el.value).replace(/\r\n/g,'\n').split('\n'); last=null;
+    }
+    else if(u.ta){
+      if(el._stuck){ stuck.push(el); if(u.bid!==null) src=reg.blocks[u.bid].src; }
+      else if(el._md!=null){ src=String(el._md).split('\n'); if(el._last!==undefined) last=el._last; }
+      else if(u.bid!==null) src=reg.blocks[u.bid].src;
+    }else if(u.clean && !dup) src=reg.blocks[u.bid].src;
+    else{
+      const v=(over && over.has(el)) ? over.get(el) : blockPlan(el, base);
+      if(v.stuck && !draft){ stuck.push(el); if(u.bid!==null && !dup) src=reg.blocks[u.bid].src; }
+      else src=String(v.md==null?'':v.md).split('\n');
+    }
+    if(!src || !src.join('').trim()) return;          // 空块不写出去
+    const link=isProbe ? probe.link : (u.ta && draft) ? (el._out || null) : (last!==null && reg.blocks[last]) || null;
+    ent.push({bid:u.bid, link, src, probe:isProbe});
   });
   const out=reg.head.slice();
+  let at=-1, inLink=null;
   ent.forEach((e,k)=>{
     if(k){
-      const pv=ent[k-1].bid;
-      // 原来就前后挨着的两块，中间那几行空白原样保留；别的情况给一个空行
-      const g=(pv!==null && e.bid===pv+1 && reg.blocks[pv]) ? reg.blocks[pv].gap : null;
+      const L=ent[k-1].link;
+      // 台账里本来就前后挨着的两块，中间那几行空白原样保留；别的情况给一个空行
+      let g=(L && e.bid!==null && L.nx===e.bid) ? L.gap : null;
+      if(e.probe) inLink=L;
+      if(probe && probe.pad && (e.probe || ent[k-1].probe) && g && !g.length) g=null;
       out.push(...(g||['']));
     }
+    if(e.probe) at=out.length;
     out.push(...e.src);
   });
   out.push(...reg.tail);
-  return out.join('\n');
+  return {text:wellFormed(out.join('\n')), stuck, at, inLink};
+}
+function serializeBody(t, over, draft){
+  if(!paneOf(t) || !t.reg) return t.work;
+  return bodyPlan(t, over, draft).text;
+}
+/* 一块动过的块的结论（blockVerdict）。反解本身抛了：这一块按存不进算（文件里留原来的字节），
+   md 给一份尽量像的，只给源码框看。 */
+function blockPlan(el, base){
+  try{ return blockVerdict(el, base); }
+  catch(e){
+    let md='';
+    try{ md=blkMd(el, base); }catch(e2){ md=tidyTxt(el.textContent||''); }
+    return {md, ok:false, stuck:true};
+  }
+}
+/* 孤立的代理项（半个 emoji）换成 U+FFFD。服务端按 UTF-8 编码时会抛异常，
+   整篇每一次都存不进；屏幕上它本来就画成一个替换符号。 */
+function wellFormed(s){
+  s=String(s);
+  if(typeof s.toWellFormed==='function') return s.toWellFormed();
+  let o='';
+  for(let i=0;i<s.length;i++){
+    const c=s.charCodeAt(i);
+    if(c>=0xD800 && c<=0xDBFF){
+      const d=s.charCodeAt(i+1);
+      if(d>=0xDC00 && d<=0xDFFF){ o+=s[i]+s[i+1]; i++; } else o+='\uFFFD';
+    }else o += (c>=0xDC00 && c<=0xDFFF) ? '\uFFFD' : s[i];
+  }
+  return o;
 }
 
-/* 编辑期间判「有没有改动」：把正文序列化出来跟磁盘那一版比。
-   逐字符敲的时候不跑这个（太贵），顶栏那行提示看的是 t.touched。 */
-const dirty = t => !!(t && t.editing && t.touched && serializeBody(t)!==t.raw);
+/* 编辑期间判「有没有改动」：动过、而且还没确认落盘，就算。
+   以前是把正文序列化出来跟磁盘那一版比——序列化恰好把改动丢了的时候
+   （双链里打的字、只改了块边空白）就判成没改，壳的退出／关窗拦截不弹，退出即丢。
+   t.touched 由改动置上，存盘成功（而且存的这一会儿没再动）才清。也省得壳
+   每半秒问一次 state() 就把整篇反解一遍。 */
+const dirty = t => !!(t && t.editing && t.touched);
 /* ── DOM 洗白 ───────────────────────────
    浏览器在 contenteditable 里造出来的东西不完全是我们渲染的那一套：加粗给的是 <b>、
    斜体是 <i>，撤销和拖动还会塞 <span style> 和 <font>。每次改完把这一块洗回
-   我们自己的形状，序列化和自检才有一个稳定的比较基准。 */
+   我们自己的形状，序列化和自检才有一个稳定的比较基准。
+   编辑器自己也会造坏形状（B 报告 §5.1 的 C–F 类），一并在这里收拾：
+   跑到顶层的裸行内元素包回段落；段落套进了行里／li／格子（跨块格式、粘贴）拆壳、
+   前后各断一行；引用里的散字包成段；li 里挨着的两张子表并成一张；代码块里只留字；
+   行内代码里的 <br> 把代码切开；相邻同名标签并起来（<em>甲</em><em>乙</em> 写成
+   *甲**乙* 是加粗）；双链保住 class、做成原子；外来的 <a href> 补成自家的样子；
+   认不得的行内标签（sup、mark、kbd……）只留里面的字。 */
 const UNWRAP={SPAN:1, DIV:1, FONT:1, U:1, SMALL:1, BIG:1};
 const RETAG={B:'strong', I:'em', STRIKE:'del', S:'del'};
+// 正文里认得的元素；别的行内标签一律拆壳留字
+const KEEP_TAG=/^(P|H[1-6]|UL|OL|LI|BLOCKQUOTE|PRE|CODE|STRONG|EM|DEL|A|BR|IMG|INPUT|HR|TABLE|THEAD|TBODY|TFOOT|TR|TD|TH|CAPTION|COLGROUP|COL|SPAN|DIV)$/;
+const TOP_BLOCK=/^(P|H[1-6]|UL|OL|BLOCKQUOTE|PRE|HR|TABLE|DIV)$/;
+
+function unwrapKeep(n){
+  const f=document.createDocumentFragment();
+  while(n.firstChild) f.appendChild(n.firstChild);
+  n.replaceWith(f);
+}
+/* root 里紧挨着 node 前面（back）或后面的那个「有东西」的叶子：
+   非空白的字、<br>、<img>、子表这类块。空的壳、纯空白跳过去。 */
+function leafNear(node, root, back){
+  let n=node;
+  for(;;){
+    let s = back ? n.previousSibling : n.nextSibling;
+    while(!s){
+      n=n.parentNode;
+      if(!n || n===root) return null;
+      s = back ? n.previousSibling : n.nextSibling;
+    }
+    n=s;
+    while(n.nodeType===1 && !/^(BR|IMG|INPUT|UL|OL|TABLE|PRE|HR)$/.test(n.tagName)
+          && (back ? n.lastChild : n.firstChild)) n = back ? n.lastChild : n.firstChild;
+    if(n.nodeType===3){ if(tidyTxt(n.nodeValue).trim()) return n; continue; }
+    if(n.nodeType===1 && /^(BR|IMG|UL|OL|TABLE|PRE|HR)$/.test(n.tagName)) return n;
+  }
+}
+const isTag = (n, re) => !!(n && n.nodeType===1 && re.test(n.tagName));
 
 function cleanBlock(el){
   if(!el || el.nodeType!==1) return el;
+  if(el.tagName==='TEXTAREA' || el.dataset.chrome) return el;
   // 顶层被浏览器造成了 div（某些情况下回车会给 div），按正文段落算
   if(el.tagName==='DIV' && !el.classList.contains('tw')){
     const p=document.createElement('p');
     while(el.firstChild) p.appendChild(el.firstChild);
     [...el.attributes].forEach(a=>p.setAttribute(a.name,a.value));
     el.replaceWith(p); el=p;
+  }else if(!TOP_BLOCK.test(el.tagName)){
+    // 跑到顶层的裸行内元素（图、加粗、链接……）：包回一个段落。
+    // 块号、脏标记挪到外面这层，台账和序列化认的是顶层那一块
+    const p=document.createElement('p');
+    ['bid','be','dirty'].forEach(k=>{ if(el.dataset[k]!==undefined){ p.dataset[k]=el.dataset[k]; delete el.dataset[k]; } });
+    el.replaceWith(p); p.appendChild(el); el=p;
   }
-  el.querySelectorAll('b,i,s,strike,u,font,span,div,h5,h6').forEach(n=>{
+  // 代码块粘贴的占位符（撤销再重做会把它原样插回来）：代码块里换回换行、别处删掉（见 preInsert）
+  fixPreHolders(el);
+  el.querySelectorAll('b,i,s,strike,u,font,span').forEach(n=>{
     if(n.tagName==='SPAN' && n.parentElement && n.parentElement.classList.contains('task')) return;
     if(n.tagName==='SPAN' && n.classList.contains('imgbad')) return;
     const to=RETAG[n.tagName];
@@ -6995,14 +7654,155 @@ function cleanBlock(el){
       const r=document.createElement(to);
       while(n.firstChild) r.appendChild(n.firstChild);
       n.replaceWith(r);
-    }else if(UNWRAP[n.tagName] || /^H[56]$/.test(n.tagName)){
-      const f=document.createDocumentFragment();
-      while(n.firstChild) f.appendChild(n.firstChild);
-      n.replaceWith(f);
+    }else if(UNWRAP[n.tagName]) unwrapKeep(n);
+  });
+  // 认不得的行内标签（sup、mark、kbd、small……）：拆壳留字
+  el.querySelectorAll('*').forEach(n=>{ if(!KEEP_TAG.test(n.tagName)) unwrapKeep(n); });
+  // 代码块：只留 <pre><code>字和 <br></code></pre>。并进来的字（落在 <code> 外面）收进去，
+  // 里面的加粗之类（写不进 md）拆壳。<br> 原样留着——Chromium 在代码块里回车插的就是它，
+  // 换成换行字符的话，按字符数记的光标会往回跳一格（preText 写回时把它当换行）
+  if(el.tagName==='PRE'){
+    const c=el.firstChild;
+    const plain = el.childNodes.length===1 && isTag(c, /^CODE$/)
+                  && [...c.childNodes].every(x=>x.nodeType===3 || isTag(x, /^BR$/));
+    if(!plain){
+      const code=document.createElement('code');
+      const flat=n=>n.childNodes.forEach(x=>{
+        if(x.nodeType===3 || isTag(x, /^BR$/)) code.appendChild(x.cloneNode(true));
+        else if(x.nodeType===1){
+          // 段落一类的块进了代码块：各占一行（同 preText）
+          const blk=/^(P|DIV|LI|H[1-6]|TR|BLOCKQUOTE)$/.test(x.tagName);
+          if(blk && code.textContent && !/\n$/.test(preText(code))) code.appendChild(document.createElement('br'));
+          flat(x);
+          if(blk) code.appendChild(document.createElement('br'));
+        }
+      });
+      flat(el);
+      el.textContent='';
+      el.appendChild(code);
+    }
+  }
+  // 段落一类的块套进了行里／li／格子／别的段落（跨块格式、粘贴、li>p）：
+  // 拆壳，前后各断一行。只有引用底下那一层 <p> 是正经结构。
+  // 落单的 <li>（不在 ul/ol 里，插 HTML 插出来的）同样：写回去只能是一行，屏幕上也按一行来，
+  // 别让它顶着项目符号、存下去却是普通的一行（R 判据 r-js-li-in-p）
+  el.querySelectorAll('p,div,h1,h2,h3,h4,h5,h6,li').forEach(n=>{
+    if(!el.contains(n) || n.classList.contains('tw')) return;
+    if(n.tagName==='LI' && n.parentNode && /^(UL|OL)$/.test(n.parentNode.tagName)) return;
+    if(el.tagName==='BLOCKQUOTE' && n.parentNode===el){
+      if(n.tagName!=='P'){                          // 引用里的 div / 标题：当一段
+        const p=document.createElement('p');
+        while(n.firstChild) p.appendChild(n.firstChild);
+        n.replaceWith(p);
+      }
+      return;
+    }
+    let box=n.parentNode;
+    while(box && box!==el && !/^(LI|TD|TH|P|H[1-6])$/.test(box.tagName)) box=box.parentNode;
+    if(!box) return;
+    while(n.lastChild && isTag(n.lastChild, /^BR$/)) n.lastChild.remove();   // 段尾那个占位 <br>
+    const pv=leafNear(n, box, true), nx=leafNear(n, box, false);
+    if(pv && !isTag(pv, /^BR$/)) n.before(document.createElement('br'));
+    if(nx && !isTag(nx, /^(BR|UL|OL)$/)) n.after(document.createElement('br'));
+    unwrapKeep(n);
+  });
+  // 引用里夹在段落之间的散字：包成一段（浏览器并段、退格合并会造出来）
+  if(el.tagName==='BLOCKQUOTE'){
+    let run=null;
+    [...el.childNodes].forEach(c=>{
+      if(isTag(c, /^(P|UL|OL|PRE|TABLE|HR|BLOCKQUOTE)$/)){ run=null; return; }
+      if(!run){
+        if(c.nodeType===3 && !tidyTxt(c.nodeValue).trim()) return;
+        run=document.createElement('p'); c.before(run);
+      }
+      run.appendChild(c);
+    });
+  }
+  // 列表：li 以外的东西收进一条 li；li 里挨着的两张子表并成一张——写回去本来就是一张，
+  // 不并的话屏幕上一条是「1.」一条是「•」，存完再开却都成了有序
+  const lists=[el, ...el.querySelectorAll('ul,ol')].filter(x=>isTag(x, /^(UL|OL)$/));
+  lists.forEach(list=>{
+    let li=null;
+    [...list.childNodes].forEach(c=>{
+      if(isTag(c, /^LI$/)){ li=null; return; }
+      if(c.nodeType===3 && !tidyTxt(c.nodeValue).trim()) return;
+      if(!li){ li=document.createElement('li'); c.before(li); }
+      li.appendChild(c);
+    });
+  });
+  el.querySelectorAll('li').forEach(li=>{
+    [...li.children].forEach(c=>{
+      if(!isTag(c, /^(UL|OL)$/) || c.parentNode!==li) return;
+      let nx=c.nextSibling;
+      while(nx && nx.nodeType===3 && !tidyTxt(nx.nodeValue).trim()) nx=nx.nextSibling;
+      while(isTag(nx, /^(UL|OL)$/)){
+        while(nx.firstChild) c.appendChild(nx.firstChild);
+        const gone=nx; nx=nx.nextSibling; gone.remove();
+        while(nx && nx.nodeType===3 && !tidyTxt(nx.nodeValue).trim()) nx=nx.nextSibling;
+      }
+    });
+  });
+  // 行内代码：里面的格式拆掉（写不进 md），<br> 处把代码切开
+  el.querySelectorAll('code').forEach(c=>{
+    if(el.tagName==='PRE') return;
+    c.querySelectorAll('*').forEach(x=>{ if(x.tagName!=='BR') unwrapKeep(x); });
+    if(!c.querySelector('br')) return;
+    const f=document.createDocumentFragment();
+    let cur=null;
+    [...c.childNodes].forEach(x=>{
+      if(isTag(x, /^BR$/)){ cur=null; f.appendChild(x); return; }
+      if(!cur){ cur=document.createElement('code'); f.appendChild(cur); }
+      cur.appendChild(x);
+    });
+    c.replaceWith(f);
+  });
+  // 同名标签套同名标签（粗里又一层粗）：里面那层是多余的
+  el.querySelectorAll('strong strong, em em, del del, a a').forEach(n=>{ if(el.contains(n)) unwrapKeep(n); });
+  // 链接
+  el.querySelectorAll('a').forEach(a=>{
+    if(a.dataset.wl!==undefined){
+      // 双链：class 保住（洗白以前把它剥了，一碰就存不进）；做成原子，光标进不去，
+      // 末尾接着打的字落在链接外面。字跟名字对不上（老版本里打进去的字）就把多出来的挪出去
+      const name=a.dataset.wl, txt=a.textContent;
+      if(txt!==name){
+        const at=txt.indexOf(name);
+        if(at>=0){
+          if(at>0) a.before(document.createTextNode(txt.slice(0, at)));
+          if(at+name.length<txt.length) a.after(document.createTextNode(txt.slice(at+name.length)));
+        }else if(txt.trim() && txt.length<=80 && !/[\[\]\n]/.test(txt)) a.dataset.wl=txt;
+        else{ unwrapKeep(a); return; }
+        a.textContent=a.dataset.wl;
+      }
+      if(a.childNodes.length!==1 || a.firstChild.nodeType!==3) a.textContent=a.dataset.wl;
+      a.className='wl';
+      a.setAttribute('contenteditable','false');
+      return;
+    }
+    // 外来的 <a href>（拖进来的、浏览器自己造的）：地址记进 data-u，跟渲染器造的一个样
+    if(!a.hasAttribute('data-u')){
+      if(!a.hasAttribute('href')){ unwrapKeep(a); return; }
+      a.setAttribute('data-u', a.getAttribute('href'));
+    }
+    a.setAttribute('target','_blank'); a.setAttribute('rel','noopener');
+  });
+  // 一个子节点都没有的行内壳（<strong></strong>、<code></code>）：写不进文件，屏幕上
+  // 行内代码还会画出一小块底色。拿掉。只剩光标位 <br> 的那种（<li><strong><br></strong>，
+  // 加粗项末回车造出来的）留着——光标在里面，接着打的字照旧是粗的
+  el.querySelectorAll('strong,em,del,code,a').forEach(n=>{
+    if(!n.firstChild && n.dataset.wl===undefined && el.contains(n)) n.remove();
+  });
+  // 相邻的同名标签并起来：<em>甲</em><em>乙</em> 写出来是 *甲**乙*——成了加粗
+  el.querySelectorAll('strong,em,del,code,a').forEach(n=>{
+    if(!el.contains(n) || n.dataset.wl!==undefined) return;
+    let nx=n.nextSibling;
+    while(nx && nx.nodeType===1 && nx.tagName===n.tagName && nx.dataset.wl===undefined
+          && (n.tagName!=='A' || nx.getAttribute('data-u')===n.getAttribute('data-u'))){
+      while(nx.firstChild) n.appendChild(nx.firstChild);
+      const gone=nx; nx=nx.nextSibling; gone.remove();
     }
   });
   // 浏览器随手贴的 style / class 一律去掉。表格格子的 text-align 是我们自己按
-  // 对齐位生成的，留着；li.task、div.tw、span.imgbad 三个 class 同理。
+  // 对齐位生成的，留着；li.task、div.tw、span.imgbad、a.wl 四个 class 同理。
   // li.task 只在真有勾选框时才保：浏览器劈 <li> 会把 class 一起抄给下半个、
   // 勾选框却留在上半个，那条骗人的 class 会让一条普通列表项一直顶着待办的样子
   // （无项目符号、flex 版式），存盘写出来却是 `- 文字`。没框就不是待办，剥掉。
@@ -7010,7 +7810,9 @@ function cleanBlock(el){
     if(!/^(TD|TH)$/.test(n.tagName)) n.removeAttribute('style');
     if(!(n.tagName==='LI'&&n.classList.contains('task')
          && n.querySelector(':scope > input[type=checkbox]'))
-       && !n.classList.contains('tw') && !n.classList.contains('imgbad')) n.removeAttribute('class');
+       && !n.classList.contains('tw') && !n.classList.contains('imgbad')
+       && !(n.tagName==='A' && n.dataset.wl!==undefined)
+       && !(n.tagName==='IMG' && n.classList.contains('imgmiss'))) n.removeAttribute('class');
     ['align','color','face','dir'].forEach(a=>n.removeAttribute(a));
   });
   // 末尾那个 <br> 不在这里删。浏览器拿它当空段落的光标位，删了正在打字的地方
@@ -7031,15 +7833,21 @@ function ensureBr(el){
 function tidyTxt(s){ return String(s||'').replace(/[\u00a0\u3000]/g,' ').replace(/\u200b/g,''); }
 
 /* 光标所在的可落点块。选区按这块内部的字符偏移记，不按整篇的字符数——
-   空块没有字符，按整篇数会把光标送回上一块末尾。 */
+   空块没有字符，按整篇数会把光标送回上一块末尾。
+   段落套在 li／格子／另一个段落里（粘贴、跨块格式造出来的）：按外面那一层记。
+   洗白会把里面那层壳拆掉，按里层记的坐标就放不回去了。 */
 function blockish(n, root){
-  let topDiv=null;
+  let topDiv=null, hit=null;
   while(n && n!==root){
-    if(n.nodeType===1 && /^(P|H[1-6]|LI|TD|TH|PRE|BLOCKQUOTE)$/.test(n.tagName)) return n;
+    if(n.nodeType===1 && /^(P|H[1-6]|LI|TD|TH|PRE|BLOCKQUOTE)$/.test(n.tagName)){
+      if(!hit) hit=n;
+      else if(/^(P|H[1-6])$/.test(hit.tagName) && /^(P|H[1-6]|LI|TD|TH)$/.test(n.tagName)) hit=n;
+      else break;
+    }
     if(n.nodeType===1 && n.tagName==='DIV' && n.parentNode===root && !n.classList.contains('tw')) topDiv=n;
     n=n.parentNode;
   }
-  return topDiv;
+  return hit || topDiv;
 }
 function pathFrom(root, el){
   const path=[];
@@ -7063,6 +7871,11 @@ function elAtPath(root, path){
 /* 洗白会换掉节点，光标就散了。按「哪一块 + 块内第几个字符」记，
    DIV 换成 P、空段加 <br> 都不影响这个坐标。 */
 function saveSel(md){
+  /* 焦点在块源码框里：正文的选区不归这里管，不记、也就不放回。以前存盘前洗白（tidyDirty）照样记下、放回，
+     放回那一下把焦点从框里拽到正文——框失焦就收了，接着按的 Esc 落到「放弃修改」上（K 轮随机会话种子 304，
+     H 轮起就有） */
+  const ae=document.activeElement;
+  if(ae && ae.tagName==='TEXTAREA' && md.contains(ae)) return null;
   const s=getSelection();
   if(!s || !s.rangeCount || !md.contains(s.anchorNode)) return null;
   const r=s.getRangeAt(0);
@@ -7156,9 +7969,14 @@ function watchEdits(t){
   const mark=n=>{ const b=top(n); if(b){ b.dataset.dirty='1'; hit.push(b); } };
   t.mo=new MutationObserver(ms=>{
     hit.length=0;
+    const stray=[];
     ms.forEach(m=>{
       mark(m.target);
       m.addedNodes.forEach(mark);
+      // 正文根上冒出来的散字（不在任何块里）：序列化只认块，它一存就没了——下面包成一段
+      [m.target, ...m.addedNodes].forEach(n=>{
+        if(n && n.nodeType===3 && n.parentNode===md && tidyTxt(n.nodeValue).trim()) stray.push(n);
+      });
     });
     t.touched=true;
     // 洗白要等这一轮变更记录处理完再做，不然会跟浏览器自己的编辑动作打架。
@@ -7166,13 +7984,14 @@ function watchEdits(t){
     // 拼音打到一半不能洗：换节点、重设 Range 会打断输入法组合，
     // 表现是候选框消失、半截拼音上屏。
     const list=[...new Set(hit)];
-    if(list.length) requestAnimationFrame(()=>{
+    if(list.length || stray.length) requestAnimationFrame(()=>{
       if(COMPOSING) return;
       // 这一帧之间编辑态可能已经收了（收编辑、关标签、移到废纸篓），
       // 那就什么都别做：面板都拆了，洗块和重挂观察器全是空转
       if(!t.editing || !paneOf(t)) return;
       unwatch(t);
       const before=md.innerHTML, keep=saveSel(md);
+      wrapStray(md, stray);
       list.forEach(b=>{ if(b.isConnected) cleanBlock(b); });
       if(md.innerHTML!==before) restoreSel(md, keep);
       watchEdits(t);
@@ -7185,6 +8004,22 @@ function watchEdits(t){
   t.mo.observe(md, {subtree:true, childList:true, characterData:true});
 }
 
+/* 正文根上的散字（全选删光再打、某些撤销会造出来）：不在任何块里，序列化只认块，
+   一存就没了，壳退出也不拦。连同后面挨着的行内内容一起包成一段。 */
+function wrapStray(md, nodes){
+  nodes.forEach(n=>{
+    if(n.parentNode!==md || !tidyTxt(n.nodeValue).trim()) return;
+    const p=document.createElement('p'); p.dataset.dirty='1';
+    n.before(p);
+    let x=p.nextSibling;
+    while(x && (x.nodeType===3 || (x.nodeType===1 && !TOP_BLOCK.test(x.tagName)
+                                  && x.tagName!=='TEXTAREA' && !x.dataset.chrome))){
+      const nx=x.nextSibling; p.appendChild(x); x=nx;
+    }
+    cleanBlock(p);
+  });
+}
+
 /* ── 进编辑前的准备 ─────────────────────
    反解不回 markdown 的块锁住，只能按源码改（v10 的老路）。
    显示层的包装（文档历史折叠）必须先拆干净：台账按 .md 的直接子节点建，
@@ -7194,15 +8029,7 @@ function prepEdit(t){
   undecorateHistory(md);
   buildRegistry(t);
   let lock=0;
-  [...md.children].forEach(el=>{
-    if(el.nodeType!==1) return;
-    if(el.dataset.chrome){ el.contentEditable='false'; return; }
-    if(safeBlock(el, base)){
-      el.removeAttribute('data-lock'); el.removeAttribute('contenteditable');
-    }else{
-      el.setAttribute('data-lock','1'); el.setAttribute('contenteditable','false'); lock++;
-    }
-  });
+  [...md.children].forEach(el=>{ if(el.nodeType===1) lock+=prepBlock(el, base); });
   md.setAttribute('contenteditable','true');
   md.spellcheck=false;
   try{ document.execCommand('styleWithCSS', false, false); }catch(e){}
@@ -7210,6 +8037,21 @@ function prepEdit(t){
   watchEdits(t);
   t.lock=lock;
   syncPh(t);
+}
+
+/* 进编辑时一块的准备：反解不回的锁住（返回 1），能编辑的把双链做成原子。块源码框收起、
+   就地换上新渲染的那几块时也走这里（closeSrcBlk）。 */
+function prepBlock(el, base){
+  if(el.dataset.chrome){ el.contentEditable='false'; return 0; }
+  if(safeBlock(el, base)){
+    el.removeAttribute('data-lock'); el.removeAttribute('contenteditable');
+    // 双链做成原子（同图片）：光标进不去，末尾接着打的字落在链接外面。以前落进 <a>，
+    // 序列化只认 data-wl，那几个字存不进、退出也不拦。新冒出来的双链由 cleanBlock 补上
+    el.querySelectorAll('a[data-wl]').forEach(a=>a.setAttribute('contenteditable','false'));
+    return 0;
+  }
+  el.setAttribute('data-lock','1'); el.setAttribute('contenteditable','false');
+  return 1;
 }
 
 /* 光标落到某一块的末尾（atStart 则到开头）。空块先补 <br> 再放光标。 */
@@ -7227,7 +8069,12 @@ function caretEnd(el, atStart){
   ensureBr(tgt);
   try{
     const r=document.createRange();
-    r.selectNodeContents(tgt);
+    const last=tgt.lastChild;
+    /* 落到块尾、最后一个是占位 <br>：停在它前面，别停在它后面。
+       停在后面的话 Chromium 组字时首字母会被单独提交出去（「- 」后打拼音得到「n你好」，
+       A 报告 R9），WebKit 里打的字也会落到 <br> 之后的新一行上。 */
+    if(!atStart && last && last.nodeType===1 && last.tagName==='BR') r.setStartBefore(last);
+    else r.selectNodeContents(tgt);
     r.collapse(!!atStart);
     const s=getSelection(); s.removeAllRanges(); s.addRange(r);
   }catch(e){}
@@ -7335,24 +8182,43 @@ function ensureCaret(t){
    写出去还是你亲手打的那几行字节。 */
 function openSrcBlk(t, el){
   if(!el || el.tagName==='TEXTAREA') return null;
-  const bid=el.dataset.bid;
-  const src=(bid!==undefined && t.reg.blocks[+bid] && !el.dataset.dirty)
-    ? t.reg.blocks[+bid].src.join('\n') : blkMd(el);
+  const base=dirOf(t.path), md=paneOf(t).querySelector('.md');
+  let bid=blockBid(t, el);
+  // 块号重了（浏览器劈段抄过去的）：这一块按新块算，不跟另一半抢台账里那一份
+  if(bid!==null && [...md.children].some(c=>c!==el && blockBid(t, c)===bid)) bid=null;
+  const clean=bid!==null && !el.dataset.dirty;
+  /* 框里放什么：没动过的块——台账里的原文；动过的块——它眼下该写进文件的 md（自检结论）；
+     存不进的块——尽力写出来的草稿 md（一个字不丢，结构是能存下来的那种），收起就照它重画、照常存（I 轮）。
+     框开着的时候：存不进的那块照样算存不进（整篇先不写）；动过的照开框那一刻的样子写（ta._md）。 */
+  const v=clean ? null : blockPlan(el, base);
+  const src=clean ? t.reg.blocks[bid].src.join('\n') : String(v.md==null ? '' : v.md);
   const ta=document.createElement('textarea');
   ta.className='blk mono'; ta.value=src; ta.spellcheck=false;
+  ta._orig=el;                                   // 不改就收起（Esc）：原样放回去，脏标记、没存进去的改动都在
+  ta._init=src;                                  // 框里的字有没有改过，跟它比
+  if(v){ if(v.stuck) ta._stuck=true; else ta._md=src; }
   ta.setAttribute('contenteditable','false');    // 别让外面那层 contenteditable 接管
-  if(bid!==undefined) ta.dataset.bid=bid;
+  if(bid!==null){
+    ta.dataset.bid=bid; ta.dataset.be=t.regEpoch;
+    // 这一块往后接着谁、中间空几行：框里的字收起来变成几块时，最后一块接上它（见 srcBlkCommit）
+    ta._out={gap:t.reg.blocks[bid].gap, nx:t.reg.blocks[bid].nx};
+  }
   ta._fit=()=>{ ta.style.height='auto'; ta.style.height=(ta.scrollHeight+1)+'px'; };
-  ta.addEventListener('input', ta._fit);
+  /* 框里打字也是改动（J 轮，R 终审 P2-1）：dirty 为真，关标签、⌘W、退出都会拦。改动观察器看不见
+     textarea 的 value，以前框里打了字 dirty 还是假，⌘W 不问就关、框里的字没了。
+     停笔照常自动存：框开着的这一块照开框那一刻（或 ⌘S 落下的那一份）写，框里正打着的半截字不写；
+     存完只要框里还有没落的字，dirty 就一直为真（见 srcBlkPending）。 */
+  ta.addEventListener('input', ()=>{ ta._fit(); t.touched=true; autoKick(t); });
   ta.addEventListener('keydown', e=>{
     if(e.isComposing || e.keyCode===229) return;
     if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); closeSrcBlk(t, ta, false); }
-    if(e.key==='Enter' && (e.metaKey||e.ctrlKey)){ e.preventDefault(); closeSrcBlk(t, ta, true); }
+    if(e.key==='Enter' && (e.metaKey||e.ctrlKey)){ e.preventDefault(); closeSrcBlk(t, ta, true, true); }
     if(e.key==='Tab'){
       e.preventDefault();
       const s=ta.selectionStart, x=ta.selectionEnd;
       ta.value=ta.value.slice(0,s)+'  '+ta.value.slice(x);
       ta.selectionStart=ta.selectionEnd=s+2; ta._fit();
+      t.touched=true; autoKick(t);                // 改 value 不发 input，这里补上
     }
   });
   ta.addEventListener('blur', ()=>{ if(!ta.dataset.closing) closeSrcBlk(t, ta, true); });
@@ -7363,30 +8229,168 @@ function openSrcBlk(t, el){
   syncStatusLine();
   return ta;
 }
-
-function closeSrcBlk(t, ta, keep){
+/* 框里的字落回台账、渲染成几块（收起、或者框开着时按 ⌘S）。渲染出来的块不盖脏：下一次存盘
+   按台账原样写，不反解——锁住的块、写法特别的块，改完源码照样存得进；锁、双链原子、坏图占位
+   照进编辑时那样准备好。
+   **每一块各登记一份台账原文**（J 轮，R 终审 P1-1）：md2html 给的 data-l0／l1 是每块在框里的
+   行号，按它把框里的字切开。头一块接着用框原来的块号（框没块号就在台账末尾补），后面几块在台账
+   末尾各补一份；块与块之间框里那几行空白记进 gap、nx 指着下一块；最后一块接上开框那一刻这一块
+   往后的那一截（ta._out），跟后文之间的空白照旧。框里头一块前面、末一块后面不成块的那几行
+   （多打的空行之类）并进头一块／末一块，一个字节不丢。
+   以前（H、I）几块共用一份台账：其中一块被删掉、或者被单独开框改过以后，剩下没动的那块把整份
+   原文抄进文件——删掉的段还在、改过的段旧版本也在，胶囊照样说已保存。
+   框记下头一块的块号（下一次落还从它起）和末一块的块号（ta._last：框开着时往后接空白按它算）。
+   落之前先过 srcBlkFits（K 轮）：框里的字放回整篇以后渲染出来得还是框里单独渲染的那几块；
+   不是就不落，返回 null（原因记在 ta._why），台账、屏幕一样都不动。 */
+function srcBlkCommit(t, ta, text){
+  const base=dirOf(t.path), reg=t.reg, box=document.createElement('div');
+  box.innerHTML=md2html(text, base, 0);
+  const made=[...box.children], lines=text.split('\n'), out=ta._out || {gap:null, nx:null};
+  const fit=srcBlkFits(t, ta, text, made);
+  if(!fit.ok){ ta._why=fit; return null; }
+  wireImg(box);
+  const head=blockBid(t, ta);
+  if(!made.length){
+    // 渲染不出块（删空了、只剩空行）：这一块没了。台账里那一份留着框里的字，没有块指着它就不会写出去
+    if(head!==null) reg.blocks[head].src=lines;
+    ta._last=null;
+    return made;
+  }
+  // 跟前一块之间一个空行都没有、放回去会连成一块：补的那个空行记进前一块往后的空白（同屏幕上是两块）
+  if(fit.pad && fit.inLink && fit.inLink.nx===head && fit.inLink.gap && !fit.inLink.gap.length) fit.inLink.gap=[''];
+  const span=made.map(m=>[+m.getAttribute('data-l0'), +m.getAttribute('data-l1')]);
+  const bids=made.map((m,i)=>{
+    if(i===0 && head!==null) return head;
+    reg.blocks.push({src:[], gap:null, nx:null});
+    return reg.blocks.length-1;
+  });
+  made.forEach((m,i)=>{
+    const end=i===made.length-1;
+    const b=reg.blocks[bids[i]];
+    b.src=lines.slice(i===0 ? 0 : span[i][0], end ? lines.length : span[i][1]+1);
+    // 末一块跟后一块之间同理：要补空行的话补在这里
+    if(end){ b.gap=(fit.pad && out.gap && !out.gap.length) ? [''] : out.gap; b.nx=out.nx; }
+    else{ b.gap=lines.slice(span[i][1]+1, span[i+1][0]); b.nx=bids[i+1]; }
+    m.removeAttribute('data-l0'); m.removeAttribute('data-l1');
+    m.dataset.bid=bids[i]; m.dataset.be=t.regEpoch;
+    prepBlock(m, base);
+  });
+  ta.dataset.bid=bids[0]; ta.dataset.be=t.regEpoch;
+  ta._last=bids[bids.length-1];
+  return made;
+}
+/* 框里的字有没有开了头、没收尾的代码围栏：按 md2html 同一套规则（fenceOpen／fenceClose）从头扫，
+   返回第一道没收尾的（{ch, n}），都收了返回 null。波浪线开头在框里找不到收尾也算没收尾——单看框里
+   它不算围栏（fenceAt 要后面找得到收尾，屏幕上是一段带删除线的字），放回整篇以后后文只要还有一行
+   ~~~ 就配上了，中间全成代码（R 终审 P1-J1 的 K13、种子 140：收尾行被改成「~~~改」）。 */
+function openFence(lines){
+  for(let i=0; i<lines.length; i++){
+    const fo=fenceOpen(lines[i]);
+    if(!fo) continue;
+    let j=i+1;
+    while(j<lines.length && !fenceClose(lines[j], fo)) j++;
+    if(j>=lines.length) return fo;
+    i=j;
+  }
+  return null;
+}
+/* 框里的字落回原处以后，整篇渲染出来是不是还是框里单独渲染的那几块（K 轮，R 终审 P1-J1）。
+   H 轮起框是就地换：框里的 md 只按自己那几行渲染，屏幕上看着是那样；可文件里这几行夹在整篇中间，
+   跟前后文一起渲染——代码围栏没收尾就把后文吞成代码（K12、K13、种子 140），跟上一块／下一块之间
+   一个空行都没有时会连成一段、并成一张表（标题改成正文、段落改成列表项……）。所以落之前先用
+   bodyPlan 把「落下以后的整篇」排一遍、md2html 渲染出来，看框那几行：有没有块跨在框的边上、
+   框里那几行是不是还是这几块（visSig）。
+   · 围栏没收尾（openFence）：不落，{ok:false, fence}——提示补上收尾那一行；
+   · 只是跟前后文挨得太紧：挨着的地方补一个空行（pad）再看，过了就带着 pad 落——只多一个空行，
+     跟屏幕上一样是分开的两块；
+   · 还是对不上（比如前文有一行 ~~~ 会被框里的围栏配上、框在文首被当成文件开头的属性区）：不落，{ok:false}。
+   没改过的框、Esc 收起不走这里（原样放回，字节不变）。 */
+function srcBlkFits(t, ta, text, made){
+  const lines=text.split('\n');
+  const fo=openFence(lines);
+  if(fo) return {ok:false, fence:fo};
+  if(!made.length) return {ok:true};
+  const base=dirOf(t.path), want=visSig(made);
+  const probe={ta, lines, link:ta._out || null, pad:false};
+  const fits=()=>{
+    const plan=bodyPlan(t, null, false, probe);
+    if(plan.at<0) return {ok:true, inLink:plan.inLink};
+    const A=plan.at, B=plan.at+lines.length-1;
+    const box=document.createElement('div');
+    box.innerHTML=md2html(plan.text, base);
+    const inside=[];
+    for(const r of box.children){
+      if(!r.hasAttribute('data-l0')) continue;
+      const l0=+r.getAttribute('data-l0'), l1=+r.getAttribute('data-l1');
+      if(l1<A || l0>B) continue;
+      if(l0<A || l1>B) return null;                // 有一块跨在框的边上：放回去会跟前后文连成一块
+      inside.push(r);
+    }
+    return visSig(inside)===want ? {ok:true, inLink:plan.inLink} : null;
+  };
+  let r=fits();
+  if(r) return r;
+  probe.pad=true;
+  r=fits();
+  if(r){ r.pad=true; return r; }
+  return {ok:false, fence:null};
+}
+/* 框收不了（srcBlkFits 不过）：框留着、框里的字一个不动，提示一句怎么办，框闪一下。 */
+function srcBlkRefuse(t, ta){
+  const f=ta._why || {};
+  notify(f.fence ? TR('代码块还没收尾，补上一行 {fence} 再收起',{fence:f.fence.ch.repeat(f.fence.n)})
+                 : TR('放回原处会跟前后文连成一块，存下去跟现在看到的不一样，改一改再收起'));
+  ta.classList.add('stuckflash');
+  setTimeout(()=>ta.classList.remove('stuckflash'), 1800);
+}
+/* 框里有没有还没落的字（打了、还没 ⌘↩／⌘S／点到别处）。有就算没存完：dirty 一直为真，
+   关标签、⌘W、退出都拦（J 轮，R 终审 P2-1）。 */
+function srcBlkPending(t){
+  const p=t && paneOf(t); if(!p) return false;
+  return [...p.querySelectorAll('.md > textarea.blk')].some(ta=>ta.value!==ta._init);
+}
+/* 框开着时按 ⌘S：先把框里的字落回去（框不收），再存。之后 Esc 放回去的是落过的这一份；
+   框开着的这段时间存盘照落下的这一份写（ta._md，往后接空白按 ta._last）。
+   没改过、本来也存得进的框不用落（照台账／开框那一刻的样子写）。
+   落不下（srcBlkFits，K 轮）：框里的字不落，这一块照旧按没收起算（I 轮口径：照开框那一刻或上一次
+   落下的样子写，框里的字没存、dirty 为真），返回 false，saveEdit 存完别的再提示。 */
+function commitSrcBlk(t, ta){
+  if(!ta || !ta.isConnected || (ta.value===ta._init && !ta._stuck)) return true;
+  const text=ta.value.replace(/\r\n/g,'\n');
+  const made=srcBlkCommit(t, ta, text);
+  if(!made) return false;
+  ta._orig=made;
+  ta._init=ta.value; ta._stuck=false; ta._md=text;
+  t.touched=true;
+  return true;
+}
+/* 收起块源码框。keep＝要框里的字（⌘↩、点到别处）；explicit＝⌘↩ 明说的。
+   就地换，不整篇重画（H 轮起）：只换这一块，别的块（包括存不进的那几块）一动不动。
+   Esc，或者没改过就收起：原样放回原来那一块——这一块不算动过，字节不变（I 轮：以前会被重新反解，
+   `* ` 列表变成 `- `）。存不进的块、开框时就动过的块，⌘↩ 就是认了框里那一份：照它重画、照常存。
+   落不下（srcBlkFits，K 轮：围栏没收尾、放回去会跟前后文连成一块）：⌘↩、点到别处都不收，框留着，提示。 */
+function closeSrcBlk(t, ta, keep, explicit){
   if(!ta || !ta.isConnected) return;
   ta.dataset.closing='1';
-  const bid=ta.dataset.bid;
+  // 编辑态已经收了（关标签点「不保存并关闭」、放弃修改）：框跟着面板一起没，别再往台账里落（台账已经清了，
+  // 以前这里会抛 TypeError——框失焦是在收编辑态之后才来的）
+  if(!t.editing || !t.reg) return;
   const p=paneOf(t), top=p.scrollTop;
-  if(keep && bid!==undefined && t.reg.blocks[+bid]){
-    t.reg.blocks[+bid].src=ta.value.replace(/\r\n/g,'\n').split('\n');
+  const commit=keep && (ta.value!==ta._init || (explicit && (ta._stuck || ta._md!=null)));
+  let made=null;
+  if(commit){
+    made=srcBlkCommit(t, ta, ta.value.replace(/\r\n/g,'\n'));
+    if(!made){ delete ta.dataset.closing; srcBlkRefuse(t, ta); return; }
+  }
+  unwatch(t);
+  if(!commit){
+    const orig=[].concat(ta._orig||[]);
+    if(orig.length) ta.replaceWith(...orig); else ta.remove();
+  }else{
+    if(made.length) ta.replaceWith(...made); else ta.remove();
     t.touched=true;
   }
-  // 占位块只带 bid、不带 dirty，序列化时会去台账里抄刚写进去的那几行
-  const ph=document.createElement('p');
-  if(bid!==undefined) ph.dataset.bid=bid;
-  unwatch(t);
-  ta.replaceWith(ph);
-  if(keep && bid===undefined){                    // 没登记过的块（新插的），直接按文本走
-    const box=document.createElement('div');
-    box.innerHTML=md2html(ta.value, dirOf(t.path), 0);
-    const made=[...box.children]; made.forEach(m=>m.dataset.dirty='1');
-    if(made.length) ph.replaceWith(...made); else ph.remove();
-  }
-  // 行号全变了，重新落一次台账
-  t.work=serializeBody(t);
-  paintWork(t); prepEdit(t);
+  watchEdits(t);
   p.scrollTop=top;
   buildToc(); syncProg();
   syncStatusLine(); autoKick(t);
@@ -7407,7 +8411,7 @@ const plainOf = el => blkMdRaw(el)
   .replace(/^>\s?/,'')
   .replace(/^([-*+]|\d+[.)])\s+/,'')
   .replace(/^\[[ xX]\]\s+/,'')
-  .replace(/^```[^\n]*\n?/,'').replace(/\n?```\s*$/,'');
+  .replace(/^`{3,}[^\n]*\n?/,'').replace(/\n?`{3,}\s*$/,'');
 
 function retype(t, el, kind, text){
   if(!el) return null;
@@ -7420,27 +8424,32 @@ function retype(t, el, kind, text){
   box.innerHTML=md2html(src.trim()?src:' ', dirOf(t.path), 0);
   const made=box.firstElementChild || document.createElement('p');
   made.dataset.dirty='1';
-  delete made.dataset.bid;
-  t.touched=true;
+  delete made.dataset.bid; delete made.dataset.be;
+  t.touched=true; autoKick(t);
   if(/^(ul|ol|task)$/.test(kind)){
     const li=made.querySelector('li');
     const want=kind==='ol'?'OL':'UL';
     const prev=el.previousElementSibling;
+    const next=el.nextElementSibling;
+    const joinNext = host => {
+      if(!(li && next && next.isConnected && next.tagName===want && !next.hasAttribute('data-lock'))) return;
+      [...next.children].forEach(n=>host.appendChild(n));
+      next.remove();
+      host.dataset.dirty='1';
+    };
     if(li && prev && prev.tagName===want && !prev.hasAttribute('data-lock')){
       prev.appendChild(li);
       prev.dataset.dirty='1';
       el.remove();
+      // 后面紧挨着的同类表也并进来。列表中间按两下回车退出、再打「- 」接回去时，
+      // 以前只并上一张，列表永久劈成两段，有序的后半张从 1 重数（A 报告 R4）
+      joinNext(prev);
       ensureBr(li);
       caretEnd(li);
       return prev;
     }
-    const next=el.nextElementSibling;
     el.replaceWith(made);
-    if(li && next && next.tagName===want && !next.hasAttribute('data-lock')){
-      [...next.children].forEach(n=>{ if(n.tagName==='LI') made.appendChild(n); });
-      next.remove();
-      made.dataset.dirty='1';
-    }
+    joinNext(made);
     if(li){ ensureBr(li); caretEnd(li); } else caretEnd(made);
     return made;
   }
@@ -7461,7 +8470,7 @@ function indentLi(t, li){
   if(!sub){ sub=document.createElement(tag.toLowerCase()); prev.appendChild(sub); }
   sub.appendChild(li);
   const top=list.closest('.md>*')||list; top.dataset.dirty='1';
-  t.touched=true;
+  t.touched=true; autoKick(t);
   caretEnd(li);
 }
 /* 后面那些兄弟。不能写成 while (el.nextElementSibling) rest.push(...)：
@@ -7485,12 +8494,14 @@ function outdentLi(t, li){
   }
   if(!list.children.length) list.remove();
   const top=li.closest('.md>*'); if(top) top.dataset.dirty='1';
-  t.touched=true;
+  t.touched=true; autoKick(t);
   caretEnd(li);
   return true;
 }
 function liftLiToP(t, li){
   const list=li.parentElement; if(!list) return;
+  // 这一条在表里排第几：拆有序表时后半张接着原来的号，别从 1 重数（A 报告 R4）
+  const k=[...list.children].filter(n=>n.tagName==='LI').indexOf(li);
   const rest=nextSiblings(li);
   const p=document.createElement('p');
   p.dataset.dirty='1';
@@ -7500,16 +8511,28 @@ function liftLiToP(t, li){
     p.appendChild(c);
   }
   ensureBr(p);
+  // 劈出来的几块带上原表的块号（跟浏览器劈段一样抄过去）：块号一重，每一块都按眼前的样子写，
+  // 台账里原表那一份谁也不抄（见 bodyPlan）
+  const bid=list.dataset.bid, be=list.dataset.be;
+  if(bid!==undefined){ p.dataset.bid=bid; if(be!==undefined) p.dataset.be=be; }
   li.remove();
   if(!list.children.length) list.replaceWith(p);
   else { list.dataset.dirty='1'; list.after(p); }
   if(rest.length){
     const nx=document.createElement(list.tagName);
     nx.dataset.dirty='1';
+    if(bid!==undefined){ nx.dataset.bid=bid; if(be!==undefined) nx.dataset.be=be; }
+    if(list.tagName==='OL'){
+      const st=+(list.getAttribute('start')||1)+Math.max(0, k);
+      if(st!==1) nx.setAttribute('start', String(st));
+    }
     rest.forEach(n=>nx.appendChild(n));
     p.after(nx);
+    // 首项退出、后面的全搬走了：原表空着别留在 DOM 里——之后在这一段打「- 」
+    // 会并进这张空表、后半张不并，又劈成两段（A 报告 R5）
+    if(list.isConnected && !list.children.length) list.remove();
   }
-  t.touched=true;
+  t.touched=true; autoKick(t);
   caretEnd(p, true);
 }
 function exitOrOutdentLi(t, li){
@@ -7563,7 +8586,7 @@ function removeEmptyLi(t, li){
   const prev=li.previousElementSibling;
   const parentLi=list.parentElement && list.parentElement.tagName==='LI' ? list.parentElement : null;
   li.remove();
-  t.touched=true;
+  t.touched=true; autoKick(t);
   if(list.children.length){
     const top=list.closest('.md>*')||list;
     top.dataset.dirty='1';
@@ -7602,18 +8625,61 @@ function unwrapEl(n){
   while(n.firstChild) f.appendChild(n.firstChild);
   n.replaceWith(f);
 }
+/* 选区跨了好几块（段落、列表项、格子）：按块切开，每块各包一层。以前整个
+   extractContents 再包，几个 <p> 一起装进一个 <strong>，造出「顶层 <strong> 里套段落」
+   ——存不进，也画不回去（B 报告 E 类，S14）。代码块里不加格式（写不进 md）；
+   双链是原子，选区切在它字中间就把整个双链算进来，别把它劈成两半。 */
 function wrapInline(tag, attrs){
   const s=getSelection(); if(!s || !s.rangeCount) return;
   const r=s.getRangeAt(0);
   const cur=closestTag(r.commonAncestorContainer, tag);
   if(cur && !attrs){ unwrapEl(cur); return; }
   if(r.collapsed) return;
-  const el=document.createElement(tag);
-  if(attrs) for(const k in attrs) el.setAttribute(k, attrs[k]);
-  try{ r.surroundContents(el); }
-  catch(e){ el.appendChild(r.extractContents()); r.insertNode(el); }
-  const nr=document.createRange(); nr.selectNodeContents(el);
+  const parts=rangeByBlock(r);
+  if(!parts.length) return;
+  const made=parts.map(pr=>{
+    const el=document.createElement(tag);
+    if(attrs) for(const k in attrs) el.setAttribute(k, attrs[k]);
+    try{ pr.surroundContents(el); }
+    catch(e){ el.appendChild(pr.extractContents()); pr.insertNode(el); }
+    return el;
+  });
+  const nr=document.createRange();
+  const last=made[made.length-1];
+  nr.setStart(made[0], 0); nr.setEnd(last, last.childNodes.length);
   s.removeAllRanges(); s.addRange(nr);
+}
+/* 一个选区按「可落点块」（段落、标题、列表项、格子）切成几段，每段只在一块里头 */
+function rangeByBlock(r){
+  const root=r.commonAncestorContainer;
+  const host=(root.nodeType===1 ? root : root.parentNode);
+  const md=host && host.closest ? host.closest('.md') : null;
+  if(!md) return [r];
+  const texts=[];
+  if(root.nodeType===3) texts.push(root);
+  else{
+    const w=document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+    let n; while((n=w.nextNode())) if(r.intersectsNode(n)) texts.push(n);
+  }
+  const groups=[];
+  texts.forEach(n=>{
+    const b=blockish(n, md);
+    const g=groups[groups.length-1];
+    if(g && g.b===b) g.ns.push(n); else groups.push({b, ns:[n]});
+  });
+  const out=[];
+  groups.forEach(g=>{
+    if(!g.b || g.b.tagName==='PRE' || g.b.closest('pre')) return;
+    const a=g.ns[0], z=g.ns[g.ns.length-1];
+    const pr=document.createRange();
+    pr.setStart(a, a===r.startContainer ? r.startOffset : 0);
+    pr.setEnd(z, z===r.endContainer ? r.endOffset : z.nodeValue.length);
+    const a0=atomOf(pr.startContainer, md); if(a0) pr.setStartBefore(a0);
+    const a1=atomOf(pr.endContainer, md); if(a1) pr.setEndAfter(a1);
+    if(pr.collapsed || !tidyTxt(pr.toString()).trim()) return;
+    out.push(pr);
+  });
+  return out;
 }
 
 /* ── 选中文字时浮出来的那一条 ─────────── */
@@ -7651,8 +8717,8 @@ function fmtAction(a){
     const cur=closestTag(getSelection().anchorNode,'A');
     if(cur){ unwrapEl(cur); }
     else{
-      const u=prompt(TR('链接地址')); if(!u) return;
-      wrapInline('A', {href:u, 'data-u':u, target:'_blank', rel:'noopener'});
+      const u=prompt(TR('链接地址')); if(!u || !u.trim()) return;
+      wrapInline('A', linkAttrs(u, dirOf(t.path)));
     }
   }
   else if(a==='src'){ hideFmt(); if(blk) openSrcBlk(t, blk); return; }
@@ -7661,6 +8727,19 @@ function fmtAction(a){
   if(blk && blk.isConnected) blk.dataset.dirty='1';
   autoKick(t);
   placeFmt();
+}
+/* 格式条「链接」、选中字粘贴网址：链接按渲染器的样子造——href、data-u、target、rel
+   跟 [字](地址) 渲染出来的一模一样，存盘自检才对得上。www. 开头补 https://：
+   不补的话它被当成库里的相对路径，点开是一份不存在的笔记。file:// 照收
+   （库里五百多份这种链接），渲染器给它 href="#"，写回认的是 data-u。 */
+function linkAttrs(u, base){
+  u=String(u||'').trim();
+  if(/^www\./i.test(u)) u='https://'+u;
+  const box=document.createElement('div');
+  try{ box.innerHTML=inl('[x]('+u.replace(/\)/g,'&#41;')+')', base); }catch(e){}
+  const a=box.querySelector('a');
+  const href=(a && a.getAttribute('data-u')===u) ? a.getAttribute('href') : u;
+  return {href, 'data-u':u, target:'_blank', rel:'noopener'};
 }
 function hideFmt(){ const f=$('#fmt'); if(f) f.classList.remove('on'); }
 function placeFmt(){
@@ -7691,7 +8770,43 @@ function placeFmt(){
 document.addEventListener('selectionchange', ()=>{
   clearTimeout(placeFmt._tm);
   placeFmt._tm=setTimeout(placeFmt, 60);
+  const t=active();
+  if(!t || !t.editing) return;
+  caretOutOfAtom(t);
+  slashAway();                                        // 光标离开了打「/」的那一段：收起菜单
+  if(t.redraw && t.redraw.size) redrawAway(t);       // 光标离开了照存过的那一块：按文件重画
 });
+/* 光标落进了双链（原子，contenteditable=false）里——别的代码、脚本按字符偏移放光标时
+   会这样：挪到它外面。停在里面的话，接着敲的字浏览器一个都不收（两个内核实测）。
+   选区也一样（编辑态双击双链选词、从双链字中间开始拖选）：一头落在原子里，WebKit 打字、
+   退格都不理（R 报告 P1-1）。起点在原子里挪到它前面、终点在原子里挪到它后面，方向不变——
+   双击双链＝选中整个双链，打字替换、退格删掉。 */
+function caretOutOfAtom(t){
+  const s=getSelection(); if(!s || !s.rangeCount) return;
+  const r=s.getRangeAt(0), p=paneOf(t), md=p && p.querySelector('.md');
+  if(!md || !md.contains(r.startContainer)) return;
+  if(s.isCollapsed){
+    const a=atomOf(r.startContainer, md); if(!a) return;
+    const nr=document.createRange();
+    if(r.startOffset===0 && (r.startContainer===a || r.startContainer===a.firstChild)) nr.setStartBefore(a);
+    else nr.setStartAfter(a);
+    nr.collapse(true);
+    s.removeAllRanges(); s.addRange(nr);
+    return;
+  }
+  const a0=atomOf(r.startContainer, md), a1=atomOf(r.endContainer, md);
+  if(!a0 && !a1) return;
+  const at=(n, after)=>[n.parentNode, [...n.parentNode.childNodes].indexOf(n)+(after?1:0)];
+  const st=a0 ? at(a0, false) : [r.startContainer, r.startOffset];
+  const en=a1 ? at(a1, true) : [r.endContainer, r.endOffset];
+  // 反着拖的（焦点在前）保持反着，Shift+方向键接着扩选不乱
+  const back=(s.anchorNode===r.endContainer && s.anchorOffset===r.endOffset)
+             && !(s.anchorNode===r.startContainer && s.anchorOffset===r.startOffset);
+  try{
+    if(back) s.setBaseAndExtent(en[0], en[1], st[0], st[1]);
+    else s.setBaseAndExtent(st[0], st[1], en[0], en[1]);
+  }catch(e){}
+}
 
 /* ── 编辑区里的键 ───────────────────────
    markdown 打法照样管用：行首打 ## 加空格就变二级标题，- 加空格变列表，
@@ -7701,17 +8816,27 @@ document.addEventListener('selectionchange', ()=>{
 const INPUT_RULES=[
   [/^(#{1,6}) $/, m=>'h'+m[1].length],
   [/^[-*+] $/, ()=>'ul'],
-  [/^\d+[.)] $/, ()=>'ol'],
+  [/^(\d+)[.)] $/, (m,blk)=>olOk(m[1], blk) ? 'ol' : null],
   [/^> $/, ()=>'quote'],
   [/^\[[ xX]?\] $/, ()=>'task'],
 ];
 const MARKER_ONLY=[
   [/^(#{1,6})$/, m=>'h'+m[1].length],
   [/^[-*+]$/, ()=>'ul'],
-  [/^\d+[.)]$/, ()=>'ol'],
+  [/^(\d+)[.)]$/, (m,blk)=>olOk(m[1], blk) ? 'ol' : null],
   [/^>$/, ()=>'quote'],
   [/^\[[ xX]?\]$/, ()=>'task'],
 ];
+/* 行首「数字＋点」什么时候算有序列表：只认 1. / 1)，或者正好是紧挨着的上一张有序表的
+   下一个号（接着往下写）。「2026. 年度目标」这种别的数字照原样留成字——以前一律变成
+   从 1 起的有序表，年份就这么没了（B 报告 S34）。 */
+function olOk(num, blk){
+  if(+num===1) return true;
+  const prev=blk && blk.previousElementSibling;
+  if(!prev || prev.tagName!=='OL' || prev.hasAttribute('data-lock')) return false;
+  const n=[...prev.children].filter(x=>x.tagName==='LI').length;
+  return +num === +(prev.getAttribute('start')||1) + n;
+}
 
 let COMPOSING=false;
 document.addEventListener('compositionstart', ()=>{ COMPOSING=true; });
@@ -7741,8 +8866,10 @@ function tryMdShortcut(t){
   for(const [re,kind] of INPUT_RULES){
     const m=before.match(re);
     if(!m) continue;
+    const k=kind(m, blk);
+    if(!k) continue;
     const rest=tidyTxt(blk.textContent).slice(before.length);
-    retype(t, blk, kind(m), rest);
+    retype(t, blk, k, rest);
     return true;
   }
   return false;
@@ -7750,8 +8877,11 @@ function tryMdShortcut(t){
 
 function edKey(t, e){
   if(e.isComposing || e.keyCode===229) return;
+  caretOutOfAtom(t);                                // 光标别停在双链里（见 caretOutOfAtom）
+  // 菜单看得见，Esc 就只收菜单（光标走没走都一样），别再往下取消编辑
+  if(e.key==='Escape' && $('#slash').classList.contains('on')){ e.preventDefault(); e.stopPropagation(); hideSlash(); return; }
+  slashAway();                                      // 菜单还挂着、光标早走了：先收（selectionchange 是异步的）
   if(slashOn()){
-    if(e.key==='Escape'){ e.preventDefault(); e.stopPropagation(); hideSlash(); return; }
     if(e.key==='ArrowDown'){ e.preventDefault(); e.stopPropagation(); slashI=Math.min(SLASH.length-1, slashI+1); paintSlash(); return; }
     if(e.key==='ArrowUp'){ e.preventDefault(); e.stopPropagation(); slashI=Math.max(0, slashI-1); paintSlash(); return; }
     if(e.key==='Enter' || e.key==='Tab'){ e.preventDefault(); e.stopPropagation(); applySlash(); return; }
@@ -7761,12 +8891,12 @@ function edKey(t, e){
 
   if(cmd && !e.shiftKey && !e.altKey){
     const k=e.key.toLowerCase();
-    if(k==='b'){ e.preventDefault(); wrapInline('STRONG'); t.touched=true; return; }
-    if(k==='i'){ e.preventDefault(); wrapInline('EM'); t.touched=true; return; }
-    if(k==='e'){ e.preventDefault(); wrapInline('CODE'); t.touched=true; return; }
+    if(k==='b'){ e.preventDefault(); wrapInline('STRONG'); t.touched=true; autoKick(t); return; }
+    if(k==='i'){ e.preventDefault(); wrapInline('EM'); t.touched=true; autoKick(t); return; }
+    if(k==='e'){ e.preventDefault(); wrapInline('CODE'); t.touched=true; autoKick(t); return; }
   }
   if(cmd && e.shiftKey && e.key.toLowerCase()==='x'){
-    e.preventDefault(); wrapInline('DEL'); t.touched=true; return;
+    e.preventDefault(); wrapInline('DEL'); t.touched=true; autoKick(t); return;
   }
   /* ⌥⌘E 调出这一块的源码。这里必须认 e.code 不能认 e.key：
      macOS 上 Option+E 是重音符号的死键，按下去 e.key 拿到的不是 'e'，
@@ -7790,35 +8920,61 @@ function edKey(t, e){
     return;
   }
 
-  if(e.key==='Backspace' && !cmd && !e.altKey){
+  if(e.key==='Backspace'){
     const s=getSelection();
     const li=closestTag(s && s.anchorNode,'LI');
-    if(li && s && s.isCollapsed && caretAtStart(li) && !tidyTxt(li.textContent).trim() && !li.querySelector('img')){
+    if(!cmd && !e.altKey && li && s && s.isCollapsed && caretAtStart(li) && !tidyTxt(li.textContent).trim() && !li.querySelector('img')){
       e.preventDefault();
       removeEmptyLi(t, li);
       return;
+    }
+    /* 段首退格、上一块是代码块／表格／分隔线／锁住的块：别交给浏览器——它会把这一段的字
+       并进 <pre>（落在 <code> 外面，存盘时丢，S15/S39）、并进表格最后一格，
+       或者把锁住的整块删掉。自己接管：
+         分隔线 → 删掉分隔线；锁住的块 → 不动；
+         代码块／表格 → 这一段是空的就删掉它，光标去上一块末尾；有字就只挪光标，不合并。
+       ⌥⌫（删词）、⌘⌫（删到行首）在段首也是并段，一样接管（R 报告 P3-2）。 */
+    if(s && s.isCollapsed && /^(P|H[1-6])$/.test(blk.tagName) && caretAtStart(blk)){
+      const prev=blk.previousElementSibling;
+      const tw=prev && (prev.tagName==='TABLE' || (prev.tagName==='DIV' && prev.classList.contains('tw')));
+      if(prev && (prev.hasAttribute('data-lock') || prev.tagName==='PRE' || prev.tagName==='HR' || tw)){
+        e.preventDefault();
+        if(prev.hasAttribute('data-lock')) return;
+        if(prev.tagName==='HR'){ prev.remove(); t.touched=true; autoKick(t); return; }
+        const spot = prev.tagName==='PRE' ? (prev.querySelector('code')||prev)
+                   : ([...prev.querySelectorAll('td,th')].pop() || prev);
+        if(isBlankBlock(blk)){ blk.remove(); t.touched=true; autoKick(t); }
+        caretEnd(spot);
+        return;
+      }
     }
   }
 
   if(e.key==='Enter'){
     if(e.metaKey || e.ctrlKey) return;
-    // 代码块里回车就是换行，别把块拆了
+    // 代码块里回车就是换行，别把块拆了。走 insertLineBreak：WebKit（壳）里 insertText('\n')
+    // 会把 <pre> 从光标处劈成两个代码块（存下去就是两段代码），Chromium 不会；
+    // insertLineBreak 在代码里两个内核都只插一个换行（实测，G 轮 W24）
     if(blk.tagName==='PRE'){
       e.preventDefault();
-      document.execCommand('insertText', false, '\n');
+      document.execCommand('insertLineBreak');
       return;
     }
-    // 表格格子里回车 → 格子内换行，正是 markdown 表格里 <br> 的用法
+    // 表格格子里回车 → 格子内换行，正是 markdown 表格里 <br> 的用法。
+    // 走 insertLineBreak：格子末尾它会补一个占位 <br>、光标落在新的一行上；以前 insertHTML('<br>')
+    // 两个内核都把光标留在那个 <br> 前面，回车看起来没反应，再打的字接在原行后面（B §8-4、S33）
     const cell=closestTag(getSelection().anchorNode,'TD') || closestTag(getSelection().anchorNode,'TH');
-    if(cell){ e.preventDefault(); document.execCommand('insertHTML', false, '<br>'); t.touched=true; return; }
+    if(cell){ e.preventDefault(); document.execCommand('insertLineBreak'); t.touched=true; autoKick(t); return; }
 
     if(/^(P|DIV)$/.test(blk.tagName)){
       const txt=tidyTxt(blk.textContent).trim();
       for(const [re,kind] of MARKER_ONLY){
         const m=txt.match(re);
         if(!m) continue;
+        const k=kind(m, blk);
+        if(!k) continue;
         e.preventDefault();
-        retype(t, blk, kind(m), '');
+        retype(t, blk, k, '');
         return;
       }
       if(/^(-{3,}|\*{3,}|_{3,})$/.test(txt)){
@@ -7859,7 +9015,7 @@ function edKey(t, e){
           ensureBr(p);
           blk.after(p);
         }
-        caretEnd(p, true); t.touched=true; return;
+        caretEnd(p, true); t.touched=true; autoKick(t); return;
       }
     }
   }
@@ -7884,7 +9040,7 @@ function hopCell(t, cell, back){
       tr.appendChild(td);
     }
     (tb.tBodies[0]||tb).appendChild(tr);
-    t.touched=true;
+    t.touched=true; autoKick(t);
     const blk=tb.closest('[data-bid]') || tb.parentElement;
     if(blk) blk.dataset.dirty='1';
     caretEnd(tr.firstElementChild, true);
@@ -7906,12 +9062,21 @@ function onPaste(t, e){
   const txt=(dt.getData('text/plain')||'').replace(/\r\n/g,'\n');
   const files=clipImageFiles(dt);
   const s=getSelection();
+  // 光标在代码块里：原样插字，换行就是换行，不当 markdown 解析、不拆成段落
+  // （按一行一段插进 <pre> 会被洗成挤在一起的一行）。图不进代码块。
+  if(closestTag(s && s.anchorNode, 'PRE')){
+    e.preventDefault();
+    // 剪贴板里只有图（截图、飞书图片）：代码块收不了图，说一声，别当改过了
+    if(!txt){ if(files.length || /<img\b/i.test(html) || clipLooksLikeImage(dt)) notify(TR('代码块里放不了图')); return; }
+    preInsert(txt);
+    t.touched=true; autoKick(t); return;
+  }
   // 选着字粘一条网址进来 → 直接变成链接，这是最常用的一下
   if(s && !s.isCollapsed && /^(https?:\/\/|file:\/\/)\S+$/.test(txt.trim())
      && !/<img\b/i.test(html) && files.length===0){
     e.preventDefault();
-    wrapInline('A', {href:txt.trim(), 'data-u':txt.trim(), target:'_blank', rel:'noopener'});
-    t.touched=true; return;
+    wrapInline('A', linkAttrs(txt.trim(), dirOf(t.path)));
+    t.touched=true; autoKick(t); return;
   }
   const hasImgTag=/<img\b/i.test(html);
   // 飞书在 Mac 上常常只往剪贴板塞一张 PNG，WKWebView 的 clipboardData.files
@@ -7926,11 +9091,115 @@ function onPaste(t, e){
   }
   e.preventDefault();
   if(!txt) return;
+  document.execCommand('insertHTML', false, pasteHtml(txt, dirOf(t.path)));
+  t.touched=true; autoKick(t);
+}
+
+/* 代码块里插一段多行的字（粘贴）。整段 insertText 碰到换行，WebKit（壳）会把 <pre> 劈成好几个
+   代码块；一行一条 insertText／insertLineBreak 又太慢（WebKit 里 2000 行要半分钟），撤销还得
+   按好几十下。办法：换行先换成占位符 PRE_PH，一条 insertText 插完，再就地把占位符换回换行——
+   一个字换一个字，长度不变，光标和撤销记录都不受影响（撤销一下撤掉整段，两个内核实测）。
+   占位符用 U+FDD0：Unicode 的「非字符」，规定只给程序内部用、不进交换的文本，正文里不该有它
+   （G 轮用的 U+E00F 是私用区，图标字体会用到，算正文）。
+   撤销之后再重做，浏览器按撤销栈原样再插一遍带占位符的那串，脚本那一步不会再跑（H 轮 P0-B）：
+   input（historyRedo／historyUndo）里当场换回（fixPreHolders）；cleanBlock、blkMd 再各兜一道——
+   占位符任何情况下都不进文件。占位符常量 PRE_PH 定义在文件靠前（inlMd、cleanBlock 也要用）。 */
+function preInsert(txt){
+  txt=String(txt).replace(PRE_PH_RE, '');          // 剪贴板里真有这个非字符：不要它
+  if(!txt.includes('\n')){ document.execCommand('insertText', false, txt); return; }
+  document.execCommand('insertText', false, txt.replace(/\n/g, PRE_PH));
+  const s=getSelection();
+  fixPreHolders(closestMd(s && s.anchorNode));
+}
+/* 把正文里（或某一块里）残留的占位符换回换行：代码块里换成 \n，别处直接删。
+   一个字换一个字（replaceData），光标位置和撤销记录都不受影响。 */
+function fixPreHolders(root){
+  if(!root) return false;
+  let hit=false;
+  const w=document.createTreeWalker(root, NodeFilter.SHOW_TEXT);
+  const list=[]; let n;
+  while((n=w.nextNode())) if(n.nodeValue.indexOf(PRE_PH)>=0) list.push(n);
+  list.forEach(n=>{
+    const inPre=!!closestTag(n, 'PRE');
+    let i;
+    while((i=n.nodeValue.indexOf(PRE_PH))>=0){ if(inPre) n.replaceData(i, 1, '\n'); else n.deleteData(i, 1); hit=true; }
+  });
+  return hit;
+}
+function closestMd(n){
+  while(n && n.nodeType!==9){ if(n.nodeType===1 && n.classList && n.classList.contains('md')) return n; n=n.parentNode; }
+  return null;
+}
+/* 粘贴的纯文字 → 要插进去的 HTML（浏览器里的 onPaste 和壳里的 pasteMixed 共用）。
+   一行一段：markdown 的「软换行」在粘贴这件事上是错的——聊天记录、地址、诗，原文分行
+   就是要分行，拼成一段中文连空格都没有，字挤成一团（A 报告「顺带」第一条）。
+   结构行（列表、引用、标题、表格、围栏里）照旧交给 md2html，「- a⏎- b」仍是列表。
+   插的样子：只有一段 → 插它里面的字（行内）；光标在列表项／表格格子／引用里 → 块级的
+   结果降成一行一行（pasteRows）：列表项、格子里用 <br> 接，引用里一行一段。别往 <li>
+   里塞 <p>：WebKit 会把它套进空 <li>，之后回车不出新的项目符号、整张表存不进（A 报告 R6，
+   真 app 里粘贴的主因）；也别把列表、代码块塞进格子／引用——写不回去，只能判存不进（R 报告 P2-2）。 */
+function pasteHtml(txt, base){
   const box=document.createElement('div');
-  box.innerHTML=md2html(txt, dirOf(t.path), 0);
-  const one=box.children.length===1 && box.firstElementChild.tagName==='P';
-  document.execCommand('insertHTML', false, one ? box.firstElementChild.innerHTML : box.innerHTML);
-  t.touched=true;
+  box.innerHTML=md2html(pasteLines(txt), base, 0);
+  const kids=[...box.children];
+  if(kids.length===1 && kids[0].tagName==='P') return kids[0].innerHTML;
+  const s=getSelection();
+  const at=s && s.rangeCount ? s.anchorNode : null;
+  const li=closestTag(at,'LI'), cell=closestTag(at,'TD') || closestTag(at,'TH'), quote=closestTag(at,'BLOCKQUOTE');
+  if(!li && !cell && !quote) return box.innerHTML;
+  // 列表项里粘列表源码：交给浏览器并成兄弟项（空项里粘就是接着往下几项）
+  if(li && !cell && kids.some(k=>k.tagName==='UL' || k.tagName==='OL')
+     && kids.every(k=>/^(P|UL|OL)$/.test(k.tagName))) return box.innerHTML;
+  // 其余（列表项、格子、引用里粘进来的段落、引用、表格、代码……）：降成一行一行。
+  // 块级元素塞进 li／格子／引用，一行一项的模型写不回去，存盘只能判存不进（R 报告 P2-2）。
+  // 引用里一行就是一段，照样一行一段；列表项、格子里用 <br> 接
+  const rows=pasteRows(kids);
+  if(quote && !li && !cell) return rows.map(r=>'<p>'+(r||'<br>')+'</p>').join('');
+  return rows.join('<br>');
+}
+/* 粘贴结果降成「行」，记号照字面留着（贴进来的就是这些字）：列表项带 - ／1. ／[ ]，
+   标题带 #，引用带 >；代码一行一行照字面（围栏不要）；表格一行一行、格子用 | 隔开 */
+function pasteRows(kids){
+  const rows=[];
+  kids.forEach(k=>{
+    const t=k.tagName;
+    if(t==='UL' || t==='OL'){
+      let n=+(k.getAttribute('start')||1);
+      [...k.children].forEach(li=>{
+        if(li.tagName!=='LI') return;
+        const cb=li.querySelector(':scope > input[type=checkbox]');
+        const own=li.cloneNode(true);
+        own.querySelectorAll(':scope > ul, :scope > ol, :scope > input').forEach(x=>x.remove());
+        const mark=(t==='OL' ? (n++)+'. ' : '- ') + (cb ? '['+(cb.hasAttribute('checked')?'x':' ')+'] ' : '');
+        rows.push(esc(mark)+own.innerHTML.replace(/^<span>([\s\S]*)<\/span>$/,'$1').replace(/<br>$/,''));
+        li.querySelectorAll(':scope > ul, :scope > ol').forEach(sub=>rows.push(...pasteRows([sub])));
+      });
+    }else if(t==='PRE'){
+      preText(k).replace(/\n$/,'').split('\n').forEach(l=>rows.push(esc(l)));
+    }else if(t==='TABLE' || (t==='DIV' && k.classList.contains('tw'))){
+      const tb=t==='TABLE' ? k : k.querySelector('table');
+      if(tb) [...tb.querySelectorAll('tr')].forEach(r=>rows.push([...r.children].map(c=>c.innerHTML).join(' | ')));
+    }else if(t==='BLOCKQUOTE'){
+      [...k.children].forEach(p=>rows.push('&gt; '+p.innerHTML));
+    }else if(/^H[1-6]$/.test(t)) rows.push('#'.repeat(+t[1])+' '+k.innerHTML);
+    else if(t==='HR') rows.push('---');
+    else rows.push(k.innerHTML);
+  });
+  return rows;
+}
+/* 相邻的两行普通文字之间补一个空行，让 md2html 把它们画成两段；结构行和围栏里不动 */
+function pasteLines(txt){
+  const L=String(txt||'').split('\n'), out=[];
+  const para = i => { const l=L[i]; return !!l.trim() && !/^\s*(\||#{1,6}\s|>)/.test(l) && !fenceAt(L, i) && !LIRE.test(l)
+                    && !/^\s*([-*_])\s*\1\s*\1[\s\-*_]*$/.test(l); };
+  let fo=null;
+  L.forEach((l, i)=>{
+    out.push(l);
+    if(fo){ if(fenceClose(l, fo)) fo=null; return; }
+    const f=fenceAt(L, i); if(f){ fo=f; return; }
+    if(i+1<L.length && para(i) && para(i+1)) out.push('');
+  });
+  return out.join('\n');
 }
 
 function clipLooksLikeImage(dt){
@@ -8193,14 +9462,36 @@ async function pasteMixed(t, src){
     }
     restoreSel(md, keep);
     let htmlOut='';
-    for(const piece of resolved){
-      if(piece.kind==='text'){
-        const box=document.createElement('div');
-        box.innerHTML=md2html(piece.text, dirOf(t.path), 0);
-        htmlOut+=box.innerHTML;
-      }else{
+    // 这一下只有字、没有图（壳里所有纯文字粘贴都走这里，5.13.2 起）：跟浏览器那条路一样，
+    // 一段就行内插，光标在列表项／格子里就用 <br> 接（见 pasteHtml）
+    const textOnly=resolved.length && resolved.every(x=>x.kind==='text');
+    if(textOnly) htmlOut=pasteHtml(resolved.map(x=>x.text).join('\n'), dirOf(t.path));
+    else{
+      const imgTag=piece=>{
         const alt=esc(piece.alt||'');
-        htmlOut+=`<p><img src="${esc(resolveRef(piece.rel, dirOf(t.path), true))}" alt="${alt}" title="${alt}" data-u="${esc(piece.rel)}" data-fresh="1"></p>`;
+        return `<img src="${esc(resolveRef(piece.rel, dirOf(t.path), true))}" alt="${alt}" title="${alt}" data-u="${esc(piece.rel)}"`;
+      };
+      const s=getSelection(), at=s && s.rangeCount ? s.anchorNode : null;
+      const li=closestTag(at,'LI'), cell=closestTag(at,'TD') || closestTag(at,'TH'), quote=closestTag(at,'BLOCKQUOTE');
+      if(li || cell || quote){
+        // 落在列表项／格子／引用里：跟纯文字粘贴（pasteHtml）一个口径，块级的东西一律降成行——
+        // 字逐行、图当行内图（「- 字 ![](图)」在 md 里成立），列表项、格子里 <br> 接，引用里一行一段。
+        // 以前整段块级 HTML 插进去，列表里冒出「子表后面还有图和字」，整块存不进（R 复审 P1-A）
+        const rows=[];
+        resolved.forEach(piece=>{
+          if(piece.kind==='text'){
+            const box=document.createElement('div');
+            box.innerHTML=md2html(pasteLines(piece.text), dirOf(t.path), 0);
+            rows.push(...pasteRows([...box.children]));
+          }else rows.push(imgTag(piece)+'>');
+        });
+        htmlOut=(quote && !li && !cell) ? rows.map(r=>'<p>'+(r||'<br>')+'</p>').join('') : rows.join('<br>');
+      }else for(const piece of resolved){
+        if(piece.kind==='text'){
+          const box=document.createElement('div');
+          box.innerHTML=md2html(pasteLines(piece.text), dirOf(t.path), 0);
+          htmlOut+=box.innerHTML;
+        }else htmlOut+=`<p>${imgTag(piece)} data-fresh="1"></p>`;
       }
     }
     if(!htmlOut){
@@ -8300,24 +9591,29 @@ function syncStatusLine(){
     return;
   }
   if(t.saving){ m.textContent=TR('保存中'); return; }
+  if(t.saveErr){ m.textContent=TR('没存上 · 点重试'); m.classList.add('act'); return; }
   m.textContent = t.savedAt ? TR('正在编辑 · 已保存 {at}',{at:t.savedAt}) : TR('正在编辑');
 }
 /* 老代码里的一句话回执沿用这个名字，路由到同一格。 */
 function edSay(cls, txt){ if(txt) flash(txt); else syncStatusLine(); }
 $('#edMsg').onclick=()=>{
   const t=active();
-  if(t && t.editing && t.pendingBad && t.pendingBad.length) saveEdit(false);
+  if(!t || !t.editing) return;
+  if(t.saveErr){ retrySave(t); return; }
+  if(t.pendingBad && t.pendingBad.length) showStuck(t);
 };
 
 /* ── 能不能改 ───────────────────────────
-   全库 md 都能改，判据照抄服务端 _edit_ok：只收 .md；路径要落在库根内（相对路径，
-   不许绝对、不许 ..）；任一段是 _编辑备份 / __pycache__ / .amnote 或以点开头的
-   一律不可编辑。99_历史版本 和 99、归档 是可编辑的（给她开，Agent 纪律照旧）。 */
-const BADSEG=/^(?:_编辑备份|__pycache__|\.amnote)$|^\./;
+   全库 md 都能改，判据照抄服务端 _edit_ok：只收 .md（小写，服务端是 endswith(".md")）；
+   路径要落在库根内（相对路径，不许绝对、不许 ..）；任一段**含有** _编辑备份 /
+   __pycache__ / .amnote，或以点开头的，一律不可编辑——服务端 _seg_blocked 认的是
+   「包含」，以前这里认「整段相等」，像「旧_编辑备份」这种段能进编辑、永远存不上。
+   99_历史版本 和 99、归档 是可编辑的（给她开，Agent 纪律照旧）。 */
+const BADSEG=/_编辑备份|__pycache__|\.amnote|^\./;
 function canEditPath(rel){
   if(!IS_HTTP) return false;
   rel=String(rel||'');
-  if(!/\.md$/i.test(rel)) return false;
+  if(!/\.md$/.test(rel) || rel[0]==='/' || rel.indexOf('\u0000')>=0) return false;
   const parts=rel.split('/');
   if(!parts.length) return false;
   return parts.every(s=>s && s!=='..' && !BADSEG.test(s));
@@ -8517,6 +9813,7 @@ async function startEdit(opt){
 function endEdit(t){
   const p=paneOf(t); if(!p) return;
   clearTimeout(t.autoT); t.autoT=null;
+  clearTimeout(t.retryT); t.retryT=null;
   unwatch(t); hideFmt();
   const md=p.querySelector('.md');
   md.removeAttribute('contenteditable');
@@ -8526,16 +9823,20 @@ function endEdit(t){
     ['bid','dirty'].forEach(k=>delete el.dataset[k]);
     el.removeAttribute('data-lock');
   });
+  md.querySelectorAll('a[contenteditable]').forEach(a=>a.removeAttribute('contenteditable'));   // 双链的原子壳
   p.classList.remove('edit','src','fresh');
   t.editing=false; t.work=undefined; t.reg=null; t.touched=false;
-  t.pendingBad=null;
+  t.pendingBad=null; t.stuckEls=null; t.saveErr=null; t.retryN=0; t.redraw=null; t.composeWait=0; t.again=false;
   bnr('conflict', false);
   syncBar();
 }
 
 function cancelEdit(){
   const t=active(); if(!t||!t.editing) return;
-  if(dirty(t) && !ask(TR('要放弃这次修改吗？'), TR('改过的内容会回到打开时的样子。'), TR('放弃修改'), TR('取消'), true)) return;
+  // 这一趟存过（自动保存）：文件是那一刻的样子，不是打开时的（I 轮措辞，有存不进的块时更要说清）
+  const back=t.savedAt ? TR('没存进去的改动会丢掉，文件还是 {time} 存下的样子。',{time:t.savedAt})
+                       : TR('改过的内容会回到打开时的样子。');
+  if(dirty(t) && !ask(TR('要放弃这次修改吗？'), back, TR('放弃修改'), TR('取消'), true)) return;
   endEdit(t); paintWork(t); buildToc(); syncProg();
 }
 
@@ -8547,11 +9848,26 @@ function toggleSrc(){
     t.work=ta.value.replace(/\r\n/g,'\n');
     p.classList.remove('src');
     paintWork(t); prepEdit(t); buildToc();
+    /* 按源码整篇重画、台账重建：哪一块都没动过，存不进的那几块已经不在了。胶囊当场复位，
+       别挂着「有 N 处存不进」等下一次停笔（J 轮，R 终审 P3-1）。改动还在（touched），照常算没存。 */
+    t.pendingBad=null; t.stuckEls=null;
+    syncStatusLine(); syncNative(); syncTabDirty();
     ensureCaret(t);
   }else{
     hideFmt();
-    t.work=serializeBody(t);                       // 正文里改的先落到工作副本
+    /* 有存不进的段：先问。切过去以后这几段在源码里是「能存下来的样子」（草稿 md），可能跟眼前的排法
+       不一样；切回来以源码为准、照常存——不问就切，等于把它们静默写进了文件（R 复审 P2-A）。 */
+    const v=verifyDirty(t);
+    const n=bodyPlan(t, v.over).stuck.length;
+    if(n && !ask(TR('有 {n} 处改动存不进',{n}),
+                 TR('切到源码后，这几处显示的是能存下来的样子，可能和你现在看到的排法不一样；之后以源码为准。'),
+                 TR('继续'), TR('取消'), false)) return;
+    t.work=serializeBody(t, v.over, true);         // 正文里改的先落到工作副本（存不进的块按眼前的样子，见 bodyPlan）
     unwatch(t);
+    /* 开着的块源码框：框里眼下的字已经原样进了源码（bodyPlan 的 draft），框本身拿掉——藏着的框还在的话，
+       srcBlkPending 会一直说「没存完」；切回正文按源码整篇重画，本来也没有它了（K 轮：框落不下时
+       点「源码」按钮，失焦收不了、框还开着，不拿进源码的话框里的字就丢了） */
+    p.querySelectorAll('.md > textarea.blk').forEach(x=>{ x.dataset.closing='1'; x.remove(); });
     ta.value=t.work;
     p.classList.add('src');
     growEd(ta);
@@ -8571,19 +9887,32 @@ function autoKick(t){
   if(t.id===curTab){ syncStatusLine(); syncNative(); }
   syncTabDirty();
   clearTimeout(t.autoT);
-  t.autoT=setTimeout(()=>{ t.autoT=null; saveEdit(false, {tab:t, auto:true}); }, AUTOSAVE_MS);
+  t.autoT=setTimeout(function fire(){
+    t.autoT=null;
+    /* 输入法还在组字：拼音字母不是要的字，先别落盘（以前停笔两秒，「第一段文字zhong」
+       就进了文件，上屏之后下一次保存才盖掉）。上屏那一下会再推一次；
+       万一 compositionend 一直不来，最多等半分钟照存。 */
+    if(COMPOSING && (t.composeWait=(t.composeWait||0)+1) < 15){ t.autoT=setTimeout(fire, AUTOSAVE_MS); return; }
+    t.composeWait=0;
+    saveEdit(false, {tab:t, auto:true});
+  }, AUTOSAVE_MS);
 }
-function flushSave(t){
+/* 切走、关窗时把没落盘的改动推出去。
+   unload＝页面真要卸了（pagehide / beforeunload）：请求可能活不过页面，带 keepalive——
+   但浏览器给 keepalive 的请求体只有 64 KiB，超了整条不发，所以 saveEdit 只给小正文带。
+   页面只是藏起来（visibilitychange：切到别的 app、进全屏）不会卸，普通请求就走得完，
+   不带 keepalive。以前一律带，长笔记一切走就存不上，之后也不再重试。 */
+function flushSave(t, unload){
   if(!t || !t.editing || t.trashing) return;   // 同 autoKick
   clearTimeout(t.autoT); t.autoT=null;
   if(!dirty(t)) return;
-  saveEdit(false, {tab:t, auto:true, keepalive:true});
+  saveEdit(false, {tab:t, auto:true, unload:!!unload});
 }
-function flushAll(){ TABS.forEach(t=>{ if(t.editing) flushSave(t); }); }
-document.addEventListener('visibilitychange', ()=>{ if(document.hidden) flushAll(); });
-addEventListener('pagehide', flushAll);
+function flushAll(unload){ TABS.forEach(t=>{ if(t.editing) flushSave(t, unload); }); }
+document.addEventListener('visibilitychange', ()=>{ if(document.hidden) flushAll(false); });
+addEventListener('pagehide', ()=>flushAll(true));
 addEventListener('beforeunload', e=>{
-  flushAll();
+  flushAll(true);
   if(TABS.some(dirty)){ e.preventDefault(); e.returnValue=''; }
 });
 
@@ -8591,8 +9920,12 @@ const hhmm = () => { const d=new Date(), z=n=>String(n).padStart(2,'0');
   return z(d.getHours())+':'+z(d.getMinutes()); };
 
 /* 存盘。自动保存这条路上不弹窗打断：
-   冲突（别人改过）→ 顶部横幅两个动作；自检报「会变样」→ 状态字变「有 N 处存不进 · 点看」。
-   手动 ⌘S 保持原来的对话框行为。
+   冲突（别人改过）→ 顶部横幅两个动作；服务端拒写、请求没回来 → 胶囊「没存上 · 点重试」，
+   隔一会儿自己再试（saveFailed）。
+   自检逐块判（verifyDirty）：对不上的块不再整篇拒存——不丢字就照存、光标离开那一块时
+   按文件重画；照常写会丢字的那一块改写成纯文字兜底，其余照存。手动 ⌘S 走同一道闸，
+   不再问「仍然保存吗」。只有兜底也保不住字（理论上到不了）才退回老路：
+   自动保存先不存、胶囊「有 N 处存不进」，手动问一句。
    返回值：真＝这次改动确实落到文件里了（或本来就跟文件一样）；假＝没落盘，
    改动还在编辑区里。「完成」按这个决定要不要回阅读态，别的调用点可以不看。 */
 async function saveEdit(force, opt){
@@ -8603,39 +9936,53 @@ async function saveEdit(force, opt){
   const p=paneOf(t); if(!p) return false;
   const auto=!!opt.auto;
 
-  let body;
+  let body, redraw=[], refused=null;
   if(p.classList.contains('src')){
-    body=p.querySelector('.ed').value.replace(/\r\n/g,'\n');
+    body=wellFormed(p.querySelector('.ed').value.replace(/\r\n/g,'\n'));
   }else{
     undecorateHistory(p.querySelector('.md'));
-    const bad=force?[]:verifyDirty(t);
-    if(bad.length){
-      if(auto){ t.pendingBad=bad; if(t.id===curTab) syncStatusLine(); return false; }
-      if(!ask(
-        TR('有 {n} 块存下去会变样，仍然保存吗？',{n:bad.length}),
-        TR('多半是打了 markdown 会认的记号，比如表格格子里的竖线、落单的星号：')+'\n\n'
-        + bad.slice(0,6).map(x=>'· '+x).join('\n')
-        + (bad.length>6?'\n'+TR('…还有 {n} 块',{n:bad.length-6}):''),
-        TR('仍然保存'), TR('取消'), true)){ t.pendingBad=bad; syncStatusLine(); return false; }
+    // ⌘S 时开着的块源码框：先把框里的字落回那一块，再存（I 轮）。自动保存不落——框收起时才算数。
+    // 落不下的框（围栏没收尾，K 轮）：框里的字不落，别的照存，存完再说一句（放在最后，别被别的提示盖掉）
+    if(!auto) p.querySelectorAll('.md > textarea.blk').forEach(ta=>{ if(!commitSrcBlk(t, ta)) refused=ta; });
+    const v=verifyDirty(t);
+    const plan=bodyPlan(t, v.over);
+    /* 有一块存不进：这一次整篇不写（I 轮）。文件保持上次存下的样子，胶囊报「有 N 处存不进」，
+       dirty 一直为真（关标签、退出会拦）；那几块改好（或撤销掉）之后的下一次照常整篇写。
+       H 轮那种「只把 stuck 那一段写原字节、别的照存」三轮都被拖放／并段／源码框找出丢字、写重，不要了。 */
+    if(plan.stuck.length){
+      t.pendingBad=plan.stuck.map(el=>(el.tagName==='TEXTAREA' ? el.value : (el.textContent||'')).replace(/\s+/g,' ').trim().slice(0,26));
+      t.stuckEls=plan.stuck;
+      t.touched=true;
+      if(t.id===curTab){ syncStatusLine(); syncNative(); }
+      syncTabDirty();
+      if(!auto){ if(refused) srcBlkRefuse(t, refused); else showStuck(t); }
+      return false;
     }
-    t.pendingBad=null;
-    body=serializeBody(t);
+    t.pendingBad=null; t.stuckEls=null;
+    body=plan.text;
+    redraw=v.redraw;
   }
-  if(body===t.raw){ t.touched=false; if(t.id===curTab) syncStatusLine(); return true; }
+  if(body===t.raw){
+    t.touched=srcBlkPending(t); saveOk(t);          // 块源码框里还有没落的字：没存完（J 轮）
+    queueRedraw(t, redraw);
+    if(t.id===curTab){ syncStatusLine(); syncNative(); }
+    if(refused) srcBlkRefuse(t, refused);
+    return true;
+  }
 
   t.saving=true; if(t.id===curTab) syncStatusLine();
   const payload={路径:t.path, 正文:body, 基于:t.rawAt, 强制:!!force};
-  // keepalive 这条路上响应可能到不了，不改名——下次正常保存再跟标题对齐。
-  if(!opt.keepalive){
+  // 卸页那条路上响应可能到不了，不改名——下次正常保存再跟标题对齐。
+  if(!opt.unload){
     const dest=suggestRename(t.path, firstHeading(body));
     if(dest) payload.新路径=dest;
   }
-  const req={method:'POST', headers:hdrs(),
-             body:JSON.stringify(payload)};
-  if(opt.keepalive) req.keepalive=true;
+  const json=JSON.stringify(payload);
+  const req={method:'POST', headers:hdrs(), body:json};
+  if(opt.unload && new Blob([json]).size < 60*1024) req.keepalive=true;
   let r=null;
   try{ r=await (await fetch('/__save', req)).json(); }
-  catch(e){ t.saving=false; if(t.id===curTab) flash(TR('服务没应答')); return false; }
+  catch(e){ t.saving=false; saveFailed(t, TR('服务没应答')); return false; }
   t.saving=false;
 
   if(!r.ok){
@@ -8650,10 +9997,12 @@ async function saveEdit(force, opt){
       if(t.id===curTab) syncStatusLine();
       return false;
     }
-    if(t.id===curTab) flash(r.错误||TR('写失败'));
+    saveFailed(t, r.错误||TR('写失败'));
     return false;
   }
-  t.raw=body; t.touched=false; t.conflict=null;
+  t.raw=body; t.conflict=null; saveOk(t);
+  // 存的这一会儿又动过（停笔计时又挂上了）、块源码框里还有没落的字：还不算存完，壳退出照样拦
+  t.touched=!!(t.autoT || t.again) || srcBlkPending(t);
   bnr('conflict', false);
   t.savedAt=hhmm(); t.lastArchive=r.留档||'';
   if(r.路径 && r.路径!==t.path) applyRenamedPath(t, r.路径);
@@ -8665,9 +10014,93 @@ async function saveEdit(force, opt){
   // 存完文件的 mtime 变了，下一次的「基于」得跟着换，不然会被当成外部改动
   if(r.改于) t.rawAt=r.改于; else await refreshRawAt(t);
   drawDocMeta(t);
+  queueRedraw(t, redraw);
   if(t.id===curTab){ syncStatusLine(); syncNative(); }
   if(t.again){ t.again=false; autoKick(t); }
+  if(refused) srcBlkRefuse(t, refused);
   return true;
+}
+/* 「有 N 处存不进 · 点看」：滚到第一块、闪一下；提示条说清楚两件事——这篇的改动先没存、文件还是上次
+   存下的样子（I 轮：有 stuck 就整篇不写），给「改源码」入口（框里是这一块尽力写出来的 md，收起就照它重画、照常存）。 */
+function showStuck(t){
+  const els=(t.stuckEls||[]).filter(el=>el.isConnected);
+  if(!els.length){ if(!t.saving) saveEdit(false, {tab:t, auto:true}); return; }
+  const el=els[0];
+  try{ el.scrollIntoView({block:'center', behavior:'smooth'}); }catch(e){}
+  el.classList.add('stuckflash');
+  setTimeout(()=>el.classList.remove('stuckflash'), 1800);
+  const n=els.length;
+  const msg = t.savedAt
+    ? TR('有 {n} 处存不进，这篇的改动先没存，文件还是 {time} 存下的样子。',{n, time:t.savedAt})
+    : TR('有 {n} 处存不进，这篇的改动先没存，文件还是打开时的样子。',{n});
+  notify(msg, {ms:8000, action: el.tagName==='TEXTAREA' ? null
+                : {label:TR('改源码'), fn:()=>{ if(el.isConnected && t.editing) openSrcBlk(t, el); }}});
+}
+
+/* 没存上（服务端拒写、请求没回来）：胶囊进「没存上 · 点重试」，别停在「正在保存…」；
+   隔一会儿自己再试，一次比一次等得久（3 秒起，最长一分钟）。点胶囊看原因、马上重试。
+   字一直在编辑区里，touched 没清，壳退出照样会拦。提示条只在第一次失败时闪一下。 */
+function saveFailed(t, why){
+  const first=!t.saveErr;
+  t.saveErr=String(why||TR('写失败'));
+  t.retryN=(t.retryN||0)+1;
+  clearTimeout(t.retryT);
+  t.retryT=setTimeout(()=>{
+    t.retryT=null;
+    if(t.editing && t.saveErr && !t.saving) saveEdit(false, {tab:t, auto:true});
+  }, Math.min(60000, 3000*Math.pow(2, t.retryN-1)));
+  if(t.id===curTab){ syncStatusLine(); if(first) flash(t.saveErr); }
+}
+function saveOk(t){ t.saveErr=null; t.retryN=0; clearTimeout(t.retryT); t.retryT=null; }
+
+/* ── 按文件重画 ─────────────────────────
+   自检对不上、照存了的块（见 verifyDirty）：光标离开这一块（或点「完成」，那会整篇按
+   文件重画）时，按存下去的 md 重画，屏幕＝文件。正在打字的那一块不能当场重画——
+   会吃掉刚打的空格、光标乱跳。重画了就安静地说一句。 */
+/* 等着按文件重画的块，按块号记（没块号的新块才记元素本身）：cleanBlock、浏览器拆段都会换掉
+   元素，按元素记的话换完就找不着了，那一块永远不重画（R 报告 P3-9）。 */
+function queueRedraw(t, els){
+  if(!els || !els.length) return;
+  t.redraw=t.redraw||new Set();
+  els.forEach(el=>t.redraw.add(el.dataset && el.dataset.bid!==undefined ? 'b'+el.dataset.bid : el));
+  redrawAway(t);
+}
+function redrawAway(t){
+  if(!t || !t.editing || !t.redraw || !t.redraw.size || COMPOSING) return;
+  const p=paneOf(t); if(!p || p.classList.contains('src')) return;
+  const md=p.querySelector('.md'), base=dirOf(t.path);
+  const s=getSelection();
+  const sel=s && s.rangeCount ? s.getRangeAt(0) : null;
+  // 光标／选区还碰着这一块（起点、终点、或者整个跨过去）：等它离开。只看起点的话，
+  // 从下一段反着拖进来的选区会被重画打断（R 报告 P3-8）
+  const touching=el=>{ try{ return !!sel && sel.intersectsNode(el); }catch(e){ return false; } };
+  let n=0, lossy=false;
+  [...t.redraw].forEach(key=>{
+    const els=typeof key==='string'
+      ? [...md.children].filter(c=>c.dataset && 'b'+c.dataset.bid===key)
+      : (key.isConnected && key.parentNode===md ? [key] : []);
+    if(!els.length){ t.redraw.delete(key); return; }
+    if(els.some(touching)) return;
+    t.redraw.delete(key);
+    els.forEach(el=>{
+      const v=blockPlan(el, base);
+      if(v.ok || v.stuck) return;                     // 后来又改对了；或者成了存不进的（原样留着、胶囊管）
+      const box=document.createElement('div');
+      box.innerHTML=md2html(v.md, base, 0);
+      wireImg(box);                                   // 取不到的图照样给占位（编辑态不换成字）
+      const made=[...box.children];
+      if(!made.length) return;
+      made.forEach(m=>{ m.removeAttribute('data-l0'); m.removeAttribute('data-l1'); m.dataset.dirty='1'; });
+      // 重画出好几块：都带原来的块号（同一块劈开的，块号重了就都按眼前的样子写，见 bodyPlan）
+      if(el.dataset.bid!==undefined) made.forEach(m=>{ m.dataset.bid=el.dataset.bid; if(el.dataset.be!==undefined) m.dataset.be=el.dataset.be; });
+      unwatch(t);
+      el.replaceWith(...made);
+      made.forEach(m=>cleanBlock(m));
+      watchEdits(t);
+      n++; if(v.lossy) lossy=true;
+    });
+  });
+  if(n) notify(lossy ? TR('有一段的格式存不下，已按纯文字存好') : TR('有一段按存下的样子重排了'));
 }
 
 async function refreshRawAt(t){
@@ -8698,6 +10131,7 @@ $('#takeTheirs').onclick=async()=>{
                                {cache:'no-store'})).json();
     if(!r.ok){ flash(r.错误||TR('读不到源码')); return; }
     t.raw=r.正文; t.rawAt=r.改于; t.work=r.正文; t.touched=false; t.conflict=null;
+    saveOk(t); t.redraw=null;                     // 改用对方的：之前没存上的那几次、等着重画的块都作废
     paintWork(t); prepEdit(t); buildToc(); ensureCaret(t);
     if(t.id===curTab) syncStatusLine();
   }catch(e){ flash(TR('服务没应答')); }
@@ -8723,20 +10157,67 @@ window.__amnProbe = {
   mdHtml(){ const md=$('#doc')||document.querySelector('#panes .pane.on .md'); return md?md.innerHTML:null; }
 };
 
-/* 存盘前对改过的块再自检一次：反解出来的 markdown 重新渲染，必须还是屏幕上那个样子。
-   对不上说明打的字里带了 markdown 会认的记号（在表格格子里打了竖线、
-   写了个落单的星号），存下去和看到的不是一回事，先拦一次。 */
+/* 存盘前对改过的块逐块自检：反解出来的 markdown 重新渲染，看起来还得是屏幕上那个样子
+   （visSig，见「看得见的样子」）。先把动过的块再洗一遍白——改完那一帧的洗白可能没跑
+   （页面藏着时 rAF 停摆、组字时跳过），反解认的是洗过的形状。
+   返回 {bad, stuck, redraw, over}：
+     over    块 → 结论（blockVerdict：要写的 md、是不是存不进）
+     redraw  对不上、照存了的纯文字块：存完、光标离开时按文件重画
+     stuck   存不进的块：文件里留它原来的字节，其余照存（见 serializeBody）；bad 是它们的开头几个字 */
 function verifyDirty(t){
-  const md=paneOf(t).querySelector('.md'), base=dirOf(t.path), bad=[];
+  const md=paneOf(t).querySelector('.md'), base=dirOf(t.path);
+  const out={bad:[], stuck:[], redraw:[], over:new Map()};
+  tidyDirty(t);
   [...md.children].forEach(el=>{
-    if(el.nodeType!==1 || !el.dataset.dirty || el.hasAttribute('data-lock')) return;
-    const s=blkMd(el, base); if(!s.trim()) return;
-    const box=document.createElement('div');
-    box.innerHTML=md2html(s, base, 0);
-    if(box.children.length!==1 || normHtml(box.innerHTML)!==normHtml(el.outerHTML))
-      bad.push((el.textContent||'').replace(/\s+/g,' ').trim().slice(0,26));
+    if(el.nodeType!==1 || !el.dataset.dirty || el.hasAttribute('data-lock')
+       || el.tagName==='TEXTAREA' || el.dataset.chrome) return;
+    const v=blockPlan(el, base);
+    out.over.set(el, v);
+    if(v.ok) return;
+    if(v.stuck){ out.stuck.push(el); out.bad.push((el.textContent||'').replace(/\s+/g,' ').trim().slice(0,26)); }
+    else out.redraw.push(el);
   });
-  return bad;
+  return out;
+}
+/* 动过的块再洗一遍白（同 watchEdits 里改完那一帧）。光标记下来、洗完放回去；组字时不动。 */
+function tidyDirty(t){
+  const p=paneOf(t); if(!p || COMPOSING) return;
+  const md=p.querySelector('.md');
+  const list=[...md.children].filter(el=>el.nodeType===1 && el.dataset.dirty && !el.hasAttribute('data-lock')
+                                      && el.tagName!=='TEXTAREA' && !el.dataset.chrome);
+  if(!list.length) return;
+  unwatch(t);
+  const before=md.innerHTML, keep=saveSel(md);
+  list.forEach(b=>{ if(b.isConnected) cleanBlock(b); });
+  dropIdleShells(list);
+  if(md.innerHTML!==before) restoreSel(md, keep);
+  watchEdits(t);
+}
+/* 存盘前：空的行内壳（只剩光标位 <br> 的 <strong>／<em>／<del>／<code>——加粗项开头、项末回车造出来的），
+   光标已经不在它那一项（那一段）里了就拆掉。光标还在的时候 cleanBlock 留着它，接着打的字照旧是粗的；
+   光标走了它就什么用都没有：空的加粗写不进文件，留着的话屏幕上是「粗的空项」、文件里是普通空项，
+   存完对不上（K 轮随机会话种子 320，F 轮起就有）。 */
+function dropIdleShells(list){
+  const s=getSelection();
+  const ends=s && s.rangeCount ? [s.anchorNode, s.focusNode] : [];
+  list.forEach(b=>{
+    if(!b.isConnected) return;
+    b.querySelectorAll('strong,em,del,code').forEach(n=>{
+      if(!b.contains(n) || n.closest('pre')) return;
+      if(![...n.childNodes].every(c=>c.nodeType===1 && c.tagName==='BR')) return;   // 只认光标位 <br>，有字（哪怕是空格）的不碰
+      const host=n.parentElement && n.parentElement.closest('li,p,td,th,h1,h2,h3,h4,h5,h6,blockquote') || b;
+      if(ends.some(x=>x && host.contains(x))) return;     // 光标还在这一项里：留着
+      unwrapKeep(n);
+    });
+  });
+}
+/* 一块的自检，跟 verifyDirty 一模一样（先洗白、再判），测试台直接调它。
+   洗白可能把元素换掉（顶层的裸行内元素包进段落），返回里的 el 是洗完的那一块。 */
+function checkBlock(el, base){
+  el=cleanBlock(el);
+  const v=blockVerdict(el, base);
+  v.el=el;
+  return v;
 }
 
 /* ── 数据 ───────────────────────────────
@@ -9742,7 +11223,18 @@ const SLASH=[
   {id:'hr', title:TR('分割线'), k:'---'},
 ];
 let slashI=0, slashBlk=null;
-function slashOn(){ return $('#slash').classList.contains('on'); }
+/* 菜单开着、可光标已经不在打「/」的那一段里了（点到别处、方向键挪走）：收起来、当没开。
+   以前照样把回车当「应用」吞掉，列表里回车没反应，「/」那段倒变成了空标题（A 报告 R7）。 */
+function slashOn(){
+  if(!$('#slash').classList.contains('on')) return false;
+  const s=getSelection();
+  return !!(slashBlk && slashBlk.isConnected && s && s.rangeCount && slashBlk.contains(s.anchorNode));
+}
+/* 只问「判断」，不顺手收菜单：收起来放在 selectionchange 里（slashAway）。以前 slashOn 自己收，
+   Esc 进 AMN.escape 先被它收掉、返回假，又往下走把编辑态取消了（R 报告 P3-1）。 */
+function slashAway(){
+  if($('#slash').classList.contains('on') && !slashOn()) hideSlash();
+}
 function hideSlash(){
   $('#slash').classList.remove('on');
   slashBlk=null;
@@ -9816,7 +11308,9 @@ function ymdParts(d){
   };
 }
 function safeNoteStem(title, 日){
-  let safe=String(title||'').replace(/[\/\\:*?"<>|]/g,'-').replace(/\s+/g,' ').trim().slice(0,60);
+  // 切到 60 个字时别把一个 emoji 劈成两半：剩下的半个（孤立代理项）进了文件名，
+  // 服务端 realpath 会抛 UnicodeEncodeError，正文已经写进去了却回成「保存失败」
+  let safe=String(title||'').replace(/[\/\\:*?"<>|]/g,'-').replace(/\s+/g,' ').trim().slice(0,60).replace(/[\uD800-\uDBFF]$/,'');
   if(日) safe=safe.replace(new RegExp('[ _\\-]*'+日.replace(/[.*+?^${}()|[\]\\]/g,'\\$&')+'$'),'').trim() || safe;
   return safe;
 }
@@ -11329,7 +12823,7 @@ window.AMN = {
     if($('#ctx').classList.contains('on')){ closeCtx(); return; }
     if(tabPickOn()){ closeTabPick(); return; }
     if(olFloatOn()){ closeOlFloat(); syncToc(); return; }
-    if(slashOn()){ hideSlash(); return; }
+    if($('#slash').classList.contains('on')){ hideSlash(); return; }   // 看得见就先收它，这一下 Esc 到此为止
     if(typeOn()){ closeType(); return; }
     const wp=$('#wlpick'); if(wp && wp.classList.contains('on')){ wp.classList.remove('on'); return; }
     const fb=$('#fmt'); if(fb && fb.classList.contains('on')){ hideFmt(); return; }
