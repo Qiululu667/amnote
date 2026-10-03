@@ -9,6 +9,8 @@
 临时库建在 `$AMN_CHECK_DIR`（不设就用系统临时目录）底下，端口在 8948–8950。
 **一个字节都不碰用户的库和 ~/Library/Application Support/AMNote**：
 support-dir、token 文件、notebooks.json、AMNOTE_HOME 全指到临时目录。
+起的服务连 HOME 也指到临时目录：服务的废纸篓是 ~/.Trash，不换 HOME 的话
+第 3 组「废纸篓撤销」会把测试文件真的挪进用户的废纸篓再挪回来。
 
 十组：
     1 单库零变化   同一个库先用 HEAD 那版服务跑一遍，再用工作区这版跑一遍，
@@ -54,7 +56,9 @@ VOLATILE = {"生成时间", "上次扫描", "上次同步", "端口", "秒前", 
 # 5.9 添 骨架：/__tree 的每条 文档[] 多一列「骨架」（md 的结构缩影，
 # fulltext.skeleton_of 索引时算好存在库里，首页卡片照它画一张纸）。是新增字段，
 # 旧键一个没动、值也没变，所以按 NEW_KEYS 放行，不是「单库有变化」。
-NEW_KEYS = {"模式", "笔记本", "接口版本", "骨架"}
+# 5.14 添 任务、基于：有没勾待办、写得回去的 md 多这两个键（索引时抽的
+# [[行, 原文], …]，和现 stat 核对过的 mtime 串），同样是新增字段。
+NEW_KEYS = {"模式", "笔记本", "接口版本", "骨架", "任务", "基于"}
 
 PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")
@@ -175,6 +179,8 @@ class Srv(object):
             argv += ["--notebooks-file", self.nbfile]
         env = dict(os.environ)
         env["AMNOTE_HOME"] = os.path.join(self.base, "home")
+        # 废纸篓（服务里的 ~/.Trash）也落进临时目录，别碰用户自己的，见文件头
+        env["HOME"] = env["AMNOTE_HOME"]
         env.pop("AMNOTE_VAULT", None)
         env.pop("AMNOTE_SUPPORT_DIR", None)
         self.err = open(os.path.join(self.base, "%s.err" % self.tag), "w+b")
@@ -314,7 +320,9 @@ def diff(a, b, path=""):
     out = []
     if isinstance(a, dict) and isinstance(b, dict):
         for k in a:
-            if k in VOLATILE:
+            # 笔记本那一条的 id：这一组两趟都没给 --notebooks-file，id 每趟随机发，
+            # 只在「…笔记本[i]」那一层跳过（别处叫 id 的照比）
+            if k in VOLATILE or (k == "id" and path.rsplit(".", 1)[-1].startswith("笔记本[")):
                 continue
             if k not in b:
                 out.append("%s.%s 没了" % (path, k))
@@ -932,7 +940,7 @@ def step_persist(base, libs):
          "--notebooks-file", os.path.join(base, "sup", "没有这份.json")],
         capture_output=True, timeout=60,
         env=dict(os.environ, AMNOTE_HOME=os.path.join(base, "home"),
-                 AMNOTE_VAULT=""))
+                 HOME=os.path.join(base, "home"), AMNOTE_VAULT=""))
     good &= ok(p.returncode == 1 and "笔记本" in p.stderr.decode("utf-8", "replace"),
                "空列表 ＋ 没有 --root → exit 1 并说一句人话",
                p.stderr.decode("utf-8", "replace")[:120])

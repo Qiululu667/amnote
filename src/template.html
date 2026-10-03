@@ -1016,6 +1016,63 @@ kbd{
   .ndesc .ntx{font-size:12px}
 }
 
+/* ═══ 5.14 待办汇总 ═══════════════════════════
+   数值照设计稿（_工作区/20261001_编辑器两处bug与待办评审_v1/todo/parts/td.css），只用 token。
+   类名一律 todo- 前缀：任务行不能借 .ntitle / .nleader——≤700 时前者放开封顶、后者整个藏掉，
+   而任务行在窄窗里还是一行，点线和笔记名留在原处（README 第 4 条）。
+
+   ── 开始页那一行：整套就是 .nrow（≤700 跟列表行一起收），只补三处 ──
+   上边距 8：卡底到字顶 8＋14＝22，跟段头到第一行字顶的 9＋14 同一档。没有续读卡时上面是
+   .dirchips / .tipcard（自带下边距 20）或 .nbchips（12）：外边距会折叠，负的那一截把间距
+   收回到同样的 8。下面到「最近打开」照旧是段头自带的 20。 */
+.notelist.todo-door{margin-top:8px}
+.dirchips+.todo-door,.tipcard+.todo-door{margin-top:-12px}
+.nbchips+.todo-door{margin-top:-4px}
+.todo-mark{color:var(--t3)}                 /* 记号：线条图标、点不了、不铺底、不投影 */
+.todo-mark svg{display:block}
+.todo-go{color:var(--accent)}               /* 「查看」：字号跟 .nmeta 走（12，窄窗 11） */
+
+/* ── 待办页 ──
+   段头没有右边那枚「全部 / Markdown / HTML」（任务只在 md 里），用 min-height 补回它撑出来
+   的 29，跟已收藏页的段头落在同一条线上。 */
+.todo-head{min-height:29px}
+/* 一行 40 ＝ 20（字）＋ 10×2。内边距、圆角同搜索结果行 .res（10/12、--r-md）。 */
+.todo-list{margin:0 -12px}
+.todo-row{display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--r-md);
+  transition:background-color var(--d-fast) ease}
+.todo-row:hover{background:var(--hover)}
+/* 原生框，跟阅读页 .md li.task input 同一条：accent-color、指针（那条写在 .md 底下，
+   页面类标签里 .md 整个藏着，只能照抄一份） */
+.todo-row input{flex:none;margin:0;accent-color:var(--accent);cursor:pointer}
+/* 文字 · 点线 · 笔记名：同 .ntop 的排法（flex-end 底对齐、gap 10、点线抬到基线上方） */
+.todo-line{flex:1 1 auto;min-width:0;display:flex;align-items:flex-end;gap:10px}
+.todo-tx{display:block;flex:0 1 auto;min-width:0;max-width:72%;text-align:left;
+  font-size:14px;font-weight:400;line-height:20px;color:var(--t1);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.todo-tx:active:not([disabled]){transform:none}
+.todo-leader{flex:1 1 auto;min-width:32px;height:2px;margin-bottom:8.5px;
+  background-image:radial-gradient(circle at center, var(--leader) .6px, rgba(0,0,0,0) .75px);
+  background-size:5px 2px;background-repeat:repeat-x;background-position:left center}
+.todo-src{flex:none;max-width:40%;display:flex;align-items:center;min-width:0;
+  font-size:12px;line-height:20px;margin-bottom:-1px;color:var(--t3);white-space:nowrap}
+.todo-src .nd{margin-right:7px}
+.todo-nm{min-width:0;overflow:hidden;text-overflow:ellipsis}
+/* 刚勾掉：同阅读页 input:checked+span（--t3 ＋ 删除线），行留在原位，离开这一页才消失 */
+.todo-row.done .todo-tx{color:var(--t3);text-decoration:line-through}
+/* 「更早的笔记 ›」：落在段头的位置、跟段头同字号（13），字重收到 500、颜色退到 --t2——
+   它是一节折起来的东西，不跟「最近 7 天」抢。箭头同关联面板的文件夹树（chevron-right，
+   展开换 chevron-down）；悬停字和箭头一起回到 --t1。 */
+.todo-fold{display:inline-flex;align-items:center;gap:5px;font-size:13px;font-weight:500;color:var(--t2);
+  transition:color var(--d-fast) ease}
+.todo-fold svg{color:var(--t3);flex:none;transition:color var(--d-fast) ease}
+.todo-fold:active:not([disabled]){transform:none}
+.todo-fold:hover,.todo-fold:hover svg{color:var(--t1)}
+@media (max-width:700px){
+  .todo-list{margin:0 -10px}
+  .todo-row{padding:10px}
+  .todo-tx{font-size:13px}
+}
+
 /* 分隔条：不画线，只留一条看不见的拖动区 */
 .split{position:relative;z-index:5;width:0;cursor:col-resize}
 .split::after{content:"";position:absolute;inset:0 -3px}
@@ -4431,6 +4488,7 @@ function titleOfEntry(e){
   if(e.kind==='search') return e.q || e.title || TR('搜索');
   if(e.kind==='folder') return e.folder || e.title || TR('文件夹');
   if(e.kind==='pins') return TR('已收藏');
+  if(e.kind==='todo') return TR('待办##page');
   return e.title || (e.path||'').split('/').pop() || TR('无标题');
 }
 function makeEntry(kind, extra){
@@ -4513,6 +4571,7 @@ function currentPath(t){
   if(e.kind==='search') return e.q||'';
   if(e.kind==='folder') return (e.folder||'')+'/';
   if(e.kind==='pins') return TR('已收藏');
+  if(e.kind==='todo') return TR('待办##page');
   if(e.kind==='start') return '';
   return e.path||t.path||'';
 }
@@ -4600,6 +4659,10 @@ async function loadEntry(t){
   applyEntry(t, e);
   setPaneMode(t);
   flashLoad();
+  /* 5.14 待办页那份快照：每进一次这一页（导航、前进后退、新标签、⌘⇧T）都按最新数据重建，
+     上一回刚勾掉、还灰着留在原位的那几行这时才消失。离开这一页也一并丢掉——
+     还在路上的勾选请求回来时认得出「页面已经不是发请求时那一版」，只更新数据、不碰页面。 */
+  t.td=null;
   const k=kindOfTab(t);
   if(k==='md'){
     if(t.ext) await loadExt(t);
@@ -4676,7 +4739,7 @@ function scrollYOf(box, el){
 }
 /* 开始页 / 搜索页 / 文件夹页 / 已收藏页，四种都画在这个标签自己的 .pagebox 里。
    5.4 起四种都是纯白 --win，卡片靠阴影浮起来；--canvas 只留给引用块和内凹控件。 */
-function isPageKind(k){ return k==='start'||k==='search'||k==='folder'||k==='pins'; }
+function isPageKind(k){ return k==='start'||k==='search'||k==='folder'||k==='pins'||k==='todo'; }
 function paintPage(t, opt){
   const p=paneOf(t); if(!p) return;
   const box=p.querySelector('.pagebox'); if(!box) return;
@@ -4686,6 +4749,7 @@ function paintPage(t, opt){
   if(k==='search') paintSerp(t, box);
   else if(k==='folder') paintFolder(t, box);
   else if(k==='pins') paintPins(t, box);
+  else if(k==='todo') paintTodo(t, box, quiet);
   else paintStart(box);
   wireAvatars(box);
   if(quiet) box.scrollTop=y;
@@ -4722,6 +4786,10 @@ function prunePins(){
 }
 function openPins(newTab){
   navigate(makeEntry('pins', {title:TR('已收藏')}), {newTab:!!newTab});
+}
+/* 5.14「待办」页：写法同已收藏——从开始标签点进去是替换，⌘ 点开新标签。 */
+function openTodo(newTab){
+  navigate(makeEntry('todo', {title:TR('待办##page')}), {newTab:!!newTab});
 }
 
 /* ── 卡片清单 ────────────────────────────
@@ -5175,6 +5243,7 @@ function paintStart(box){
     ${(NB.multi && !cur) ? '' : startChipsHtml()}
     ${last?resumeHtml(last):''}
     ${tipsCardHtml()}
+    ${todoDoorHtml()}
     ${recent}
     ${more}
     ${tip}</div>`;
@@ -5189,6 +5258,385 @@ function paintPins(t, box){
     ${sectionHead(TR('收藏的笔记'), list.length)}
     ${rowsHtml(list, emptyHtml(TR('还没有收藏'),esc(TR('在笔记的右键菜单里点一下「收藏」，它就放进这里了。'))), {n})}
   </div>`; });
+}
+
+/* ═══ 5.14 待办汇总 ═══════════════════════════
+   数据：/__tree 给每篇 md 多带两个键（setTree 原样映射进 items）——
+     `任务` [[行, 原文], …]：只有没勾、写得回去的；行＝0 基，跟 /__task、阅读页 data-l0 同口径；
+            原文＝`[ ]` 后面那一截源码，行内 Markdown 没洗；
+     `基于` 索引那一版的 mtime 串（跟 /__task 的「基于」同式）。缺席＝索引落后于磁盘，这一篇先别写。
+   「最近」＝笔记 `改于` 距现在 7 天以内。排序：笔记新→旧，同篇按行号。跟着当前笔记本走。 */
+const TODO_RECENT=7*86400;          // 秒
+const TODO_BATCH=15;                // 「更早」展开后一批画几条
+const todoRecent = (i, now) => now-(+i.修改时间||0) <= TODO_RECENT;
+const todoOrder = (a, b) => ((+b.修改时间||0)-(+a.修改时间||0)) || (a.路径<b.路径 ? -1 : a.路径>b.路径 ? 1 : 0);
+/* setTree 映射 `任务` 用：形状不对的条目丢掉（行必须是非负整数、原文必须是字符串），缺席＝[]。 */
+const taskList = a => Array.isArray(a)
+  ? a.filter(x=>Array.isArray(x) && Number.isInteger(x[0]) && x[0]>=0 && typeof x[1]==='string') : [];
+/* 有任务、属于当前笔记本的那几篇，按上面的口径排好。openFreshNote 塞进 items 的占位没有这两个键。 */
+function todoDocs(){
+  return items.filter(i=>i && Array.isArray(i.任务) && i.任务.length && inCurBook(i)).sort(todoOrder);
+}
+/* 显示用的文字：原文按阅读页同一个 inl() 渲染，再在一份惰性文档里取纯文字（挂到真文档上
+   的话 <img> 会去加载），跟阅读页上那一行逐字一样。<br> 当一个空格。洗完是空的：只有图的
+   （`- [ ] ![](a.png)`）写图的 alt，alt 也是空的写「图片」——别把一串源码摆出来；别的情况
+   退回原文。按原文记忆化。
+   记忆表封顶 TASK_TX_MAX 条，满了挤掉最早记下的那一条：每勾一下 todoHtml 都把整页的行重拼一遍，
+   上限比库里的任务少的话每次都要在惰性文档里重新解析一大片（审查 P3-10：6,000 条时一下 30–60 ms）。 */
+const TASK_TX=new Map();
+const TASK_TX_MAX=30000;
+let taskDoc=null;
+function taskText(raw){
+  const s0=String(raw==null?'':raw);
+  let s=TASK_TX.get(s0);
+  if(s!==undefined) return s;
+  s='';
+  let pic='';
+  try{
+    if(!taskDoc) taskDoc=document.implementation.createHTMLDocument('');
+    const el=taskDoc.createElement('div');
+    el.innerHTML=inl(s0, '');
+    el.querySelectorAll('br').forEach(b=>b.replaceWith(' '));
+    s=String(el.textContent||'').replace(/\s+/g,' ').trim();
+    const im=s ? [] : [...el.querySelectorAll('img')];
+    if(im.length) pic=im.map(x=>x.getAttribute('alt')||'').join(' ').replace(/\s+/g,' ').trim() || TR('图片');
+  }catch(e){ s=''; }
+  if(!s) s=pic || s0.replace(/\s+/g,' ').trim();
+  if(TASK_TX.size>=TASK_TX_MAX) TASK_TX.delete(TASK_TX.keys().next().value);
+  TASK_TX.set(s0, s);
+  return s;
+}
+/* 一行源码如果是 /__task 认的待办行（勾没勾都算），取 [ ] 后面的原文。逐条照抄服务端
+   fulltext.task_text_of——两边差一个字，点任务文字就不定位不闪（已开着的那篇每点一次还整篇重载）、
+   同篇阅读态标签也不跟着翻（审查 P3-1）：
+     · TASK_RE 同式匹配：/^[ \t]*(?:[-*+]|\d+[.)])[ \t]+\[([ xX])\][ \t]/。Python 的 \d 是 Unicode
+       十进制数字（全角「１」也算），这里写成 \p{Nd}；
+     · 取匹配之后的那一截，去行尾一个 \r；
+     · 去首尾空白按 Python str.strip() 的字符集（pyWs）：比 JS 的 trim / \s 多 \x1c–\x1f、\x85，
+       少 U+FEFF；
+     · 封顶 300 码位（Python 的 [:300]，不是 300 个 UTF-16 单元）。
+   不是待办行回 null。点任务文字打开那一篇时拿它核对「第 ln 行还是不是这一条」，待办页勾完拿它核对
+   同篇阅读态标签手上的那一行。 */
+const TASK_LINE_RE=/^[ \t]*(?:[-*+]|\p{Nd}+[.)])[ \t]+\[([ xX])\][ \t]/u;
+const pyWs=c=>(c>=0x09 && c<=0x0d) || (c>=0x1c && c<=0x20) || c===0x85 || c===0xa0 || c===0x1680
+  || (c>=0x2000 && c<=0x200a) || c===0x2028 || c===0x2029 || c===0x202f || c===0x205f || c===0x3000;
+function lineTaskText(line){
+  const src=String(line==null?'':line), m=TASK_LINE_RE.exec(src);
+  if(!m) return null;
+  let s=src.slice(m[0].length);
+  if(s.endsWith('\r')) s=s.slice(0, -1);
+  let a=0, b=s.length;
+  while(a<b && pyWs(s.charCodeAt(a))) a++;
+  while(b>a && pyWs(s.charCodeAt(b-1))) b--;
+  let i=a, k=0;
+  for(; i<b && k<300; k++){
+    const c=s.charCodeAt(i);
+    i+=(c>=0xd800 && c<=0xdbff && i+1<b && (s.charCodeAt(i+1)&0xfc00)===0xdc00) ? 2 : 1;
+  }
+  return s.slice(a, i);
+}
+
+/* ── 开始页：续读卡下面那一行 ──
+   最近 7 天改过的笔记里还有几件没勾完；0 件整行不画。骨架整套借 .nrow（noteRowHtml 是母本），
+   左边 40 位是一枚点不了的记号。用 data-act 不用 data-open：右键菜单和中键开新标签只认
+   data-open，那是给文档的。开始页那枚「全部 / Markdown / HTML」不管这一行（任务只在 md 里）。 */
+function todoDoorHtml(){
+  const now=Date.now()/1000;
+  const docs=todoDocs().filter(i=>todoRecent(i, now));
+  let n=0;
+  docs.forEach(i=>{ n+=i.任务.length; });
+  if(!n) return '';
+  const first=docs[0].任务.reduce((a,b)=>b[0]<a[0]?b:a);
+  const head=TR('还有 {n} 件没勾完',{n});
+  const go=cls=>`<span class="nmeta ${cls}"><span class="todo-go">${esc(TR('查看'))}</span></span>`;
+  return `<div class="notelist todo-door"><button type="button" class="nrow" data-act="todo">`
+    + `<span class="nthumb todo-mark" aria-hidden="true">${icon('checklist',22)}</span>`
+    + `<span class="nmain">`
+    +   `<span class="ntop"><span class="ntitle">${esc(head)}</span><span class="nleader"></span>${go('wide')}</span>`
+    +   `<span class="ndesc"><span class="ntx">${esc(taskText(first[1]))}</span>${go('narrow')}</span>`
+    + `</span></button></div>`;
+}
+
+/* ── 「待办」页的状态：挂在标签上（t.td）────────────────
+   页面开着的时候数据一直在变：勾一下 → 文件 mtime 变 → 三秒内 setTree 来一棵新树，刚勾的
+   那一条已经从「任务」里消失了。而这一页要的是：行留在原位变灰、计数不回弹、不淡入、不重排。
+   所以页面画的是进页那一刻拍下的快照，之后的每次重画都只按「篇」把新数据并进来（todoMerge）。
+     nb        拍快照时的 NB.cur。换了笔记本就整份重拍
+     rec / old 「最近 7 天」「更早」两桶，各是一列篇，顺序与分桶冻结。一篇：
+               p 路径 · ts [[行, 原文]…] · base 这一篇当前已知的「基于」
+               v 这一篇的行重建过几次（在路上的请求拿它认「我那一版还在不在」）
+               on 页面上的勾选态 Map(行 → true) · ok 服务端确认过的勾选态（翻回时回到它）
+               hit 这一页上点过的行（合并时「一样新」那条判据只比没点过的行）
+               q 串行队列 · gen 作废代号（撞了冲突就 +1，排在后面的都不发）
+     stale     撞过冲突（或点的时候没有「基于」）、等新树来重建的篇
+     open / n  「更早」展没展开、展开后画了几条
+     html      上一次画出去的那一串：重画前后一字不差就不碰 DOM（焦点、悬停都留着）
+   进页（loadEntry 把 t.td 清掉）、换当前笔记本时整份重拍；其余重画（setTree、repaintPages）
+   一律是合并。 */
+function todoNote(i){
+  return {p:i.路径, ts:i.任务.slice().sort((a,b)=>a[0]-b[0]), base:i.基于||'',
+          v:0, on:new Map(), ok:new Map(), hit:new Set(), q:null, gen:0};
+}
+function todoBuild(){
+  const now=Date.now()/1000, rec=[], old=[];
+  todoDocs().forEach(i=>(todoRecent(i, now) ? rec : old).push(todoNote(i)));
+  return {nb:NB.cur, rec, old, stale:new Set(), open:false, n:TODO_BATCH, html:''};
+}
+/* 用新数据重建一篇的行：位置、分桶不动；页面上的勾选态清掉；排在后面还没发的请求作废。 */
+function todoRenew(n, i){
+  n.ts=i.任务.slice().sort((a,b)=>a[0]-b[0]);
+  n.base=i.基于||'';
+  n.v++; n.gen++;
+  n.on=new Map(); n.ok=new Map(); n.hit=new Set();
+}
+function todoMerge(td){
+  const by=new Map(items.map(i=>[i.路径, i]));
+  const seen=new Set();
+  const pass=list=>list.filter(n=>{
+    const i=by.get(n.p);
+    if(!i){ n.v++; td.stale.delete(n.p); return false; }       // 删了、挪走了：这一篇的行去掉
+    seen.add(n.p);
+    const ts=Array.isArray(i.任务) ? i.任务 : [], b=i.基于||'';
+    if(td.stale.has(n.p)){
+      /* 撞过冲突：新树说了算。新树里这篇没任务了＝整篇去掉；有任务、没「基于」＝索引还没
+         跟上磁盘，先按它画，接着等下一棵（不然只剩几行永远勾不动的空壳）。 */
+      if(b || !ts.length) td.stale.delete(n.p);
+      if(!ts.length){ n.v++; return false; }
+      todoRenew(n, i);
+      return true;
+    }
+    // 新树里这一篇比我手上的新（定长串直接比）：按新数据重建这一篇。一样新或更旧（包括
+    // 自己勾出来的那一版）、新树里没任务了（自己勾完了，或别处改了）：不动——别处改过的话，
+    // 再点会撞冲突，走上面那条。
+    // 「一样新」只精确到秒：同一秒里别处也写过一次（另一个待办标签、外部工具），时间串还是
+    // 那一串。所以一样新时再对一下内容（todoSame）：只看这一页上没碰过的那几行——它们在新树里
+    // 原样都在、新树里也没有快照之外的行，就当没变；碰过的行不比（新树可能是自己这一串写入里
+    // 早一步的那一版，拿它比会把刚勾的灰行冲掉）
+    if(ts.length && b && (b>n.base || (b===n.base && !todoSame(n, ts)))) todoRenew(n, i);
+    return true;
+  });
+  td.rec=pass(td.rec);
+  td.old=pass(td.old);
+  // 快照里没有、新树里有任务的篇（别处新加的、回填刚补出来的）：放到它该在的那一桶的顶上
+  const now=Date.now()/1000, rec=[], old=[];
+  todoDocs().forEach(i=>{ if(!seen.has(i.路径)) (todoRecent(i, now) ? rec : old).push(todoNote(i)); });
+  if(rec.length) td.rec=rec.concat(td.rec);
+  if(old.length) td.old=old.concat(td.old);
+}
+function todoFind(td, p){
+  return td.rec.find(n=>n.p===p) || td.old.find(n=>n.p===p) || null;
+}
+/* 「基于」一样时，新树（或 items）里这一篇的未勾行跟快照对不对得上：新树里每一行都得是快照里
+   原样的那一行（行号、原文都对），快照里这一页没碰过的行一行都不能少。 */
+function todoSame(n, ts){
+  const mine=new Map(n.ts.map(x=>[x[0], x[1]]));
+  if(!ts.every(x=>mine.get(x[0])===x[1])) return false;
+  const have=new Set(ts.map(x=>x[0]));
+  return n.ts.every(x=>n.hit.has(x[0]) || have.has(x[0]));
+}
+const todoLeft = list => list.reduce((s, n)=>s+n.ts.filter(x=>n.on.get(x[0])!==true).length, 0);
+/* 一行：原生勾选框（同阅读页 li.task 那一枚）＋ 任务文字 ···· ● 所在笔记。
+   框在任何 [data-open] 外面，点框不会冒到下面去把那篇打开；文字那颗按钮挂 data-open ＋
+   data-line：点＝打开并定位到那一行，右键菜单、中键开新标签走现成的那一套。 */
+function todoRowHtml(n, x, name, dot){
+  const ln=x[0], tx=taskText(x[1]), on=n.on.get(ln)===true;
+  return `<div class="todo-row${on?' done':''}" data-p="${esc(n.p)}" data-l="${ln}">`
+    + `<input type="checkbox"${on?' checked':''} aria-label="${esc(tx)}">`
+    + `<span class="todo-line">`
+    +   `<button type="button" class="todo-tx" data-open="${esc(n.p)}" data-kind="md" data-line="${ln}" title="${esc(tx)}">${esc(tx)}</button>`
+    +   `<span class="todo-leader"></span>`
+    +   `<span class="todo-src">${dot}<span class="todo-nm">${esc(name)}</span></span>`
+    + `</span></div>`;
+}
+function todoHtml(td){
+  const by=new Map(items.map(i=>[i.路径, i]));
+  const rows=list=>{
+    const out=[];
+    list.forEach(n=>{
+      const i=by.get(n.p);
+      const name=i ? cleanTitle(i) : String(n.p).split('/').pop().replace(/\.md$/i,'');
+      const dot=nbDot(NB.of(n.p), {sm:true});
+      n.ts.forEach(x=>out.push(todoRowHtml(n, x, name, dot)));
+    });
+    return out;
+  };
+  /* 聚焦某一本时 h1 后面带「· ● 本名」（同文件夹页）：这一页没有笔记本条，不写就看不出
+     现在数的是哪一本。 */
+  const head=greetingHtml(icon('checklist',13), TR('从笔记里集中过来'), TR('待办##page'),
+    TR('还没勾上的都在这里，勾一下就写回原来那一行。'), (NB.multi && NB.cur) ? {here:NB.cur} : null);
+  const rec=rows(td.rec), old=rows(td.old);
+  if(!rec.length && !old.length)
+    return `<div class="home">${head}${emptyHtml(TR('都勾完了'), esc(TR('要记一件事，写进笔记里的勾选列表就行。')), {mark:'checklist'})}</div>`;
+  /* 段头的数＝这一桶里页面上还没勾的行。勾、勾回时 todoMark 就地改这个字。 */
+  const cnt=(k, list)=>`<span class="section-meta num" data-todo-n="${k}">${esc(TR('{n} 件',{n:todoLeft(list)}))}</span>`;
+  let h='';
+  if(rec.length)
+    h+=`<div class="section-head todo-head"><h2>${esc(TR('最近 7 天'))}</h2>${cnt('rec', td.rec)}</div>`
+      + `<div class="todo-list">${rec.join('')}</div>`;
+  /* 「更早」默认折起，折起那一行只写「更早的笔记 ›」、不写数；展开后段头才报件数，
+     一批 15 条，「再看 {k} 件」的 k 是再按一下多出几条（同「再看 {n} 篇」的规矩）。 */
+  if(old.length){
+    h+=`<div class="section-head todo-head"><button type="button" class="todo-fold" data-act="todofold" aria-expanded="${td.open?'true':'false'}">`
+      + `<span>${esc(TR('更早的笔记'))}</span>${icon(td.open?'chevron-down':'chevron-right',13)}</button>`
+      + (td.open ? cnt('old', td.old) : '') + `</div>`;
+    if(td.open){
+      const n=Math.min(td.n, old.length), rest=old.length-n;
+      h+=`<div class="todo-list">${old.slice(0, n).join('')}</div>`
+        + (rest>0 ? `<button type="button" class="see-all" data-act="todomore">${icon('chevron-down',14)}<span>${esc(TR('再看 {n} 件',{n:Math.min(TODO_BATCH, rest)}))}</span></button>` : '');
+    }
+  }
+  return `<div class="home">${head}${h}</div>`;
+}
+function paintTodo(t, box, quiet){
+  box=box||(paneOf(t)&&paneOf(t).querySelector('.pagebox'));
+  if(!box || !t) return;
+  let td=t.td;
+  if(!td || td.nb!==NB.cur) td=t.td=todoBuild();
+  else todoMerge(td);
+  const html=todoHtml(td);
+  if(quiet && html===td.html && box.firstElementChild) return;
+  td.html=html;
+  box.innerHTML=html;
+}
+function todoFold(t){
+  const td=t && t.td; if(!td) return;
+  td.open=!td.open; td.n=TODO_BATCH;
+  paintPage(t, {quiet:true});
+}
+function todoMore(t){
+  const td=t && t.td; if(!td) return;
+  td.n+=TODO_BATCH;
+  paintPage(t, {quiet:true});
+}
+/* 页面上这一行勾没勾：记进快照，就地改这一行（灰＋删除线）和段头的数，不整页重画。 */
+function todoMark(t, td, n, ln, on){
+  if(on) n.on.set(ln, true); else n.on.delete(ln);
+  if(t.td!==td) return;
+  const box=paneOf(t) && paneOf(t).querySelector('.pagebox');
+  if(box){
+    box.querySelectorAll('.todo-row').forEach(r=>{
+      if(r.dataset.p!==n.p || +r.dataset.l!==ln) return;
+      r.classList.toggle('done', on);
+      const c=r.querySelector('input[type=checkbox]');
+      if(c) c.checked=on;
+    });
+    const set=(k, list)=>{ const el=box.querySelector(`[data-todo-n="${k}"]`); if(el) el.textContent=TR('{n} 件',{n:todoLeft(list)}); };
+    set('rec', td.rec); set('old', td.old);
+  }
+  td.html=todoHtml(td);               // DOM 已经就地改成新的样子了，备忘跟上，下一次合并没变化就不重画
+}
+/* 点框。浏览器在派发 click 之前已经把 checked 翻好了（同阅读页 toggleTask 那段注释），
+   所以不 preventDefault，按翻好的那一态往下走；拦下来的几种情况自己翻回去。 */
+function todoToggle(t, cb){
+  const td=t && t.td, row=cb.closest('.todo-row');
+  const want=!!cb.checked, back=()=>{ cb.checked=!want; };
+  if(!td || !row){ back(); return; }
+  const p=row.dataset.p, ln=+row.dataset.l;
+  const n=todoFind(td, p), x=n && n.ts.find(a=>a[0]===ln);
+  if(!n || !x){ back(); return; }
+  if(!IS_HTTP || !canEditPath(p)){ back(); notify(TR('这一份是只读的，勾不动')); return; }
+  /* 这篇正开在某个标签里编辑（不管改没改）：编辑器手上的「基于」会过期，它下一次存盘就撞
+     冲突，点「保留我的」还会把这一下盖掉。先不写，请人退出编辑。 */
+  if(TABS.some(o=>!o.ext && o.path===p && o.editing)){ back(); notify(TR('这篇正在编辑，先退出编辑再勾')); return; }
+  /* 没有「基于」＝索引落后于磁盘，行号未必还对：不发。让服务端重扫一遍，新树来了这一篇按新数据重建。 */
+  if(!n.base || td.stale.has(p)){ back(); td.stale.add(p); notify(TR('这篇刚改过，正在刷新')); todoRescan(); return; }
+  n.hit.add(ln);
+  todoMark(t, td, n, ln, want);
+  /* 同一篇串行：连勾三条并发出去的话，后两条手上的「基于」还是旧的，服务端一律判成「别处改过」。
+     上一条成功后用回执里的「改于」当下一条的「基于」。链上挂 catch：断一次后面就全不发了。 */
+  const v=n.v, gen=n.gen;
+  n.q=(n.q||Promise.resolve()).then(()=>todoSend(t, td, n, v, gen, ln, x[1], want)).catch(()=>{});
+}
+async function todoSend(t, td, n, v, gen, ln, raw, want){
+  /* 排队这一会儿整页重拍过、或这一篇按新数据重建过：行号是旧那一版的，这一下作废。
+     页面上已经是新数据画的样子，什么都不用翻。 */
+  if(t.td!==td || n.v!==v) return;
+  // 排在前面的那一条撞了冲突：这一条不发，翻回服务端确认过的样子
+  if(n.gen!==gen){ todoMark(t, td, n, ln, n.ok.get(ln)===true); return; }
+  // 排队这一会儿那一篇进了编辑：同点框时那道拦法，发之前再看一眼
+  if(TABS.some(o=>!o.ext && o.path===n.p && o.editing)){
+    todoMark(t, td, n, ln, n.ok.get(ln)===true);
+    notify(TR('这篇正在编辑，先退出编辑再勾'));
+    return;
+  }
+  const base=n.base;
+  const r=await postTask(n.p, ln, want, base, raw);     // 期望＝这一条的原文：服务端再核一遍那一行，勾错行不可能发生
+  const same=n.v===v;                                   // 这一会儿这一篇的行没被重建
+  if(r && r.ok){
+    if(same){
+      if(r.改于) n.base=r.改于;                          // 下一次的「基于」
+      if(want) n.ok.set(ln, true); else n.ok.delete(ln);
+    }
+    todoAfterOk(n.p, ln, raw, want, base, r);
+    return;
+  }
+  if(same) todoMark(t, td, n, ln, n.ok.get(ln)===true);  // 翻回，计数复原
+  const code=(r && r.代码) || '';
+  if(!r){ notify(TR('没存上，这一下不算数')); return; }  // 没应答：文件没动过，后面排着的照发
+  if(code==='conflict'){
+    if(same){ n.gen++; td.stale.add(n.p); }             // 作废排在后面的；新树来了这一篇重建
+    notify(TR('这篇刚在别处改过，已刷新'));
+    todoRescan();
+    return;
+  }
+  if(code==='gone' || code==='offline' || code==='no_notebook'){
+    notify(TR('找不到这篇了，已刷新'));
+    todoRescan();
+    return;
+  }
+  /* bad_path / bad_type（过滤之后理论上到不了这里）：真是写不回去的那一份，不重试。
+     io＝服务端读不了原文或写失败（磁盘满、正好撞上别的写）——不是只读，文件也没动过，
+     跟没应答一样说「没存上」；认不出的码同此。 */
+  notify((code==='bad_path' || code==='bad_type') ? TR('这一份是只读的，勾不动') : TR('没存上，这一下不算数'));
+}
+/* 这一篇的索引跟磁盘对不上了（点的时候没有「基于」、撞了冲突、找不到了）：让服务端真重扫一遍——
+   POST /__rescan 同步跑完、带一棵新树回来，这一篇按它重建（todoMerge 的 stale 那条）。光 GET 一次
+   树不够：服务端的同步只在 /__pulse 的指纹（文件数＋全库最新 mtime）变了才跑，库里有一份 mtime 在
+   未来的文件时，外部改一篇旧笔记指纹不变，这一篇就一直刷不出来、一直勾不动（审查 P2-2）。
+   已经在扫（自己点的、pulse 触发的）就不再叠一趟：那一趟回来的树照样并进来。 */
+function todoRescan(){
+  if(!busy) doRescan();
+}
+/* 写成了。items 里这一篇跟着改（回开始页时计数已经对）——只在 items 还是发请求时那一版时改，
+   不是就等下一棵树。同一篇开着的阅读态标签：手上正是这一版就照 sendTask 的成功分支把那一行、
+   rawAt 和那颗框一起翻过去；不是这一版就不动（它下次点框自己会撞冲突重载，现网行为）。
+   开着的开始页、待办标签悄悄重画一次：开始页的数立刻对；别的待办标签按合并规则并进这一下
+   （这一篇的「基于」变新了 → 按 items 重建这一篇），不然它手上的「基于」是旧的，下一勾必撞冲突。
+   发请求的那个标签自己：「基于」已经跟 items 一样新，合并不动它，画出来的一字不差、DOM 不碰。 */
+function todoAfterOk(p, ln, raw, want, base, r){
+  const it=items.find(i=>i.路径===p);
+  if(it && (it.基于||'')===base){
+    const ts=(Array.isArray(it.任务) ? it.任务 : []).filter(x=>x[0]!==ln);
+    if(!want){ ts.push([ln, raw]); ts.sort((a,b)=>a[0]-b[0]); }
+    it.任务=ts;
+    it.基于=r.改于||'';
+  }
+  TABS.forEach(x=>{
+    if(x.ext || x.path!==p || kindOfTab(x)!=='md' || x.editing || typeof x.raw!=='string') return;
+    if(!x.rawAt || x.rawAt!==base) return;
+    const L=x.raw.split('\n');
+    if(ln>=L.length || lineTaskText(L[ln])!==raw || typeof r.行文!=='string') return;
+    L[ln]=r.行文;                                      // CRLF 文件的尾 \r 留着：x.raw 本来就是 CRLF（同 sendTask）
+    x.raw=L.join('\n');
+    if(r.改于) x.rawAt=r.改于;
+    const md=paneOf(x) && paneOf(x).querySelector('.md');
+    const li=md && elOfLine(md, ln);
+    const c=(li && li.matches('li.task')) ? li.querySelector(':scope>input[type=checkbox]') : null;
+    if(c){ c.checked=want; if(want) c.setAttribute('checked',''); else c.removeAttribute('checked'); }
+    drawDocMeta(x);
+  });
+  TABS.forEach(x=>{
+    const k=kindOfTab(x);
+    if(k==='start' || k==='todo') paintPage(x, {quiet:true});
+  });
+}
+/* 待办页上点任务文字：把这一条的原文带给 openDoc，打开后拿它核对那一行。 */
+function todoLineOpt(t, row){
+  const ln=row && row.dataset.line;
+  if(ln==null || ln==='') return null;
+  const td=t && t.td, n=td && todoFind(td, row.dataset.open);
+  const x=n && n.ts.find(a=>a[0]===+ln);
+  return {line:+ln, task:x ? x[1] : undefined};
 }
 function paintSerp(t, box){
   box=box||(paneOf(t)&&paneOf(t).querySelector('.pagebox'));
@@ -5398,6 +5846,7 @@ function tabIcon(t){
   if(k==='html') return 'globe';
   if(k==='folder') return 'folder';
   if(k==='pins') return 'star';
+  if(k==='todo') return 'checklist';
   if(k==='start') return 'home';
   if(k==='search') return 'search';
   return 'doc-text';
@@ -6254,11 +6703,18 @@ function newPane(t){
   p.addEventListener('scroll', ()=>{ if(t.id===curTab) syncProg(); }, {passive:true});
   const box0=p.querySelector('.pagebox');
   box0.addEventListener('click', e=>{
+    /* 5.14 待办页的勾选框：排在最前面，不 preventDefault（浏览器已经把 checked 翻好了）。
+       框不在任何 [data-open] 里面，不会冒到下面那条去把那一篇打开。 */
+    const tcb=e.target.closest('.todo-row input[type=checkbox]');
+    if(tcb){ todoToggle(t, tcb); return; }
     const act=e.target.closest('[data-act]');
     if(act){
       if(act.dataset.act==='focusomni'){ focusOmnibox({pulse:true}); return; }
       if(act.dataset.act==='newnote'){ newNote(); return; }
       if(act.dataset.act==='pins'){ openPins(e.metaKey||e.ctrlKey); return; }
+      if(act.dataset.act==='todo'){ openTodo(e.metaKey||e.ctrlKey); return; }
+      if(act.dataset.act==='todofold'){ todoFold(t); return; }
+      if(act.dataset.act==='todomore'){ todoMore(t); return; }
       if(act.dataset.act==='revealvault'){ revealVault(); return; }
       if(act.dataset.act==='tipsok'){ ST.tips=false; saveST(); repaintPages(); return; }
       if(act.dataset.act==='chipsfold'){ setChipsOpen(!chipsOpen()); return; }
@@ -6291,7 +6747,9 @@ function newPane(t){
     if(row){
       const rel=row.dataset.open;
       const it=items.find(i=>i.路径===rel) || {路径:rel, 标题:rel.split('/').pop(), 类型:row.dataset.kind||'md'};
-      openDoc(it, {newTab:e.metaKey||e.ctrlKey, jump:kindOfTab(t)==='search'?terms():undefined});
+      // 待办页的任务文字多带一个 data-line：打开以后滚到那一行、闪一下
+      openDoc(it, Object.assign({newTab:e.metaKey||e.ctrlKey, jump:kindOfTab(t)==='search'?terms():undefined},
+                                todoLineOpt(t, row)));
       return;
     }
     const fol=e.target.closest('[data-folder]');
@@ -6313,7 +6771,7 @@ function newPane(t){
     e.preventDefault();
     const rel=row.dataset.open;
     const it=items.find(i=>i.路径===rel) || {路径:rel, 标题:rel.split('/').pop(), 类型:row.dataset.kind||'md'};
-    openDoc(it, {newTab:true});
+    openDoc(it, Object.assign({newTab:true}, todoLineOpt(t, row)));
   });
   const md0=p.querySelector('.md');
   // 阅读态点链接：库内 md / html 在当前标签打开（⌘ 点开新标签）。
@@ -6505,12 +6963,15 @@ async function openDoc(it, opt){
   }
   if(!opt.newTab){
     const old=TABS.find(t=>t.path===it.路径 && !t.ext);
-    if(old){ enterReader(); showTab(old.id); if(opt.jump && kind==='md') flashHit(old, opt.jump); return; }
+    if(old){ enterReader(); showTab(old.id); if(opt.jump && kind==='md') flashHit(old, opt.jump);
+      if(opt.line!=null && kind==='md') flashTask(old, opt.line, opt.task, true);
+      return; }
   }
   if(!IS_HTTP) return;                       // 双击 HTML 直接开时读不了本地文件
   const entry=makeEntry(kind, {path:it.路径, title:it.标题||it.路径});
   const t=await navigate(entry, {newTab:!!opt.newTab});
   if(opt.jump && t && kind==='md') flashHit(t, opt.jump);
+  if(opt.line!=null && t && kind==='md') flashTask(t, opt.line, opt.task, false);
 }
 
 /* ── 按路径 / 题名打开 ────────────────────
@@ -6632,6 +7093,47 @@ function flashHit(t, ts){
   blk.classList.add('flash');
   setTimeout(()=>blk.classList.remove('flash'), 1500);
 }
+/* 5.14 第 ln 行（0 基，跟 /__task、data-l0 同口径）在阅读页上是哪个元素：列表行回那个 li，
+   别的回整块。就是 taskLineOf 倒过来算（块的 data-l0 ＋ 块内第 k 个 li）。只在阅读态靠得住：
+   编辑态重画过的块摘掉了 data-l0/l1。.histbox 只包表格，不影响列表块。 */
+function elOfLine(md, ln){
+  if(!md) return null;
+  for(const b of md.children){
+    if(!b.dataset || b.dataset.l0===undefined) continue;
+    const l0=+b.dataset.l0, l1=+b.dataset.l1;
+    if(!(ln>=l0 && ln<=l1)) continue;
+    return (b.tagName==='UL'||b.tagName==='OL') ? (b.querySelectorAll('li')[ln-l0]||b) : b;
+  }
+  return null;
+}
+/* 滚到那一行（离顶 150，同 flashHit），闪一下。 */
+function flashLine(t, ln){
+  const p=t && paneOf(t), md=p && p.querySelector('.md');
+  if(!md || t.editing) return false;
+  const el=elOfLine(md, ln); if(!el) return false;
+  p.scrollTop=Math.max(0, scrollYOf(p, el)-150);
+  el.classList.add('flash');
+  setTimeout(()=>el.classList.remove('flash'), 1500);
+  return true;
+}
+/* 待办页点任务文字打开之后：核对第 ln 行还是不是这一条（raw＝待办页上那条的原文），是就定位闪一下。
+   opened＝这一篇本来就开在别的标签里：阅读页不会跟着外部改动自己重载，手上那份可能是旧的
+   （那一行对不上、或者 rawAt 不是索引里那一版），先重读一遍再找。刚打开的那份就是磁盘上的
+   现状：对不上＝文件改过、找不到这一行，停在开头，不报错。编辑态不闪。 */
+async function flashTask(t, ln, raw, opened){
+  if(!t || kindOfTab(t)!=='md' || t.editing || !(ln>=0)) return;
+  const hit=()=>typeof t.raw==='string' && (raw==null || lineTaskText(t.raw.split('\n')[ln])===raw);
+  if(opened){
+    const it=items.find(i=>i.路径===t.path);
+    if(!hit() || (it && it.基于 && t.rawAt!==it.基于)){
+      const p=paneOf(t), y=p ? p.scrollTop : 0;
+      await loadMd(t);
+      if(p && paneOf(t)===p) p.scrollTop=y;
+    }
+  }
+  if(t.editing || !hit()) return;
+  flashLine(t, ln);
+}
 
 /* 图片取不到时把 <img> 换成一行带路径的提示——MD 里图片路径写错是常事。 */
 function wireImg(root){
@@ -6734,17 +7236,24 @@ function toggleTask(t, cb){
     .then(()=>sendTask(t, hit.ln, want, back, gen)).catch(()=>{});
 }
 
+/* POST /__task 发一条。回 null＝没应答（fetch 抛错、回来的不是 JSON），否则原样给回执。
+   expect＝这一行的原文（服务端「期望」那道核对），只有待办页带：它手上是索引的快照，比阅读页
+   现读的旧。阅读页不带——请求体跟 5.13 逐字一样。 */
+async function postTask(path, ln, want, base, expect){
+  const body={路径:path, 行:ln, 勾:want, 基于:base||''};
+  if(expect!==undefined) body.期望=expect;
+  try{
+    return await (await fetch('/__task', {method:'POST', headers:hdrs(), body:JSON.stringify(body)})).json();
+  }catch(e){ return null; }
+}
+
 async function sendTask(t, ln, want, back, gen){
   if(!paneOf(t)) return;                         // 排队期间标签被关了
   /* 排在前面的那一条撞了冲突、整篇已经重载过：这一条的行号是按旧 DOM 算的，
      再发就有写错行的风险（服务端那道「当前状态」校验挡得住大部分，挡不住全部）。
      翻回去就行——用户眼前已经是重载之后那份的真实状态。 */
   if((t.taskGen|0)!==gen){ back(); return; }
-  let r=null;
-  try{
-    r=await (await fetch('/__task', {method:'POST', headers:hdrs(), body:JSON.stringify(
-      {路径:t.path, 行:ln, 勾:want, 基于:t.rawAt||''})})).json();
-  }catch(e){ r=null; }
+  const r=await postTask(t.path, ln, want, t.rawAt);
   if(!paneOf(t)) return;
   if(r && r.ok){
     /* 就地更新，一次 paintWork 都不要有：重画会滚动、会炸大纲、会把光标和
@@ -10317,7 +10826,9 @@ function setTree(t){
     路径:d.路径, 标题:d.标题||'', 类型:d.类型||'md',
     修改时间:d.改于||0, 日期:ymd(d.改于), 预览:d.预览||'',
     本:d.本||'',                              // 多本时服务端标好了这一条属于哪一本
-    代理:d.代理||''}));                       // 有名字＝最近一次是本机 AI 助手改的
+    代理:d.代理||'',                          // 有名字＝最近一次是本机 AI 助手改的
+    任务:taskList(d.任务),                     // 5.14 没勾的待办 [[行, 原文], …]（见「待办汇总」那一段）
+    基于:d.基于||''}));                       // 5.14 索引那一版的 mtime 串；缺席＝索引落后于磁盘
   prepItems(); syncNotePv(); prunePins();
   buildNav(); render();
   syncScanChip();
@@ -10327,9 +10838,11 @@ function setTree(t){
     syncHomeDot(); drawTabs();
     const at=active(); if(at) drawDocBar(at);
   }
+  /* 待办页悄悄并：自己勾一下三秒后就有一棵新树，每回都淡入一次会晃（行本来就留在原位）。
+     其余几种页面照旧。 */
   TABS.forEach(t=>{
     const k=kindOfTab(t);
-    if(isPageKind(k)) paintPage(t);
+    if(isPageKind(k)) paintPage(t, k==='todo' ? {quiet:true} : undefined);
   });
   /* 链接段按路径缓存（契约 §3.2）。可它会过期，而且不只是因为自己被改：
      A 加了个 [[B]] 存下，B 的**被链**就多了一条，B 自己的修改时间却纹丝不动。
@@ -10841,7 +11354,7 @@ function cardMenu(e, rel, kind){
 function docMenu(e, t){
   if(!t) return;
   const kk=kindOfTab(t);
-  if(kk==='start'||kk==='search'||kk==='folder') return;
+  if(isPageKind(kk)) return;
   if(e.target.closest('a,img,textarea,iframe,.pagebox')) return;
   const ed=!!t.editing, src=paneOf(t).classList.contains('src');
   popMenu(e, [
@@ -10971,6 +11484,10 @@ const CK_ACTS=[
   {id:'home', title:K('回到开始页'), kbd:'',
    kw:['home','start','start page','开始','開始','首页','首頁'],
    go(){ navigate(makeEntry('start', {title:TR('开始')})); }},
+  /* 5.14 待办页。同 home：在当前标签打开（从开始标签进去是替换），⌘↵ 对动作行不起作用。 */
+  {id:'todo', title:K('待办##page'), kbd:'',
+   kw:['todo','todos','to-do','task','tasks','checklist','待办','待辦','任务','任務','勾选','勾選','清单','清單'],
+   go(){ openTodo(false); }},
   /* 只有两本以上才出现：弹一列笔记本（含「全部」），选了就是笔记本条那一下。 */
   {id:'nb', title:K('切换到笔记本…'), kbd:'', multi:true,
    kw:['notebook','switch','vault','笔记本','筆記本','切换','切換'],
@@ -11027,7 +11544,8 @@ function ckItems(q){
   const acts=CK_ACTS.filter(a=>{
     if(a.multi && !NB.multi) return false;
     if(!low) return true;
-    const hay=[TR(a.title), a.title].concat(a.kw||[]).join(' ').toLowerCase();
+    // 源串上的 ##语境 后缀不算字（不然敲 page 也能搜出「待办」）
+    const hay=[TR(a.title), a.title.replace(/##.*$/,'')].concat(a.kw||[]).join(' ').toLowerCase();
     return hay.includes(low);
   }).map(a=>({kind:'act', a}));
   const notes=ckNotes(raw).map(i=>({kind:'note', i}));
@@ -11035,7 +11553,7 @@ function ckItems(q){
 }
 /* 动作行前面那颗图标，只是长相，不进 CK_ACTS。 */
 const CK_ICON={tab:'plus', new:'new-note', win:'newwin',
-  edit:'pencil', type:'sliders', finder:'folder', home:'home', related:'sidebar'};
+  edit:'pencil', type:'sliders', finder:'folder', home:'home', related:'sidebar', todo:'checklist'};
 /* 全库搜索：跟原来地址栏回车一字不差——setKw ＋ 一张搜索结果页。 */
 function runSearch(q, newTab, scope){
   q=String(q||'').trim(); if(!q) return;
@@ -12569,6 +13087,7 @@ async function doRescan(){
 /* ── 实时监听 ───────────────────────────── */
 const LIVE = IS_HTTP && !EMBED;
 let lastFp=null, polling=false, busy=false;
+let srvScan=0;                  // 5.14 开机补拉树（见 syncStatus）：0 还没见服务端在后台扫 · 1 见到了、等它扫完 · 2 补过了，往后不管
 
 /* 门户把「此刻开着什么」报给服务（只进内存），Agent 问 /__current 时用。 */
 let stTimer=null;
@@ -12650,6 +13169,19 @@ async function syncStatus(){
       if(cfgOn() && ST.cfgTab==='library') renderCfg();
     }
     const scanning = busy || s.状态==='扫描中';
+    /* 5.14：服务端自己在后台扫（开机那一趟同步；老库升级后第一次开机，待办就是在这一趟里
+       回填出来的）——扫完不会让 /__pulse 的指纹变，页面就一直拿着扫之前那棵树：升级后头一回
+       打开，开始页那一行和待办页是空的，要等库里哪份文件动一下才出来（HEAD 就有的缺口：app
+       关着时外部改过的笔记，开机同步完也刷不到页面上）。所以服务端从「扫描中」回到「就绪」的
+       那一下补拉一次树——只在这个跳变上拉，不是每 3 秒；页面自己点的重扫（busy）期间问到的
+       「扫描中」不算。**这一页只补这一次**（页面加载后头一回跳变）：之后的扫描由 pulse / 重扫自己
+       带树回来，平时后台那趟同步（存完、勾完的 kick_sync 恰好被轮询看见）再补一次就是开始页白白
+       多淡入一回。回到「就绪」时页面自己正在重扫（busy）就等它扫完再补：撞上开机那一趟时服务端的
+       重扫是直接跳过的（sync 拿不到锁），它带回来的那棵树未必是扫完的，而这一次补过就不再补了。 */
+    if(srvScan<2){
+      if(s.状态==='扫描中'){ if(!busy) srvScan=1; }
+      else if(srvScan===1 && !busy){ srvScan=2; loadTree(); }
+    }
     const idx=s.索引||{};
     setState(scanning?'scan':'ok',
       TR('端口 {port}',{port:s.端口})+'\n'+TR('上次扫描 {when}',{when:s.上次扫描||''})

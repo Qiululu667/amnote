@@ -585,5 +585,30 @@ window.AMN_I18N["en"] = {
   "还有 {n} 项，打开文件夹页": "{n} more — open folder",
   "这篇刚在别处改过，已重新载入": "This note just changed elsewhere — reloaded",
   "没存上，这一下不算数": "Couldn’t save — that tick didn’t count",
-  "这一份是只读的，勾不动": "This one is read-only — the box won’t stick"
+  "这一份是只读的，勾不动": "This one is read-only — the box won’t stick",
+  "还有 {n} 件没勾完": {
+    "one": "{n} to-do left",
+    "other": "{n} to-dos left"
+  },
+  "查看": "View",
+  "待办##page": "To-dos",
+  "从笔记里集中过来": "Gathered from your notes",
+  "还没勾上的都在这里，勾一下就写回原来那一行。": "Everything still unticked, in one place. Tick one and it's written back to its line in the note.",
+  "最近 7 天": "Last 7 days",
+  "{n} 件": {
+    "one": "{n} to-do",
+    "other": "{n} to-dos"
+  },
+  "更早的笔记": "Earlier notes",
+  "再看 {n} 件": {
+    "one": "Show {n} more to-do",
+    "other": "Show {n} more to-dos"
+  },
+  "都勾完了": "All done",
+  "要记一件事，写进笔记里的勾选列表就行。": "To keep track of something, add a checklist item to any note.",
+  "这篇正在编辑，先退出编辑再勾": "This note is being edited — finish editing, then tick it",
+  "这篇刚改过，正在刷新": "This note just changed — refreshing",
+  "这篇刚在别处改过，已刷新": "This note just changed elsewhere — refreshed",
+  "找不到这篇了，已刷新": "Couldn't find this note — refreshed",
+  "图片": "Image"
 };
