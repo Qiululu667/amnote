@@ -605,10 +605,30 @@ window.AMN_I18N["en"] = {
     "other": "Show {n} more to-dos"
   },
   "都勾完了": "All done",
-  "要记一件事，写进笔记里的勾选列表就行。": "To keep track of something, add a checklist item to any note.",
   "这篇正在编辑，先退出编辑再勾": "This note is being edited — finish editing, then tick it",
   "这篇刚改过，正在刷新": "This note just changed — refreshing",
   "这篇刚在别处改过，已刷新": "This note just changed elsewhere — refreshed",
   "找不到这篇了，已刷新": "Couldn't find this note — refreshed",
-  "图片": "Image"
+  "图片": "Image",
+  "新建待办": "New To-do",
+  "点「新建待办」记一件，或者在任何笔记里写个勾选列表。": "Click “New To-do” to jot one down, or add a checklist to any note.",
+  "要做什么？": "What needs doing?",
+  "回车记下": "Press Return to add",
+  "这一本没连上": "This notebook isn't available right now",
+  "「{title}」正在编辑，先退出编辑再记": "“{title}” is being edited — finish editing, then add it",
+  "没记上": "Not added",
+  "没记上：{why}": "Not added: {why}",
+  "没记上 {n} 条": {
+    "one": "{n} to-do not added",
+    "other": "{n} to-dos not added"
+  },
+  "重试": "Retry",
+  "全部重试": "Retry All",
+  "重试中…": "Retrying…",
+  "服务一直没应答，回来后会自动刷新": "The service isn’t responding — this will refresh once it’s back",
+  "服务一直没应答，回来后会自动记上": "The service isn’t responding — it’ll be added once it’s back",
+  "这条已经在「{title}」里了": "This is already in “{title}”",
+  "这篇刚变过，刚才那一下没算，再点一次": "This note just changed — that tick didn’t count, click it again",
+  "新建了「{title}」，在这里记的都放进它里面": "Created “{title}” — everything you add here goes into it",
+  "在 {nb} 新建了「{title}」，在这里记的都放进它里面": "Created “{title}” in {nb} — everything you add here goes into it"
 };

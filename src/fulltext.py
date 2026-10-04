@@ -1335,39 +1335,97 @@ def _flat(rel):
     return re.sub(r"[^\w.-]+", "_", rel).strip("_")[:120]
 
 
+# ── 留档目录：按目录 fd 走，不顺符号链接写到库外（5.15 S2，R1 安全复审 §4′-2） ──────
+#
+# 留档写的是**用户笔记的旧版本原文**。`.amnote/backups/` 若被换成一个指库外的符号链接，
+# 原来的 `open(bak_dir/<名>.bak, "w")` 会顺着它把旧版本写到库外。`.amnote` 是工具自己的
+# 元数据目录，正常不会是链接——所以这基本只会是本机敌对进程事先摆好的（跟 R3-1 同前提，
+# 在本 app 的网络威胁模型之外）。堵法跟 md 写路一致：先 realpath 判在不在库里，再从库根
+# 逐段 O_DIRECTORY|O_NOFOLLOW 打开（缺的段就建），文件一律相对这个目录 fd 写、O_NOFOLLOW。
+# backups 解析到库外 / 开不出来 → 当「这一份留档没写成」（跟以前 open 失败一样 return ''，
+# 不拦存盘，命名 / 节流 / 保留份数 / 清理一个字不变）。
+_BAK_ODIR = getattr(os, "O_DIRECTORY", 0)
+_BAK_ONOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
+
+
+def bak_dir_fd():
+    """`.amnote/backups` 的目录 fd：从库根（启动时的 realpath）逐段 O_DIRECTORY|O_NOFOLLOW 打开、缺的段就建。
+    解析到库外、或开不出来 → None（调用方当「没写成」处理）。**调用方负责 os.close。**"""
+    v = V()
+    try:
+        real = os.path.realpath(v.backup_dir)
+    except OSError:
+        return None
+    if not real.startswith(v.real_root + os.sep):
+        return None
+    try:
+        fd = os.open(v.real_root, os.O_RDONLY | _BAK_ODIR)
+    except OSError:
+        return None
+    try:
+        for seg in real[len(v.real_root) + 1:].split(os.sep):
+            try:
+                nfd = os.open(seg, os.O_RDONLY | _BAK_ODIR | _BAK_ONOFOLLOW, dir_fd=fd)
+            except FileNotFoundError:
+                try:
+                    os.mkdir(seg, 0o777, dir_fd=fd)
+                except FileExistsError:
+                    pass
+                nfd = os.open(seg, os.O_RDONLY | _BAK_ODIR | _BAK_ONOFOLLOW, dir_fd=fd)
+            os.close(fd)
+            fd = nfd
+    except OSError:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        return None
+    return fd
+
+
 def archive_text(rel, old_text):
-    """把一份 md 改动前的内容写进 .amnote/backups/。返回备份文件名，写不了返回 ''。"""
+    """把一份 md 改动前的内容写进 .amnote/backups/。返回备份文件名，写不了返回 ''。
+    备份目录按目录 fd 逐段走、文件 O_NOFOLLOW 写（5.15 S2，见 bak_dir_fd 上面那段）。"""
     if not old_text:
         return ""
-    bak_dir = V().backup_dir
+    dfd = bak_dir_fd()
+    if dfd is None:
+        return ""
     try:
-        os.makedirs(bak_dir, exist_ok=True)
         flat = _flat(rel)
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")[:-3]
         name = f"{flat}__{stamp}.bak"
-        with open(os.path.join(bak_dir, name), "w", encoding="utf-8") as f:
-            f.write(old_text)
-    except OSError:
-        return ""
-    # 同一份文件只留最近 BACKUP_KEEP 版（跟门户编辑那套同额同名，互相算在一起）
-    try:
-        olds = sorted(fn for fn in os.listdir(bak_dir)
-                      if fn.startswith(flat + "__") and fn.endswith(".bak"))
-        for fn in olds[:-BACKUP_KEEP]:
-            os.remove(os.path.join(bak_dir, fn))
-    except OSError:
-        pass
-    _prune_backups()
-    return name
+        try:
+            fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | _BAK_ONOFOLLOW,
+                         0o666, dir_fd=dfd)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(old_text)
+        except OSError:
+            return ""
+        # 同一份文件只留最近 BACKUP_KEEP 版（跟门户编辑那套同额同名，互相算在一起）
+        try:
+            olds = sorted(fn for fn in os.listdir(dfd)
+                          if fn.startswith(flat + "__") and fn.endswith(".bak"))
+            for fn in olds[:-BACKUP_KEEP]:
+                os.remove(fn, dir_fd=dfd)
+        except OSError:
+            pass
+        _prune_backups(dfd)
+        return name
+    finally:
+        os.close(dfd)
 
 
-def _prune_backups():
-    """备份目录总大小超上限就从最旧的删起。Agent 批量改几百份时别让它无限长。"""
-    bak_dir = V().backup_dir
+def _prune_backups(dfd):
+    """备份目录总大小超上限就从最旧的删起。Agent 批量改几百份时别让它无限长。
+    相对 backups 的目录 fd 做（5.15 S2）。"""
     try:
-        fns = [(fn, os.path.getmtime(os.path.join(bak_dir, fn)),
-                os.path.getsize(os.path.join(bak_dir, fn)))
-               for fn in os.listdir(bak_dir) if fn.endswith(".bak")]
+        fns = []
+        for fn in os.listdir(dfd):
+            if not fn.endswith(".bak"):
+                continue
+            st = os.stat(fn, dir_fd=dfd)
+            fns.append((fn, st.st_mtime, st.st_size))
     except OSError:
         return
     total = sum(s for _, _, s in fns)
@@ -1376,7 +1434,7 @@ def _prune_backups():
         return
     for fn, _, s in sorted(fns, key=lambda x: x[1]):
         try:
-            os.remove(os.path.join(bak_dir, fn))
+            os.remove(fn, dir_fd=dfd)
             total -= s
         except OSError:
             pass
@@ -1463,6 +1521,25 @@ def note_portal_write(rel, agent=None):
     with _pw_lock:
         _portal_writes.setdefault(key, []).append((now, (agent or "").strip()))
         _pw_prune(now)
+        if len(_portal_writes) > PW_FILES:        # 兜底，正常到不了
+            for k in list(_portal_writes)[:len(_portal_writes) - PW_FILES]:
+                _portal_writes.pop(k, None)
+
+
+def note_portal_write_at(rel, at, agent=None):
+    """同 note_portal_write，只是这一笔记在给定的时刻 `at`（这一版落盘后的 mtime），不是「现在」。
+
+    5.15 /__todo 用：它要求每一版的秒严格晚于上一版，收件箱本来就在未来（时钟快的设备同步来的、
+    系统时间被往回校过）时，新的一版也跟着落在未来。按「现在」记，跟文件 mtime 差出 PW_WINDOW 以外，
+    同步认领不到，就记成「外部」、白存一版档。记在 mtime 那一刻，认领总能对上。别的写法照旧用
+    note_portal_write。"""
+    if not rel:
+        return
+    now = time.time()
+    key = (V().vid, rel)
+    with _pw_lock:
+        _portal_writes.setdefault(key, []).append((float(at), (agent or "").strip()))
+        _pw_prune(now)                            # 未来那一笔 now − at < 0，留到它过了窗口为止
         if len(_portal_writes) > PW_FILES:        # 兜底，正常到不了
             for k in list(_portal_writes)[:len(_portal_writes) - PW_FILES]:
                 _portal_writes.pop(k, None)
@@ -1645,19 +1722,32 @@ def _journal_add(entries, seq):
         return seq, len(add)
 
     tmp = journal + ".tmp"                            # 先写临时文件再改名
+    made = False
     try:
-        with open(tmp, "w", encoding="utf-8") as f:
+        # 临时名固定（同步在 sync_lock 里一条一条来）。那个名字上不管事先有什么（上次的残留、一个指到
+        # 库外的符号链接）先删掉——只删目录项本身——再 O_CREAT|O_EXCL|O_NOFOLLOW 自己建：open(tmp, "w")
+        # 会顺着链接把流水写到库外（5.14 终审 R3-1，5.15 S 轮）。权限同以前（0o666 减 umask）
+        try:
+            os.unlink(tmp)
+        except FileNotFoundError:
+            pass
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0),
+                     0o666)
+        made = True
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             for r in recs:
                 f.write((json.dumps(r, ensure_ascii=False)
                          if isinstance(r, dict) else r) + "\n")
             for e in add:
                 f.write(json.dumps(e, ensure_ascii=False) + "\n")
         os.replace(tmp, journal)
+        made = False
     except OSError:
-        try:
-            os.remove(tmp)
-        except OSError:
-            pass
+        if made:                                      # 只清自己建的那个
+            try:
+                os.remove(tmp)
+            except OSError:
+                pass
         _journal_append(add)                          # 重写失败退回追加，别丢这一批
     return seq, len(add)
 
@@ -2546,6 +2636,194 @@ def _utf8_ok(full):
     except (OSError, UnicodeDecodeError):
         return False
     return True
+
+
+# ── 新建待办：往一篇里插一行（5.15）────────────────────────────
+#
+# POST /__todo 往随手记里的「待办」那篇插一行 `- [ ] 文`（没有就建）。插在哪、插完对不对，
+# 全在下面这几个**不碰盘**的函数里算：portal_server 拿着那一篇的写锁调它们，测试直接调。
+#
+# **插在哪**（新建待办 brief §2）：
+#   · 有没勾的待办（tasks_of 抽得到的那些）：缩进最浅的那几条里最靠前的一条，插在它前面。
+#     新行照抄那一行的字面前缀——缩进、记号（- * + 或 3. 2) 原样）、空白、`[ ]`、后面那
+#     一个空白——再接上文；那一行以 \r 结尾（CRLF）就也带 \r。
+#   · 一条都没有：插在最后一个非空白行（L）后面。L 是列表行（含已勾的）就紧接着插；不是就
+#     先空一行（L 后面本来就有空行就借它）。换行跟着文件：文件里有 \r\n 就用 \r\n；文件末尾
+#     没换行的照旧不给补。整篇都是空白：任务放在第一行（首行带 BOM 就放第二行——带 BOM 的
+#     第 0 行 /__task 认不了），那一行本来就是空行就直接写进去，不另起一行。
+# **只插不改**：新原文＝旧原文在某一处原样塞进一段，别的字节（BOM、frontmatter、别的行、
+# 结尾有没有换行）一个不动。回执里的「位置」「插入」就是这一刀，测试按它逐字节核。
+# **自检**（写盘前，必须）：新正文的 tasks_of 必须**恰好**＝旧的那几条按插入点平移（行号
+# ≥ 起 的加 增行）再加上新的那一条；frontmatter 的范围前后一样；旧的每一行（正文里的样子）
+# 挪到新位置一字不差；整篇超过 MD_MAX_BYTES 个字的，新的那条还得落在索引读得到的那一截里。
+# 哪条不成立都不写（回 None，路由回 no_spot）：文末没收尾的 ``` 把追加的行吞掉、`---…---`
+# 收尾在文末没换行一追加就整块变成 frontmatter、最后一行以孤立 \r 收尾一接就变成 CRLF，
+# 都是这一道拦下的。
+
+TODO_TEXT_MAX = 1000                   # 一条待办最多这么多码位（页面输入框 maxlength 同）
+# 文的规整（brief §3）：换行类和制表符换成空格，其余 C0 控制字符、DEL、BOM 删掉。
+# 孤立的代理项（JSON 里 "\ud800" 这种）也删：它编不成 UTF-8，留着整次写盘就失败
+_TODO_SPACE = re.compile("\r\n|[\t\n\r\x85\u2028\u2029]")
+_TODO_DROP = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\ufeff\ud800-\udfff]")
+# 「列表行」（文末那一档用）：缩进 ＋ 记号 ＋ 一个空白。已勾的、空的列表项都算
+_LIST_LINE = re.compile(r"[ \t]*(?:[-*+]|[0-9]+[.)])[ \t]")
+
+
+def todo_text(raw):
+    """要记的那件事规整成一行。不是字符串、规整完是空的都回 ''（路由据此回 bad_type）。
+    **不转义 Markdown**：跟在笔记里手打的一样，`[ ]`、`#`、`>`、`|`、`<b>` 打头都照样能抽、能画。"""
+    if not isinstance(raw, str):
+        return ""
+    return _TODO_DROP.sub("", _TODO_SPACE.sub(" ", raw)).strip()
+
+
+def _indent_w(line):
+    """行首缩进的宽度：空格算 1，制表符补到下一个 4 的倍数。"""
+    w = 0
+    for ch in line:
+        if ch == " ":
+            w += 1
+        elif ch == "\t":
+            w = w // 4 * 4 + 4
+        else:
+            break
+    return w
+
+
+def _fm_lines(s):
+    """frontmatter 占了开头几行；没剥就是 0。判据跟 tasks_of 那一段逐字一样（先去一个 BOM，
+    开头三个字是 ---，收尾＝之后第一个 \\n---，收尾那一行后面没有换行就整块不剥）。
+    s＝正文（\\r\\n 已换过一遍）。"""
+    if s.startswith("\ufeff"):
+        s = s[1:]
+    if s.startswith("---"):
+        e = s.find("\n---", 3)
+        if e != -1:
+            nl = s.find("\n", e + 1)
+            if nl != -1:
+                return s.count("\n", 0, nl + 1)
+    return 0
+
+
+def _tasks_known_ok(s, cut=False):
+    """tasks_of，只是这份正文**已知是合法 UTF-8**（盘上严格解出来的，或者我们自己要写下去的），
+    文里的 U+FFFD 是真写着的那个字，不用去盘上核。先换成 U+FFFC 再抽：两个都不是空白、
+    不是记号、不是围栏字符，哪几行算任务、行号一点不变，只有文里那个字跟着换——自检两边
+    都这么换，比的结果不受影响。这样整个自检不读盘。"""
+    return tasks_of(s.replace("\ufffd", "\ufffc"), cut=cut)
+
+
+def _index_cut(text):
+    """索引读这份原文时看到的 (正文, cut)：跟 _extract_md 读、task_cell 算同一个口径——
+    只换 \\r\\n；超过 MD_MAX_BYTES 个字截掉；文件字节数超过 MD_MAX_BYTES 时备注「超长截断」。"""
+    body = text.replace("\r\n", "\n")
+    if len(body) < MD_MAX_BYTES:
+        return body, False
+    return body[:MD_MAX_BYTES], len(text.encode("utf-8")) > MD_MAX_BYTES
+
+
+def index_tasks(text, full=None):
+    """这份原文（磁盘上的整份 str）进了索引会抽出哪几条——/__tree 上这一篇的「任务」就是它
+    （同步跟上之后）。/__todo 回执的「任务」用它，跟树上同形同值。"""
+    body, cut = _index_cut(text)
+    return tasks_of(body, cut=cut, full=full)
+
+
+def todo_plan(old, text):
+    """在原文 old 里插一行待办 text。找不到安全的地方回 None。
+
+    old＝盘上整份原文（严格 UTF-8 解出来的 str，\\r\\n、BOM 原样留着）；text＝todo_text
+    规整过的、非空。回 dict：
+      新            插完的整份原文（＝ old[:位置] ＋ 插入 ＋ old[位置:]）
+      位置 / 插入   在第几个字前面插了哪一段
+      方式          "前插" | "文末"
+      起 / 增行     旧行号 ≥ 起 的整体往后挪 增行 行（页面据此平移同一篇的行号）
+      行            新任务行的行号（0 基，整份按 \\n 切；＝ /__task 的「行」）
+      行文          新任务行在文件里的样子（CRLF 那一行带尾 \\r，同 /__task 的回执）
+    """
+    lf = old.replace("\r\n", "\n")
+    cands = _tasks_known_ok(lf)
+    lines = old.split("\n")
+    starts = [0]
+    for ln in lines[:-1]:
+        starts.append(starts[-1] + len(ln) + 1)
+    if cands:
+        # 前插：缩进最浅的那几条里最靠前的一条
+        w = min(_indent_w(lines[i]) for i, _ in cands)
+        k = next(i for i, _ in cands if _indent_w(lines[i]) == w)
+        m = _TASK_OPEN.match(lines[k])
+        if not m:                                # 抽得到就一定对得上，防万一
+            return None
+        row = m.group(0) + text + ("\r" if lines[k].endswith("\r") else "")
+        how, pos, ins, start, add, at = "前插", starts[k], row + "\n", k, 1, k
+    else:
+        how = "文末"
+        eol = "\r\n" if "\r\n" in old else "\n"
+        item = "- [ ] " + text
+        ends = old.endswith("\n")
+        real = len(lines) - 1 if ends else len(lines)        # 末尾换行之后那个空串不算一行
+        bom = old.startswith("\ufeff")
+
+        def body(i):                             # 第 i 行去掉开头 BOM 之后的样子
+            return lines[i][1:] if (i == 0 and bom) else lines[i]
+
+        def put(r, rows):
+            """整行插在第 r 行前面；r == real 且文件末尾没换行：接在最后一行后面，不补换行。"""
+            if r < real or ends:
+                return starts[r], "".join(x + eol for x in rows)
+            return len(old), "".join(eol + x for x in rows)
+
+        j = next((i for i in range(real - 1, -1, -1) if body(i).strip()), -1)
+        if j >= 0:
+            if _LIST_LINE.match(body(j)):
+                rows, r = [item], j + 1           # 列表行：紧接着
+            elif j + 1 < real:
+                rows, r = [item], j + 2           # L 后面本来就有空行：借它
+            else:
+                rows, r = ["", item], j + 1       # 先空一行
+            pos, ins = put(r, rows)
+            start, add, at = r, len(rows), r + len(rows) - 1
+        else:
+            b = 1 if bom else 0                  # 全是空白：任务放第一行（带 BOM 就第二行）
+            if b < real and (lines[b] == "" or (lines[b] == "\r" and b + 1 < len(lines))):
+                pos, ins, start, add, at = starts[b], item, b, 0, b      # 本来就空着：直接写进去
+            else:
+                (pos, ins), start, add, at = put(b, [item]), b, 1, b
+    new = old[:pos] + ins + old[pos:]
+    new_lf = new.replace("\r\n", "\n")
+    row_txt = new.split("\n")[at]
+    mine = task_text_of(row_txt.replace("\ufffd", "\ufffc"))
+    if not mine:
+        return None
+    want = sorted([[i + add if i >= start else i, t] for i, t in cands] + [[at, mine]])
+    if _tasks_known_ok(new_lf) != want or _fm_lines(new_lf) != _fm_lines(lf):
+        return None
+    # 旧的每一行在正文里（\r\n 换过之后）挪到新位置还得一字不差。字节上永远是只插不改，
+    # 可文件最后一行要是以孤立的 \r 收尾，在它后面接一个换行，那个 \r 就成了 \r\n 的一半，
+    # 那一行在索引和渲染器眼里都变了样（随机文档 × 阅读页对拍抓到的：一行原来画不出框的
+    # `1.　[ ] x\r` 变成画得出、却勾不动的框）。这种就拒。「直接写进空行」那一档跳过那一行
+    old_ls, new_ls = lf.split("\n"), new_lf.split("\n")
+    for i, s in enumerate(old_ls):
+        if add == 0 and i == start:
+            continue
+        if new_ls[i + add if i >= start else i] != s:
+            return None
+    if len(new_lf) >= MD_MAX_BYTES:              # 超长的篇：新的那条得在索引读得到的那一截里
+        cut_body, cut = _index_cut(new)
+        if [at, mine] not in _tasks_known_ok(cut_body, cut=cut):
+            return None
+    return {"新": new, "位置": pos, "插入": ins, "方式": how,
+            "起": start, "增行": add, "行": at, "行文": row_txt}
+
+
+def todo_new_doc(name, text):
+    """新建的收件箱：`# 名` ＋ 空行 ＋ 那一条。自检同 todo_plan（那一条恰好在第 2 行被抽到）；
+    不成立回 None。"""
+    doc = "# %s\n\n- [ ] %s\n" % (name, text)
+    mine = task_text_of("- [ ] " + text)
+    if not mine or _tasks_known_ok(doc) != [[2, mine.replace("\ufffd", "\ufffc")]]:
+        return None
+    return doc
 
 
 def lines_of(text):

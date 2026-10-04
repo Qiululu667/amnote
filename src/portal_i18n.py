@@ -79,6 +79,10 @@ class Msg(str):
 #   last         最后一本不给移除
 #   bad_name     笔记本的名字不合法或者撞名
 #   outside      /__locate 那条：这个绝对路径不在任何一本里（页面转库外只读）
+#
+# 5.15（新建待办）另加一个，只出现在 POST /__todo 上：
+#   no_spot      收件箱那一篇里找不到能安全插一行的地方（结尾有没收尾的代码块之类），
+#                一个字节没写；页面提示用户打开那一篇手动加
 
 CODES = {
     "同名文件已经有了": "exists",
@@ -181,6 +185,12 @@ CODES = {
     "挪不进废纸篓：{e}": "io",
     "挪不回去：{e}": "io",
     "fulltext.db 读不了：{e}（跑一次重扫）": "io",
+
+    # 新建待办（5.15，POST /__todo）
+    "要记的事是空的": "bad_type",
+    "一条待办最多 {n} 字": "too_big",
+    "随手记文件夹不在收录范围里，待办页看不到，先在设置里换个随手记文件夹": "bad_path",
+    "这篇里找不到能安全加一条的地方（比如结尾有没收尾的代码块），打开它手动加吧。": "no_spot",
 }
 
 
@@ -390,6 +400,16 @@ MESSAGES = {
         "AGENTS.md 写好了：{p}": "AGENTS.md is written: {p}",
         "库地图导出好了，{n} 篇：{p}":
             "The vault map is exported, {n} notes: {p}",
+
+        # 新建待办（5.15）
+        "要记的事是空的": "The to-do is empty",
+        "一条待办最多 {n} 字": "A to-do can be at most {n} characters",
+        "随手记文件夹不在收录范围里，待办页看不到，先在设置里换个随手记文件夹":
+            "Your Quick Notes folder is left out of the index, so the To-dos page "
+            "can't see it — pick another Quick Notes folder in Settings",
+        "这篇里找不到能安全加一条的地方（比如结尾有没收尾的代码块），打开它手动加吧。":
+            "There's no safe place to add a to-do in this note (for example, it ends "
+            "inside an unclosed code block). Open it and add one by hand.",
     },
 
     # ── 繁體中文（香港）─────────────────────────────
@@ -549,6 +569,14 @@ MESSAGES = {
         "Skill 装好了：{p}": "Skill 裝好了：{p}",
         "AGENTS.md 写好了：{p}": "AGENTS.md 寫好了：{p}",
         "库地图导出好了，{n} 篇：{p}": "筆記庫地圖匯出好了，{n} 篇：{p}",
+
+        # 新增待辦（5.15）
+        "要记的事是空的": "要記的事是空白的",
+        "一条待办最多 {n} 字": "一條待辦最多 {n} 個字",
+        "随手记文件夹不在收录范围里，待办页看不到，先在设置里换个随手记文件夹":
+            "隨手記資料夾不在收錄範圍內，待辦頁看不到，請先在設定裡換一個隨手記資料夾",
+        "这篇里找不到能安全加一条的地方（比如结尾有没收尾的代码块），打开它手动加吧。":
+            "這篇裡找不到可以安全加一條的位置（例如結尾有還沒收尾的程式碼區塊），打開它手動加吧。",
     },
 }
 

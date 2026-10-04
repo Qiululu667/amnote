@@ -76,6 +76,9 @@ v24（5.6，个人资料 ＋ Agent 协作）加了三摊，都在下面各自的
     `~/.CFUserTextEncoding` 设成 `0x2`（MacChineseTrad），`pbpaste` 输出时照它转码，
     好好的 UTF-8 也会打印成 Big5 乱码。要验用原生 API 读回来。
     /__save      POST，写 md（含随手记）。见下。
+    /__task      POST，{路径, 行, 勾, 基于[, 期望]}，只翻一行方括号里那一个字符。   ← 5.10
+    /__todo      POST，{文[, nb]}，往随手记里的「待办」那篇插一行 `- [ ] 文`，
+                 没有就建。只插那一行，别的字节一个不动。见 todo_add。          ← 5.15
     /__trash     POST，{路径}，把一份 md/html 移进 ~/.Trash/。见下。      ← v22
     /__untrash   POST，{路径}，把刚才那份从废纸篓挪回原位（前端的「撤销」）。← v22
 
@@ -89,6 +92,8 @@ v24（5.6，个人资料 ＋ Agent 协作）加了三摊，都在下面各自的
 **写库内文件的路由一共三条，分两类：**
     · **改内容的只有 /__save 一条**——新建、贴图、覆写都挂在它下面，
       放开到全库 md。别的路由一个字节的正文都不写。
+      （后来加的两条**行级写**：/__task 只翻一个字符（5.10），/__todo 只插一行、
+      没有收件箱就建一份（5.15）。两条都走同一把按文件的写锁、同样先留档。）
     · **只搬位置不改内容的是 /__trash 和 /__untrash**（v22）：把一份 md/html
       挪进当前用户的 ~/.Trash/，或者把刚挪走的那份挪回原位。文件原样搬走，
       内容不动，废纸篓里还捞得回来。撤销表只在内存里，重启即清。
@@ -96,7 +101,8 @@ v24（5.6，个人资料 ＋ Agent 协作）加了三摊，都在下面各自的
 
 三条共用的保险是口令门禁——没有 token 一条都打不进。/__save 那三道老保险照旧：
     ① 写前把旧内容留进 .amnote/backups/，每份留最近 10 版（v21 起按时间节流）；
-    ② 先写临时文件再 os.replace，中途断电不会留半截文件；
+    ② 先写临时文件再 os.replace，中途断电不会留半截文件（5.15 起临时文件自己建、
+       整条写路按目录 fd 从库根逐段走，判完之后冒出来的符号链接走不过去，见 _place / _swap_in）；
     ③ 打开编辑之后这份在别处被改过的，先拦一次，要前台再确认。
 挡住的位置见 _edit_ok（写）和 _trash_ok（搬）：备份目录、缓存目录、隐藏目录
 一律不给动，两处判据逐条对应，只差认哪些后缀。
@@ -110,14 +116,17 @@ import array
 import base64
 import contextlib
 import errno
+import hashlib
 import hmac
 import json
+import math
 import os
 import re
 import secrets
 import shlex
 import signal
 import shutil
+import stat
 import struct
 import subprocess
 import sys
@@ -140,7 +149,7 @@ sys.path.insert(0, HERE)
 import fulltext
 # 服务端自己生成的那几十句话（错误、保存结果、config.json 的校验意见）的
 # 三语词典。界面文字在网页那边翻，不走这里。每个请求开头 set_lang 一次。
-from portal_i18n import LANGS, T, gloss, set_lang
+from portal_i18n import LANGS, T, get_lang, gloss, set_lang
 
 TEMPLATE_HTML = os.path.join(HERE, "template.html")
 # 静态服务里「这条路不给发」的落点。translate_path 挡下来的请求返回它，
@@ -897,33 +906,51 @@ MT_STEP_NS = 10_000_000               # 同步那边一格的宽度：round(mtim
 COARSE_AHEAD_MAX = 100
 
 
-def _next_bucket(tmp: str, old):
+def _lst(name, dfd=None):
+    """写路上的 stat：给了父目录 fd 就相对它、末段不跟符号链接（5.15 S 轮，见 _place 上面那段）。
+    不给 fd 照旧按整条路径 os.stat——门户自己的写路一律给，只有老的进程内测试这么调。"""
+    if dfd is None:
+        return os.stat(name)
+    return os.stat(name, dir_fd=dfd, follow_symlinks=False)
+
+
+def _utime(name, ns, dfd=None):
+    """写路上挪 mtime：给了父目录 fd 就相对它、末段不跟符号链接；不给照旧按路径（同 _lst）。"""
+    if dfd is None:
+        os.utime(name, ns=ns)
+    else:
+        os.utime(name, ns=ns, dir_fd=dfd, follow_symlinks=False)
+
+
+def _next_bucket(tmp: str, old, dfd=None):
     """`old`＝写之前盘上那一版的 os.stat。照上面那段挪 tmp 的 mtime。
+    `tmp`＝临时文件在父目录 `dfd` 里的名字（5.15 S 轮：相对目录 fd 做，不再按整条路径）。
     出什么错都吞掉：没挪成也只是跟以前一样，不能因为它让一次保存失败。"""
     try:
-        st = os.stat(tmp)
+        st = _lst(tmp, dfd)
         last = round(old.st_mtime, 2)
         if round(st.st_mtime, 2) > last or old.st_mtime - st.st_mtime >= 1:
             return
         ns = max(st.st_mtime_ns, old.st_mtime_ns)
         for _ in range(3):
             ns += MT_STEP_NS
-            os.utime(tmp, ns=(st.st_atime_ns, ns))
-            if round(os.stat(tmp).st_mtime, 2) > last:
+            _utime(tmp, (st.st_atime_ns, ns), dfd)
+            if round(_lst(tmp, dfd).st_mtime, 2) > last:
                 return
     except (OSError, ValueError, OverflowError):
         pass
 
 
-def _settle_bucket(full: str, old):
+def _settle_bucket(name: str, old, dfd=None):
     """replace 之后再核一遍落盘的那一版，只管秒级精度的盘（mtime 没有零头）。
 
     `old`＝写之前盘上那一版的 os.stat。落盘这一版的格子不在 old 后面（_next_bucket
     那 10 ms 在这块盘上设不进去），就按整秒挪：old 与它两者里晚的那一秒 +1 s，
     还不靠后（FAT32 两秒一格）再 +2 s。毫秒级的盘上 _next_bucket 已经挪好了，这里
-    只多一次 stat。调用方在这之后才取「改于」。出什么错都吞掉，同 _next_bucket。"""
+    只多一次 stat。调用方在这之后才取「改于」。出什么错都吞掉，同 _next_bucket。
+    `name`＝那一份在父目录 `dfd` 里的名字（5.15 S 轮：相对目录 fd 做）。"""
     try:
-        st = os.stat(full)
+        st = _lst(name, dfd)
         if st.st_mtime_ns % 1_000_000_000:       # 有零头＝毫秒级的盘
             return
         last = round(old.st_mtime, 2)
@@ -932,30 +959,289 @@ def _settle_bucket(full: str, old):
             return
         sec = max(st.st_mtime_ns, old.st_mtime_ns) // 1_000_000_000
         for k in (1, 2):
-            os.utime(full, ns=(st.st_atime_ns, (sec + k) * 1_000_000_000))
-            if round(os.stat(full).st_mtime, 2) > last:
+            _utime(name, (st.st_atime_ns, (sec + k) * 1_000_000_000), dfd)
+            if round(_lst(name, dfd).st_mtime, 2) > last:
                 return
     except (OSError, ValueError, OverflowError):
         pass
+
+
+# ── 写进库里：按目录 fd 逐段走 ＋ 安全的临时文件（5.15 S 轮） ─────────────────────
+#
+# 两个老口子（5.14 终审 R3-1、5.15 R1 复审-B）是同一个根子：「把路径解析成一串字符、过完判据，
+# 再按这串字符去开 / 建 / 改名」，中间那一下谁动了路径，写就跟着跑了。
+#   · R3-1 临时文件跟随符号链接：临时文件名是固定的（<笔记>.amnote-tmp、<文件>.tmp），
+#     open(tmp, "w") 会顺着那个名字上**事先**躺着的符号链接把正文写到库外，os.replace 再把
+#     链接本身换成笔记。git clone 的笔记仓库、解压的 zip、同步盘都能带进来这样一个链接。
+#   · 复审-B 父目录 TOCTOU：_edit_ok 解析 realpath 的那一刻路径上每一段都是真目录，判据过了；
+#     之后、开文件之前，路径上某一段被换成指库外的符号链接——O_NOFOLLOW 只护末段，写照样
+#     顺着父目录跑到库外。
+# 做法：
+#   · _place：库根按启动时的 realpath（v.real_root）信任，开一次目录 fd；之后沿 _edit_ok 解析出来
+#     的真路径一段一段 os.open(段, O_RDONLY|O_DIRECTORY|O_NOFOLLOW, dir_fd=上一段)——哪一段此刻
+#     是符号链接（或者不是目录）就开不出来，拒写。读原文、建临时文件、os.replace、unlink、stat、
+#     改权限、挪 mtime 全部相对最后那个父目录 fd 做：走完之后谁再把路径上哪一段换掉，都碰不到
+#     我们手上这个目录。**判据一个字不改**：库里正常的符号链接照旧先被 _edit_ok 解析掉，我们走的
+#     是解析之后的真路径，那上面本来就没有链接；只有「判完之后才冒出来的链接」被拒。
+#   · _swap_in：临时文件名照旧是固定的 <名>.amnote-tmp（锁里不会有第二个写者、半路留下的残留下一次
+#     照样收走），但那个名字上不管事先有什么都先删掉（只删目录项本身，链接指向的东西不碰），再
+#     O_CREAT|O_EXCL|O_NOFOLLOW 自己建；任何一步失败都删掉自己建的、原文件不动。replace 之前再核
+#     一眼那个名字上还是普通文件（被人换成了链接就不换进去）。
+#     <名>.amnote-tmp 超出文件名上限（名字本身 245–255 个字）时退回一个跟原名长度无关的短名
+#     .<16 位 hex>.amnote-tmp（点开头，索引、指纹、树都不看；同一份算出来总是同一个，残留照样收走）。
+#     以前这一档的笔记存不进、勾不动（「写失败：File name too long」）。
+#   · 出错的文案跟以前逐字一样：相对目录 fd 报出来的 OSError 只带末段名字，_abs_err 换回旧代码会报
+#     的那个绝对路径。
+# 用它的：/__save 覆写（_save_md）、新建（new_md）、带「新路径」的改名（_rename_md），/__task
+# （_task_toggle），/__todo 插入与新建（_todo_insert / _todo_write / _todo_create），_write_text
+# （AGENTS.md / 库地图 / SKILL.md），nb_save（notebooks.json，只用 _swap_in）。
+# **动作的先后、挪格、记账、留档、权限、回执跟以前一一对应**，只是每一步落在同一个目录 fd 上。
+
+_NOFOLLOW = getattr(os, "O_NOFOLLOW", 0)
+_DIR_FLAGS = os.O_RDONLY | getattr(os, "O_DIRECTORY", 0) | _NOFOLLOW
+_TMP_FLAGS = os.O_WRONLY | os.O_CREAT | os.O_EXCL | _NOFOLLOW
+TMP_SUFFIX = ".amnote-tmp"
+
+
+def _abs_err(e, names, names2=None):
+    """相对目录 fd 的 OSError 只带末段名字；按 names（相对名 → 旧代码会报的绝对路径；names2 只管
+    第二个文件名，改名用）换回去，「写失败：…」这类文案跟以前逐字一样。别的异常原样回。"""
+    if not isinstance(e, OSError):
+        return e
+    f1, f2 = e.filename, e.filename2
+    n1 = names.get(f1, f1) if isinstance(f1, str) else f1
+    n2 = (names2 if names2 is not None else names)
+    n2 = n2.get(f2, f2) if isinstance(f2, str) else f2
+    if n1 is f1 and n2 is f2:
+        return e
+    if n2 is None:
+        return OSError(e.errno, e.strerror, n1)
+    return OSError(e.errno, e.strerror, n1, None, n2)
+
+
+class _Place(object):
+    """一个写的位置：父目录 fd ＋ 末段名字。`full` 是旧代码用的那条绝对路径——只拿来拼出错的文案
+    和锁键，不再拿它去开、去建。用完 close（或 with）。"""
+    __slots__ = ("dfd", "name", "full")
+
+    def __init__(self, dfd, name, full):
+        self.dfd, self.name, self.full = dfd, name, full
+
+    def at(self, name):
+        """同一个父目录里另一个名字的绝对路径（出错文案用）。"""
+        return os.path.join(os.path.dirname(self.full), name)
+
+    def close(self):
+        if self.dfd is not None:
+            try:
+                os.close(self.dfd)
+            except OSError:
+                pass
+            self.dfd = None
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
+
+def _place(full, make=False, v=None, shown=None):
+    """`full`＝_edit_ok 给的真路径（这一本 real_root 底下）→ _Place（见上面那段）。
+
+    库根开一次目录 fd（按启动时的 realpath 信任），之后真路径的每一段
+    os.open(段, O_RDONLY|O_DIRECTORY|O_NOFOLLOW, dir_fd=上一段)：此刻是符号链接、不是目录的
+    开不出来（ENOTDIR），往上抛 OSError（文件名是 `full`，跟旧代码 open(full) 走不通时报的一样）。
+    `make`＝缺的段逐段 mkdir（0o777，同 os.makedirs；只给本来就会自动建目录的那几处：新建随手记、
+    新建收件箱）；跟 makedirs 一样，要建的那一层被一个普通文件占着报 FileExistsError、更上面的
+    一层是普通文件报 NotADirectoryError。被符号链接占着的一律开不出来（不跟）。
+    `shown`＝旧代码报错时用的那条路径（_write_text 按 v.root 拼的），只影响文案。"""
+    v = v or V()
+    root = v.real_root
+    shown = shown or full
+    if not full.startswith(root + os.sep):
+        # 调用方都先过了 _edit_ok（落点在库根之内），走不到这里；万一走到了，不写
+        raise OSError(errno.EXDEV, os.strerror(errno.EXDEV), shown)
+    segs = full[len(root) + 1:].split(os.sep)
+    dirs, name = segs[:-1], segs[-1]
+    try:
+        # 库根本身不在了（外置盘拔了、文件夹被挪走）：不替用户把库根再建出来，不写
+        fd = os.open(root, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0))
+    except OSError as e:
+        raise _abs_err(e, {root: shown})
+    try:
+        for i, seg in enumerate(dirs):
+            nfd = _place_step(fd, seg, os.path.join(root, *dirs[:i + 1]),
+                              dirs[i + 1] if i + 1 < len(dirs) else None, make, shown)
+            os.close(fd)
+            fd = nfd
+    except BaseException:
+        os.close(fd)
+        raise
+    return _Place(fd, name, shown)
+
+
+def _place_step(fd, seg, here, nxt, make, shown):
+    """_place 的一段：在目录 fd 里开下一层 seg（不跟符号链接）→ 新的目录 fd。
+    `here`＝这一层的绝对路径、`nxt`＝再下一层的名字（None＝这是最后一层），只拿来拼 makedirs 同款的文案。"""
+    try:
+        return os.open(seg, _DIR_FLAGS, dir_fd=fd)
+    except FileNotFoundError as e:
+        if not make:
+            raise _abs_err(e, {seg: shown})
+    except NotADirectoryError as e:
+        if make:
+            try:
+                kind = _lst(seg, fd).st_mode
+            except OSError:
+                kind = 0
+            if kind and not stat.S_ISLNK(kind):
+                # 跟 os.makedirs 报的一样：要建的那一层被普通文件占着＝File exists，
+                # 更上面一层是普通文件＝下一层 mkdir 时 Not a directory
+                if nxt is None:
+                    raise FileExistsError(errno.EEXIST, os.strerror(errno.EEXIST), here)
+                raise NotADirectoryError(errno.ENOTDIR, os.strerror(errno.ENOTDIR),
+                                         os.path.join(here, nxt))
+        raise _abs_err(e, {seg: shown})          # 符号链接（判完之后才冒出来的）一律不跟
+    except OSError as e:
+        raise _abs_err(e, {seg: shown})
+    # make 且这一层还不在：建出来再开（刚被别人建了也照样开，是链接就开不出来）
+    try:
+        os.mkdir(seg, 0o777, dir_fd=fd)
+    except FileExistsError:
+        pass
+    except OSError as e:
+        raise _abs_err(e, {seg: here})
+    try:
+        return os.open(seg, _DIR_FLAGS, dir_fd=fd)
+    except OSError as e:
+        raise _abs_err(e, {seg: shown})
+
+
+def _open_read(pl):
+    """只读打开 pl 那一份（末段不跟符号链接）→ fd。"""
+    try:
+        return os.open(pl.name, os.O_RDONLY | _NOFOLLOW, dir_fd=pl.dfd)
+    except OSError as e:
+        raise _abs_err(e, {pl.name: pl.full})
+
+
+def _mtime_at(pl):
+    """_mtime_str 的按目录 fd 版（末段不跟符号链接）。格式必须跟 _mtime_str 逐字一样，理由见那里。"""
+    try:
+        return datetime.fromtimestamp(
+            _lst(pl.name, pl.dfd).st_mtime).strftime("%Y-%m-%d %H:%M:%S")
+    except OSError:
+        return ""
+
+
+def _mtime_of(full):
+    """一条真路径的 _mtime_at（现走一遍）。走不到 / stat 不了回 ""（同 _mtime_str）。"""
+    try:
+        with _place(full) as pl:
+            return _mtime_at(pl)
+    except OSError:
+        return ""
+
+
+def _tmp_names(name, suffix):
+    """临时文件的名字：先用固定的 <名><suffix>；它超出文件名上限（ENAMETOOLONG）再用跟原名长度
+    无关的短名（同一份算出来总是同一个，半路留下的残留下一次照样收走）。"""
+    yield name + suffix
+    yield "." + hashlib.sha1(name.encode("utf-8", "surrogatepass")).hexdigest()[:16] + suffix
+
+
+def _tmp_open(pl, mode, suffix):
+    """在 pl 的父目录里建自己的临时文件 → (临时名, fd)。
+
+    那个名字上事先有什么（上次的残留、一个指到库外的符号链接、断链、硬链接）先删掉——只删目录项
+    本身，链接指到哪儿都不碰——再 O_CREAT|O_EXCL|O_NOFOLLOW 自己建：open(tmp, "w") 会顺着链接
+    写到库外、会截断硬链接那头的文件（R3-1）。删不掉（比如是个目录）就不写。"""
+    cands = list(_tmp_names(pl.name, suffix))
+    for i, tname in enumerate(cands):
+        try:
+            try:
+                os.unlink(tname, dir_fd=pl.dfd)
+            except FileNotFoundError:
+                pass
+            return tname, os.open(tname, _TMP_FLAGS, mode, dir_fd=pl.dfd)
+        except OSError as e:
+            if e.errno == errno.ENAMETOOLONG and i + 1 < len(cands):
+                continue                         # 名字 245–255 个字：固定名超长，换短名
+            raise _abs_err(e, {tname: pl.at(tname)})
+
+
+def _swap_in(pl, data, mode=0o600, keep=True, perm=None, sync=True,
+             before=None, after=None, suffix=TMP_SUFFIX):
+    """把 `data`（bytes）原子地换进 pl 那一份，回写之前那一版的 stat（keep=False 时 None）。
+
+    同一个父目录 fd 里建临时文件（_tmp_open，建时权限 `mode`）→ 写完（`sync`＝fsync）
+    → `keep`＝照原文件的权限 fchmod（原文件按 lstat 看，必须还是普通文件——判完之后被换成了符号链接
+    就不写）；`perm`＝照这个权限 fchmod → 关上 → `before(临时名, st)`（挪格、记账，相对 pl.dfd 做）
+    → 核一眼临时名上还是普通文件（关上之后被人换成了链接就不换进去）→ os.replace（相对同一个目录 fd）
+    → `after(st)`（replace 之后的补挪）。任何一步失败：删掉自己建的临时文件、往上抛（OSError 的文案
+    换回绝对路径）；原文件不动。`before` 抛别的异常（_TodoBusy）同样先清掉临时文件再原样抛。"""
+    tname, fd = _tmp_open(pl, mode, suffix)
+    names = {pl.name: pl.full, tname: pl.at(tname)}
+    placed = False
+    st = None
+    try:
+        try:
+            with os.fdopen(fd, "wb") as f:
+                f.write(data)
+                f.flush()
+                if sync:
+                    os.fsync(f.fileno())
+                if keep:
+                    st = _lst(pl.name, pl.dfd)
+                    if not stat.S_ISREG(st.st_mode):
+                        raise OSError(errno.ELOOP, os.strerror(errno.ELOOP), pl.name)
+                    os.fchmod(f.fileno(), st.st_mode & 0o7777)
+                elif perm is not None:
+                    os.fchmod(f.fileno(), perm)
+            if before is not None:
+                before(tname, st)
+            if not stat.S_ISREG(_lst(tname, pl.dfd).st_mode):
+                raise OSError(errno.ELOOP, os.strerror(errno.ELOOP), tname)
+            os.replace(tname, pl.name, src_dir_fd=pl.dfd, dst_dir_fd=pl.dfd)
+            placed = True
+        except OSError as e:
+            raise _abs_err(e, names)
+    finally:
+        if not placed:
+            try:
+                os.unlink(tname, dir_fd=pl.dfd)
+            except OSError:
+                pass
+    if after is not None:
+        after(st)
+    return st
 
 
 def _last_backup(flat: str):
     """这份文件最近一次留档的 (文件名, 写入时间)。没有留档返回 (None, 0)。
 
     文件名里的时间戳是 %Y%m%d-%H%M%S-%f，字典序就是时间序，排完取最后一个。
+    备份目录按安全的目录 fd 列举（`fulltext.bak_dir_fd`）：backups 被换成指库外的符号链接时
+    当作没有留档（节流不会拿库外的文件名顶上）。见 _backup 上面那段。
     """
-    bak_dir = V().backup_dir
-    try:
-        olds = sorted(fn for fn in os.listdir(bak_dir)
-                      if fn.startswith(flat + "__") and fn.endswith(".bak"))
-    except OSError:
-        return None, 0.0
-    if not olds:
+    dfd = fulltext.bak_dir_fd()
+    if dfd is None:
         return None, 0.0
     try:
-        return olds[-1], os.path.getmtime(os.path.join(bak_dir, olds[-1]))
-    except OSError:
-        return olds[-1], 0.0
+        try:
+            olds = sorted(fn for fn in os.listdir(dfd)
+                          if fn.startswith(flat + "__") and fn.endswith(".bak"))
+        except OSError:
+            return None, 0.0
+        if not olds:
+            return None, 0.0
+        try:
+            return olds[-1], os.stat(olds[-1], dir_fd=dfd).st_mtime
+        except OSError:
+            return olds[-1], 0.0
+    finally:
+        os.close(dfd)
 
 
 def _backup(rel: str, old: str, force: bool = False) -> str:
@@ -971,31 +1257,41 @@ def _backup(rel: str, old: str, force: bool = False) -> str:
     两种情况必须留，跟节流无关：
       · force —— 这份在编辑期间被别处改过，这次是强存，会盖掉那次改动；
       · 一版留档都还没有 —— 第一版最要紧，丢了就没有回头路。
+
+    **留档目录按目录 fd 走、文件 O_NOFOLLOW 写**（5.15 S2，R1 安全复审 §4′-2）：backups 被换成
+    指库外的符号链接时，`fulltext.bak_dir_fd()` 回 None，这一份不留（跟以前 open 失败 return ''
+    一样，不拦存盘），绝不把笔记旧版本原文写到库外。命名 / 节流 / 保留份数 / 清理一个字不变。
     """
-    bak_dir = V().backup_dir
-    os.makedirs(bak_dir, exist_ok=True)
     # 压平规则跟 fulltext.archive_text 共用一份：两边写的是同一个目录、同一套
     # 前缀，各写各的话哪天改了一边，同一份文件的历史版就散成两串了
     flat = fulltext._flat(rel)
     last, last_at = _last_backup(flat)
     if last and not force and time.time() - last_at < BACKUP_MIN_GAP:
         return ""
-    # 精确到毫秒。只精确到秒的话，同一秒里连存两次，后一次会把前一次的备份盖掉
-    stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")[:-3]
-    name = f"{flat}__{stamp}.bak"
+    dfd = fulltext.bak_dir_fd()
+    if dfd is None:
+        return ""                                # backups 解析到库外 / 开不出来：这一份不留
     try:
-        with open(os.path.join(bak_dir, name), "w", encoding="utf-8") as f:
-            f.write(old)
-    except OSError:
-        return ""                                # 备份写不了不该拦住正常保存
-    olds = sorted(fn for fn in os.listdir(bak_dir)
-                  if fn.startswith(flat + "__") and fn.endswith(".bak"))
-    for fn in olds[:-BACKUP_KEEP]:
+        # 精确到毫秒。只精确到秒的话，同一秒里连存两次，后一次会把前一次的备份盖掉
+        stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")[:-3]
+        name = f"{flat}__{stamp}.bak"
         try:
-            os.remove(os.path.join(bak_dir, fn))
+            fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | _NOFOLLOW,
+                         0o666, dir_fd=dfd)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(old)
+        except OSError:
+            return ""                            # 备份写不了不该拦住正常保存
+        try:
+            olds = sorted(fn for fn in os.listdir(dfd)
+                          if fn.startswith(flat + "__") and fn.endswith(".bak"))
+            for fn in olds[:-BACKUP_KEEP]:
+                os.remove(fn, dir_fd=dfd)
         except OSError:
             pass
-    return name
+        return name
+    finally:
+        os.close(dfd)
 
 
 def _sniff_img(b: bytes):
@@ -1385,19 +1681,26 @@ def new_md(req: dict):
     # 跟这里同一把锁，才不会在这两步中间把刚建的这份盖掉；「改于」也在锁里取
     with _md_lock(full):
         try:
-            os.makedirs(parent, exist_ok=True)
-            note_portal_write(rel)               # 同 save_md：记账赶在文件出现之前
-            # "x" 模式：文件已存在就抛。跟上面的检查重了一道，防的是连点两下撞车
-            with open(full, "x", encoding="utf-8") as f:
-                f.write(body)
+            # 按目录 fd 从库根逐段走（5.15 S 轮，见 _place）：缺的层逐段建（同 os.makedirs）；
+            # 判完之后路径上冒出来的符号链接走不过去，不会顺着它建到库外
+            with _place(full, make=True) as pl:
+                note_portal_write(rel)           # 同 save_md：记账赶在文件出现之前
+                # O_EXCL（＝"x" 模式）：文件已存在就抛。跟上面的检查重了一道，防的是连点两下撞车
+                try:
+                    fd = os.open(pl.name, _TMP_FLAGS, 0o666, dir_fd=pl.dfd)
+                except OSError as e:
+                    raise _abs_err(e, {pl.name: full})
+                with os.fdopen(fd, "wb") as f:
+                    f.write(body.encode("utf-8"))
+                # 「改于」跟 save_md 一个格式：命令行建完这一份就把它记进读表，
+                # 紧接着的一次 save 才有「基于」可填，不用先白跑一趟 /__meta
+                stamp = _mtime_at(pl)
         except FileExistsError:
             return _bad(T("同名文件刚被建走了，换个标题"))
         except OSError as e:
             return _bad(T("写不进去：{e}", e=e))
-        # 「改于」跟 save_md 一个格式：命令行建完这一份就把它记进读表，
-        # 紧接着的一次 save 才有「基于」可填，不用先白跑一趟 /__meta
         return {"ok": True, "路径": rel, "字节": len(body.encode("utf-8")),
-                "改于": _mtime_str(full)}
+                "改于": stamp}
 
 
 def save_img(req: dict):
@@ -1435,27 +1738,38 @@ def save_img(req: dict):
     if not ext:
         return _bad(T("只收 png / jpg / gif / webp"))
 
-    d = os.path.join(os.path.dirname(md_full), IMG_SUB)
+    # `_图` 落在这份 md 旁边。跟 md 写路一个口径（5.15 S2，R1 安全复审 §4′-1）：先 realpath 解析
+    # （`_图` 是库内链接就跟到库内真目录、不收紧，同以前；解析到库外就拒「这个位置不给写」），
+    # 再按目录 fd 从库根逐段 O_NOFOLLOW 走（缺的 `_图` 就建）、图片文件 O_EXCL|O_NOFOLLOW 自己写——
+    # 绝不顺着 `_图`→库外的符号链接把粘贴的图写到库外（原来 makedirs+open 会跟进去）。
+    v = V()
+    img_dir = os.path.realpath(os.path.join(os.path.dirname(md_full), IMG_SUB))
+    if not img_dir.startswith(v.real_root + os.sep):
+        return _bad(T("这个位置不给写"))
     try:
-        os.makedirs(d, exist_ok=True)
+        pl = _place(os.path.join(img_dir, "x"), make=True)   # 建 `_图`、拿它的目录 fd；末段名只占位
     except OSError as e:
         return _bad(T("图片写不进去：{e}", e=e))
-    name = None
-    for i in range(32):
-        name = datetime.now().strftime("%Y%m%d-%H%M%S-%f")[:-3] + "." + ext
-        if i:
-            stem, _dot, _ = name.rpartition(".")
-            name = "%s-%02d.%s" % (stem, i, ext)
-        try:
-            with open(os.path.join(d, name), "xb") as f:
+    try:
+        name = None
+        for i in range(32):
+            name = datetime.now().strftime("%Y%m%d-%H%M%S-%f")[:-3] + "." + ext
+            if i:
+                stem, _dot, _ = name.rpartition(".")
+                name = "%s-%02d.%s" % (stem, i, ext)
+            try:
+                fd = os.open(name, _TMP_FLAGS, 0o666, dir_fd=pl.dfd)
+            except FileExistsError:
+                continue
+            except OSError as e:
+                return _bad(T("图片写不进去：{e}", e=e))
+            with os.fdopen(fd, "wb") as f:
                 f.write(blob)
             break
-        except FileExistsError:
-            continue
-        except OSError as e:
-            return _bad(T("图片写不进去：{e}", e=e))
-    else:
-        return _bad(T("图片写不进去：{e}", e="exists"))
+        else:
+            return _bad(T("图片写不进去：{e}", e="exists"))
+    finally:
+        pl.close()
     # 返回相对这份 md 的路径，前端照原样写进 markdown，渲染时按 md 所在目录解
     return {"ok": True, "相对路径": f"{IMG_SUB}/{name}", "字节": len(blob)}
 
@@ -1503,7 +1817,13 @@ def _rename_md(rel: str, new_rel: str):
         # 随手记写出 H1 自动改名，流水上会冒出一行「不是我干的」。
         # 改名不动 mtime，所以走搬动表（note_portal_write 那张按 mtime 认领，对不上）。
         fulltext.note_portal_move(rel, agent=cur_agent())
-        os.rename(src, dest)
+        # 两头都按目录 fd 从库根走（5.15 S 轮，见 _place）：判完之后父目录被换成链接，改名就做不成，
+        # 不会把笔记挪到库外、也不会从库外挪进来
+        with _place(src) as a, _place(dest) as b:
+            try:
+                os.rename(a.name, b.name, src_dir_fd=a.dfd, dst_dir_fd=b.dfd)
+            except OSError as e:
+                raise _abs_err(e, {a.name: src}, {b.name: dest})
     except (OSError, ValueError) as e:
         fulltext.take_portal_move(rel)            # 没改成，把刚记的那笔收回来
         return rel, T("改名失败：{e}", e=e)
@@ -1550,9 +1870,19 @@ def _rename_dest(rel, new_rel):
 
 
 def _save_md(req, rel, full, body, force):
-    """save_md 拿到写锁之后的那一段：读原文 → 冲突校验 → 留档 → 写 → replace → 改名。"""
+    """save_md 拿到写锁之后的那一段：读原文 → 冲突校验 → 留档 → 写 → replace → 改名。
+    读、比 mtime、写、replace 都相对按目录 fd 走出来的父目录做（5.15 S 轮，见 _place）。"""
     try:
-        with open(full, encoding="utf-8") as f:
+        pl = _place(full)
+    except OSError as e:
+        return _bad(T("读不了原文：{e}", e=e))
+    with pl:
+        return _save_md_at(req, rel, full, pl, body, force)
+
+
+def _save_md_at(req, rel, full, pl, body, force):
+    try:
+        with os.fdopen(_open_read(pl), encoding="utf-8") as f:
             old = f.read()
     except (OSError, UnicodeDecodeError) as e:
         return _bad(T("读不了原文：{e}", e=e))
@@ -1560,11 +1890,11 @@ def _save_md(req, rel, full, body, force):
     if old == body:
         return {"ok": True, "结果": str(T("没有改动")), "路径": rel,
                 "字节": {"写前": len(old.encode()), "写后": len(old.encode())},
-                "改于": _mtime_str(full)}
+                "改于": _mtime_at(pl)}
 
     # 编辑期间这份被别处改过（另一个标签、编辑器、外包脚本）→ 先拦一次，别默默盖掉
     based = (req.get("基于") or "").strip()
-    now = _mtime_str(full)
+    now = _mtime_at(pl)
     clash = bool(based and based != now)
     if clash and not force:
         out = _bad(T("你打开编辑之后，这份在别处被改过（{now}）。继续保存会盖掉那次改动。",
@@ -1575,33 +1905,28 @@ def _save_md(req, rel, full, body, force):
     # 走到这里还 clash＝按了「保留我的」强存，这一版要盖掉别人的改动，
     # 不管节流窗口一律留档
     bak = _backup(rel, old, force=clash)
-    # 临时文件名就用固定的 full + ".amnote-tmp"（5.13.7 起的名字）。以前两条写撞上会共用这个
+    # 临时文件名就用固定的 <名>.amnote-tmp（5.13.7 起的名字），由 _swap_in 在同一个父目录 fd 里
+    # 自己建（那个名字上事先有什么先删掉、O_EXCL|O_NOFOLLOW，R3-1）。以前两条写撞上会共用这个
     # 临时文件、互相截断；现在同一份的写在 _md_lock 里一条一条来，进程里不会有第二个写者
     # 用到它。别换成 _tmp_path：带 pid 和线程号要多出十来个字，名字 235–244 个字的笔记会
     # 超出文件名 255 的上限、存不进；服务存到一半被收掉留下的残留，固定名下一次存这一份时
-    # 会被截断重用、replace 收走，带 pid 的名字就一直躺在笔记旁边（R2-report P3-1、P3-3）
-    tmp = full + ".amnote-tmp"
-    try:
-        with open(tmp, "w", encoding="utf-8") as f:
-            f.write(body)
-            f.flush()
-            os.fsync(f.fileno())
-        st = os.stat(full)
-        os.chmod(tmp, st.st_mode & 0o7777)
-        _next_bucket(tmp, st)                    # 别跟上一版落进同一个 10 ms 格子，见那一段
+    # 会被删掉重建、replace 收走，带 pid 的名字就一直躺在笔记旁边（R2-report P3-1、P3-3）
+
+    def before(tmp, st):
+        _next_bucket(tmp, st, pl.dfd)            # 别跟上一版落进同一个 10 ms 格子，见那一段
         # **记账要赶在文件露出新 mtime 之前。** 记在写完之后的话，中间那一瞬
         # 正好有一趟后台同步扫到这份，活表里还没有这一笔，就会把这次保存
         # 判成「外部」——白留一版档，流水上也记错来源
         note_portal_write(rel)
-        os.replace(tmp, full)                    # 同盘改名是原子的，不会留半截文件
-    except OSError as e:
-        try:
-            os.remove(tmp)
-        except OSError:
-            pass
-        return _bad(T("写失败：{e}", e=e))
-    _settle_bucket(full, st)                     # 秒级精度的盘：replace 之后按整秒补挪，见那一段
 
+    try:
+        # 同盘改名是原子的，不会留半截文件；replace 之后秒级精度的盘按整秒补挪，见 _settle_bucket
+        _swap_in(pl, body.encode("utf-8"), before=before,
+                 after=lambda st: _settle_bucket(pl.name, st, pl.dfd))
+    except OSError as e:
+        return _bad(T("写失败：{e}", e=e))
+
+    orig = full
     new_rel = (req.get("新路径") or "").strip()
     if new_rel:
         rel, _ = _rename_md(rel, new_rel)
@@ -1613,7 +1938,8 @@ def _save_md(req, rel, full, body, force):
             "字节": {"写前": len(old.encode()), "写后": len(body.encode())},
             "备份": os.path.relpath(V().backup_dir, V().root).replace(os.sep, "/"),
             "留档": bak,                          # 空串＝这一次按节流跳过了
-            "改于": _mtime_str(full)}             # 落盘后的 mtime，见函数上方那段
+            # 落盘后的 mtime，见函数上方那段；改了名就按新名字现走一遍
+            "改于": _mtime_at(pl) if full == orig else _mtime_of(full)}
 
 
 # ── 待办勾选：只翻方括号里那一个字符 ──────────────────────────
@@ -1687,17 +2013,27 @@ def task_toggle(req: dict):
 
 
 def _task_toggle(req, v, rel, full, n, want):
-    """task_toggle 拿到写锁之后的那一段：读原文 → 三道校验 → 留档 → 写 → replace。"""
+    """task_toggle 拿到写锁之后的那一段：读原文 → 三道校验 → 留档 → 写 → replace。
+    读、比 mtime、写、replace 都相对按目录 fd 走出来的父目录做（5.15 S 轮，见 _place）。"""
+    try:
+        pl = _place(full)
+    except OSError as e:
+        return _bad(T("读不了原文：{e}", e=e))
+    with pl:
+        return _task_toggle_at(req, v, rel, pl, n, want)
+
+
+def _task_toggle_at(req, v, rel, pl, n, want):
     # 二进制读 ＋ 自己 decode：文本模式会把 CRLF 悄悄换成 LF，
     # 一次勾选就把整份文件的换行符改了（save_md 那条路上本来就是这样，行级写不行）
     try:
-        with open(full, "rb") as f:
+        with os.fdopen(_open_read(pl), "rb") as f:
             old = f.read().decode("utf-8")
     except (OSError, UnicodeDecodeError) as e:
         return _bad(T("读不了原文：{e}", e=e))
 
     lines = old.split("\n")
-    now = _mtime_str(full)
+    now = _mtime_at(pl)
     based = (req.get("基于") or "").strip()
     if not based or based != now:
         return _task_stale(now)
@@ -1721,33 +2057,27 @@ def _task_toggle(req, v, rel, full, n, want):
     body = "\n".join(lines)
 
     bak = _backup(rel, old)                      # 自带 10 分钟节流，连点不会刷爆留档
-    tmp = full + ".amnote-tmp"                   # 固定名，理由见 _save_md 同一处
-    try:
-        with open(tmp, "wb") as f:
-            f.write(body.encode("utf-8"))
-            f.flush()
-            os.fsync(f.fileno())
-        st = os.stat(full)
-        os.chmod(tmp, st.st_mode & 0o7777)
+
+    # 临时文件：固定名，_swap_in 在同一个父目录 fd 里自己建，理由见 _save_md 同一处
+    def before(tmp, st):
         # 勾 / 勾回大小不变，同一个 10 ms 格子里连写两次，同步就再也看不见后一次——
         # 挪到上一版的下一格，见 _next_bucket 上面那段
-        _next_bucket(tmp, st)
+        _next_bucket(tmp, st, pl.dfd)
         # 同 save_md：记账要赶在文件露出新 mtime 之前，晚一步这次勾选就被同步
         # 判成「外部改动」——流水上外部改动一条都不合并，连勾几下会冲成一片
         note_portal_write(rel)
-        os.replace(tmp, full)                    # 同盘改名是原子的
+
+    try:
+        # 同盘改名是原子的；replace 之后秒级精度的盘按整秒补挪
+        _swap_in(pl, body.encode("utf-8"), before=before,
+                 after=lambda st: _settle_bucket(pl.name, st, pl.dfd))
     except OSError as e:
-        try:
-            os.remove(tmp)
-        except OSError:
-            pass
         return _bad(T("写失败：{e}", e=e))
-    _settle_bucket(full, st)                     # 秒级精度的盘：replace 之后按整秒补挪
 
     return {"ok": True, "路径": out(v, rel), "行": n, "现在": ch,
             "行文": lines[n],                     # 页面拿它就地换掉 t.raw 的那一行
             "留档": bak,                          # 空串＝按节流跳过了
-            "改于": _mtime_str(full)}             # 下一次的「基于」
+            "改于": _mtime_at(pl)}                # 下一次的「基于」
 
 
 def _task_stale(now: str):
@@ -1762,6 +2092,478 @@ def _task_stale(now: str):
     out2["需确认"] = True
     out2["改于"] = now
     return out2
+
+
+# ── 新建待办：往随手记里的「待办」那篇插一行（5.15） ─────────────────
+#
+# POST /__todo {文, nb?}：往这一本随手记目录里的收件箱插一行 `- [ ] 文`，没有收件箱就建一份。
+# 跟 /__task 一样是**行级写**：除了插进去的那一行（和必要的空行 / 换行），一个字节都不动。
+# 插在哪、插完的自检在 fulltext.todo_plan（纯函数，不碰盘）；这里管认领、判据、锁和写盘。
+#
+# **收件箱**：随手记目录这一层里叫 待办.md / 待辦.md / To-dos.md（NFC ＋ casefold 比）的
+# **普通文件**（lstat，不跟符号链接）——先认这次请求的语言那个，再按 待办 → 待辦 → To-dos。
+# 都没有就按语言新建（名字写死、不走词典：简体 待办、繁体 待辦、英文 To-dos）。不记配置：
+# 用户改名、挪走、删了，下次再建一份新的。要新建的那个名字被一个不是普通文件的东西占着
+# （文件夹、符号链接——库内库外都算），不写，回 bad_path。
+# **路径一律用盘上的真名**（返工 R2-5）：随手记目录的每一段按目录列举换成盘上的写法（配置写
+# Inbox、盘上是 inbox；配置是 NFC、盘上是 NFD），认领、锁键、回执的「路径」都用它——跟索引
+# （os.walk 列出来的）逐字相等，页面不会把同一篇当成两篇。见 _todo_disk_dir。
+# **判据**：在 _edit_ok（写得进）之外，还得进得了索引——随手记目录命中跳过 / 噪声规则、
+# 路径上有一段是符号链接（os.walk 不跟，索引里不会是这个路径），都不写、回 bad_path：
+# 写进去了待办页也永远看不见，等于丢了。
+# **锁**：收件箱那一份的写锁（跟 /__task、/__save 同一把）＋ 一把「这个随手记目录的收件箱」
+# 键，一次给全。后一把让两条不同语言的「都没有、都想新建」排队：后到的在锁里重新认领，
+# 看见前一条刚建的那份就插进去，不会一边一份。锁里认领的结果跟锁外不一样（刚被建 / 删 /
+# 改名），就放锁重来，最多三回。
+# **临时文件**（R3-1）：名字照旧是固定的 <名>.amnote-tmp（锁里安全、长名字不超限），
+# 但写之前那个名字上不管有什么（比如一个指到库外的符号链接）先删掉，再 O_CREAT|O_EXCL|
+# O_NOFOLLOW 自己建；任何一步失败都清掉自己建的临时文件、回 io，原文件不动。
+# 5.15 S 轮起这套写法抽成 _swap_in，/__save、/__task、_write_text 共用；锁里的认领、读、建、写、
+# replace 也都相对按目录 fd 走出来的随手记目录做（_place，堵复审-B 父目录 TOCTOU）。
+# **新的一秒**：插完的这一版，mtime 显示出来的那一秒必须严格晚于上一版的（「改于」≠「改前」，
+# 而且一版比一版大），见 _todo_new_second。「加」会挪行号，而「基于」只有秒精度：别的窗口
+# 手上拿着同一秒的旧「基于」点框（阅读页不带「期望」），就会拿插行之前的行号勾到挪过的行上。
+# 这是**硬不变式**（返工 R1-P1）：永不退回、永不重用。我们自己连加顶到封顶时在锁里小睡限速
+# （≤3 秒）；睡 3 秒也压不回封顶的（文件本来就在未来：时钟快的设备同步来的、系统时间往回校过）
+# 不睡、照样写，只挪最少的那一格。
+
+TODO_NAMES = {"zh-Hans": "待办", "zh-HK": "待辦", "en": "To-dos"}
+TODO_ORDER = ("待办", "待辦", "To-dos")
+TODO_TRIES = 3
+
+
+def _todo_book(nb):
+    """落哪一本：单本忽略 nb；多本给了名字就按名字找（找不到 no_notebook，不回落），
+    没给就是默认那本（同「新建随手记」）。要在线，离线回 offline。"""
+    if not nb_multi():
+        v = nb_main()
+    else:
+        raw = _nfc(nb if nb is not None else "").strip()
+        if raw:
+            v = nb_by_name(raw)
+            if v is None:
+                return None, T("没有叫「{n}」这个名字的笔记本", n=raw)
+        else:
+            v = nb_default()
+    if v is None:
+        return None, T("还没有添加任何笔记本")
+    if not v.online:
+        return None, T("笔记本「{n}」现在找不到，它的文件夹可能被挪走了", n=v.name)
+    return v, ""
+
+
+def _todo_claim(d, lang, at=None):
+    """随手记目录（绝对路径 d）这一层里认领收件箱 → (盘上的文件名, 状态)。
+    状态：'file' 普通文件，就用它；'none' 都没有，按这个名字（当前语言的）新建；
+    'taken' 当前语言那个名字被一个不是普通文件的东西占着（文件夹、符号链接……）。
+
+    **只看这一次 listdir 列出来的**（每个对得上的名字 lstat 一下）。别再拿 lexists 补查：
+    列目录和补查之间别的请求刚好把收件箱建出来，就会被误判成「被占着」（4.1 并发测出来
+    的）。没列出来、实际却在的（刚被建、列不出来的权限），交给新建那一步的 O_EXCL：撞上
+    FileExistsError 就回去重新认领。
+
+    `at`（5.15 S 轮）：锁里那一遍传按目录 fd 走到的随手记目录（_Place）——列目录、lstat 都相对它，
+    跟随后的读、建、写落在同一个目录上；走不到（随手记目录还不在）传 False，当它是空的。
+    不传＝锁外那一遍，照旧按路径 d 看。"""
+    first = TODO_NAMES.get(lang, TODO_ORDER[0])
+    want = [first] + [n for n in TODO_ORDER if n != first]
+    folds = {_fold(n + ".md") for n in want}
+    try:
+        names = [] if at is False else sorted(os.listdir(d if at is None else at.dfd))
+    except OSError:
+        names = []
+    kinds = {}                                   # 折叠后的名字 → [(盘上的名字, 是不是普通文件)]
+    for fn in names:
+        k = _fold(fn)
+        if k not in folds:
+            continue
+        try:
+            st = os.lstat(os.path.join(d, fn)) if at is None else _lst(fn, at.dfd)
+            reg = stat.S_ISREG(st.st_mode)
+        except OSError:                          # 列完就没了：当它不在
+            continue
+        kinds.setdefault(k, []).append((fn, reg))
+    for n in want:
+        for fn, reg in kinds.get(_fold(n + ".md"), ()):
+            if reg:
+                return fn, "file"
+    mine = first + ".md"
+    if kinds.get(_fold(mine)):
+        return mine, "taken"
+    return mine, "none"
+
+
+def _todo_disk_seg(parent, seg):
+    """parent 这一层里，文件系统把名字 seg 认成的那一项在盘上的真名（大小写、NFC/NFD 都按盘上的）。
+    还不存在（随手记目录还没建）、认不出来，都原样回 seg。只在文件系统**自己**把 seg 解析到那一项时
+    才换（比 inode）：分大小写的盘上 Inbox 和 inbox 是两个目录，不能替用户换成另一个。"""
+    if not seg or seg in (".", ".."):
+        return seg
+    try:
+        st = os.lstat(os.path.join(parent, seg))
+        names = os.listdir(parent)
+    except OSError:
+        return seg
+    if seg in names:
+        return seg
+    key = _fold(seg)
+    for n in sorted(names):
+        if _fold(n) != key:
+            continue
+        try:
+            s2 = os.lstat(os.path.join(parent, n))
+        except OSError:
+            continue
+        if (s2.st_dev, s2.st_ino) == (st.st_dev, st.st_ino):
+            return n
+    return seg
+
+
+def _todo_disk_dir(v, nd):
+    """随手记目录（配置写法）→ 每一段换成盘上的真名，跟索引里这一篇的路径逐字一样。"""
+    out, cur = [], v.root
+    for seg in nd.split("/"):
+        real = _todo_disk_seg(cur, seg)
+        out.append(real)
+        cur = os.path.join(cur, real)
+    return "/".join(out)
+
+
+def _todo_seen(v, rel):
+    """这个库内路径进不进得了索引、写不写得进：(realpath, 错误)。错误分两种口径——
+    随手记目录本身不行（跳过 / 噪声、_edit_ok 不过、路径上有符号链接）回那句「不在收录
+    范围里」；只有文件名那一段不行（比如认领到的是 待办.MD）照 _edit_ok 自己的话回。"""
+    try:
+        full, err = _edit_ok(rel)
+    except (OSError, ValueError):                # 孤立代理项之类让 realpath 抛
+        full, err = None, T("路径不合法")
+    if (err or fulltext.should_skip(rel) or fulltext.is_noise(rel)
+            or os.path.relpath(full, v.real_root).replace(os.sep, "/") != rel):
+        return None, err or T("随手记文件夹不在收录范围里，待办页看不到，先在设置里换个随手记文件夹")
+    return full, ""
+
+
+def todo_add(req: dict):
+    """POST /__todo：{文, nb?} → 往那一本的收件箱插一行 `- [ ] 文`（没有就建）。
+
+    回 {ok, 路径, 新建, 方式, 行, 起, 增行, 行文, 文, 改前, 改于, 任务, 标题, 留档}：
+      路径   out() 加过前缀，跟 /__tree 的路径逐字相等
+      方式   "前插"（插在第一条没勾的顶层待办前面）| "文末" | "新建"
+      行     新任务行的 0 基行号（＝ /__task 的「行」）
+      起/增行  旧行号 ≥ 起 的整体 + 增行（新建时 0 / 0）；页面据此平移同一篇的行号
+      行文   新任务行在文件里的样子（CRLF 文件带尾 \\r，同 /__task）
+      文     task_text_of(行文)，≤300 码位，跟树上「任务」里那一条逐字相等
+      改前   写之前那一版的 mtime 串（新建为 ""）；页面拿它判断能不能只平移
+      改于   锁里、挪格之后现取＝下一次 /__task 的「基于」
+      任务   写完之后这一篇的全部未勾，跟 /__tree 的「任务」同口径同形
+      标题   跟 /__tree 同一个取法（一级标题，没有就文件名主干）
+      留档   空串＝10 分钟节流跳过（同 /__task）；新建没有
+    失败一律 HTTP 200 ＋ 代码：bad_type / too_big / bad_path / no_notebook / offline / io / no_spot。
+
+    **「重试」去重**（契约 §10.1-2）：请求带 `重试: true`（页面「没记上」列表里点重试时才带）——锁里先看
+    收件箱里有没有一条**没勾的**、文跟这次规整后的文相同的待办；有就**不写**，回
+    {ok, 重复:true, 路径, 改于, 任务, 标题}（锁里现读的当前状态）。两扇窗同时「全部重试」、回执丢了
+    （服务重启）再重试，都不会记成两条；不用服务端记状态，跨重启也有效。不带「重试」照旧总是插。
+    收件箱还不存在就照常新建。
+    """
+    if not isinstance(req, dict):
+        return _bad(T("要记的事是空的"))
+    text = fulltext.todo_text(req.get("文"))
+    if not text:
+        return _bad(T("要记的事是空的"))
+    if len(text) > fulltext.TODO_TEXT_MAX:
+        return _bad(T("一条待办最多 {n} 字", n=fulltext.TODO_TEXT_MAX))
+    # 「重试」只认 JSON 的 true（「没记上」列表里重试时才带）；别的值一律当没带，行为跟以前逐字一样
+    retry = req.get("重试") is True
+    v, err = _todo_book(req.get("nb"))
+    if err:
+        return _bad(err)
+    bind(v)
+    lang = get_lang()
+    nd = _todo_disk_dir(v, note_dir(v).rstrip("/"))   # 盘上的真名（大小写、NFC/NFD），见 _todo_disk_dir
+    probe, err = _todo_seen(v, nd + "/" + TODO_NAMES.get(lang, TODO_ORDER[0]) + ".md")
+    if err:
+        return _bad(T("随手记文件夹不在收录范围里，待办页看不到，先在设置里换个随手记文件夹"))
+    d = os.path.dirname(probe)
+    key = os.path.join(d, "\x00todo")             # 「这个随手记目录的收件箱」，不是任何真文件
+    for _ in range(TODO_TRIES):
+        name, state = _todo_claim(d, lang)
+        if state == "taken":
+            return _bad(T("这个位置不给写"))
+        rel = nd + "/" + name
+        full, err = _todo_seen(v, rel)
+        if err:
+            return _bad(err)
+        with _md_lock(full, key):
+            # 锁里的认领、读、建、写都相对按目录 fd 走到的随手记目录做（5.15 S 轮，见 _place）：
+            # 判完之后随手记目录（或它上面哪一段）被换成指库外的链接，就走不过去、不写（复审-B）
+            try:
+                pl = _place(full)
+            except (FileNotFoundError, NotADirectoryError):
+                # 随手记目录还不在（或路径上哪一层是个普通文件）：当它不在，建的时候再逐段建——
+                # 那一步跟 os.makedirs 报一样的错；是符号链接的那一步照样走不过去、不写
+                pl = None
+            except OSError as e:
+                return _bad(T("写不进去：{e}", e=e))
+            try:
+                if _todo_claim(d, lang, pl if pl is not None else False) != (name, state):
+                    continue                         # 锁外认领之后刚被建 / 删 / 改名：重来
+                if state == "file":
+                    return _todo_insert(v, rel, full, pl, text, retry)
+                got = _todo_create(v, rel, full, pl, text, lang)
+                if got is not None:
+                    return got
+                # None＝建的时候撞上同名（刚被别处建了）：回去重新认领，插进那一份
+            finally:
+                if pl is not None:
+                    pl.close()
+    return _bad(T("写不进去：{e}", e="busy"))
+
+
+def _todo_done(v, rel, full, pl, new, how, at, start, add, row, before, bak):
+    """两条写路共用的回执。写完之后、还拿着锁的时候调（「改于」得是自己这一笔的）。"""
+    generic = tuple(cfg(v).get("通用标题") or ())
+    return {"ok": True, "路径": out(v, rel), "新建": how == "新建", "方式": how,
+            "行": at, "起": start, "增行": add, "行文": row, "文": task_text_of(row),
+            "改前": before, "改于": _mtime_at(pl),
+            "任务": fulltext.index_tasks(new, full=full),
+            # 标题跟 /__tree 同一个取法：tree_one 拿索引正文的前 4000 字喂 title_of
+            "标题": title_of(rel, new.replace("\r\n", "\n")[:4000], "md", generic),
+            "留档": bak}
+
+
+def _todo_has_open(old, text, full):
+    """收件箱原文里有没有一条**没勾的**待办（tasks_of 的口径：待办页列得出来的那些，围栏 / frontmatter
+    里的不算），文跟 text 相同。比的是那一行完整的文（同 task_text_of、但不截 300 码位）：长的那条重试
+    照样认得出，两条前 300 字相同的长文也不会被当成同一条。"""
+    lines = old.replace("\r\n", "\n").split("\n")
+    for ln, _ in fulltext.tasks_of("\n".join(lines), full=full):
+        m = TASK_RE.match(lines[ln])
+        if m and lines[ln][m.end():].rstrip("\r").strip() == text:
+            return True
+    return False
+
+
+def _todo_insert(v, rel, full, pl, text, retry=False):
+    """收件箱已经在：读（不跟符号链接）→（重试：已经有同文的没勾待办就不写）→ 选点、拼、自检 → 留档 →
+    安全写临时文件 → replace。调用方拿着这一份的写锁；`pl`＝按目录 fd 走到的收件箱位置（_place）。"""
+    try:
+        with os.fdopen(_open_read(pl), "rb") as f:
+            st0 = os.fstat(f.fileno())
+            raw = f.read()
+        old = raw.decode("utf-8")
+    except (OSError, UnicodeDecodeError) as e:
+        return _bad(T("读不了原文：{e}", e=e))
+    before = datetime.fromtimestamp(st0.st_mtime).strftime("%Y-%m-%d %H:%M:%S")  # 同 _mtime_str
+    if retry and _todo_has_open(old, text, full):
+        generic = tuple(cfg(v).get("通用标题") or ())
+        return {"ok": True, "重复": True, "路径": out(v, rel), "改于": before,
+                "任务": fulltext.index_tasks(old, full=full),
+                "标题": title_of(rel, old.replace("\r\n", "\n")[:4000], "md", generic)}
+    plan = fulltext.todo_plan(old, text)
+    if plan is None:
+        return _bad(T("这篇里找不到能安全加一条的地方（比如结尾有没收尾的代码块），打开它手动加吧。"))
+    new = plan["新"]
+    bak = _backup(rel, old)                      # 同 /__task：自带 10 分钟节流
+    err = _todo_write(pl, new.encode("utf-8"), rel, st0)
+    if err:
+        return err
+    return _todo_done(v, rel, full, pl, new, plan["方式"], plan["行"], plan["起"], plan["增行"],
+                      plan["行文"], before, bak)
+
+
+def _shown_sec(t):
+    """_mtime_str 显示出来的那一秒（epoch 秒）。datetime.fromtimestamp 先把小数按微秒四舍五入
+    再取整秒（x.9999996 显示成下一秒），这里照它算，不拿纳秒直接整除。"""
+    frac, whole = math.modf(t)
+    return int(whole) + (1 if round(frac * 1e6) >= 1_000_000 else 0)
+
+
+TODO_WAIT_MAX = 3.0                   # 领先到封顶时锁里最多睡这么久（秒），再不行就不写
+_todo_hwm = {}                        # 收件箱（_fold(realpath)）→ 这个进程里 /__todo 给它发过的最大那一秒
+_todo_hwm_lock = threading.Lock()
+
+
+class _TodoBusy(Exception):
+    """新的一版设不出一个「严格晚于上一版」的秒（这块盘连 +2 秒都设不进去）：不写，回 io「写不进去：busy」。"""
+
+
+def _todo_new_second(tmp, old, based=None, key="", dfd=None):
+    """「加」写出的新一版：mtime 显示出来的那一秒，必须**严格晚于**上一版（`old`＝replace 前现 stat 的、
+    `based`＝读原文那一刻的，取晚的）——也晚于这个进程里 /__todo 给这一份发过的所有秒（`_todo_hwm`：
+    外部存盘把 mtime 拨回去之后，下一条也不会跟之前连加发过的某一秒撞上）。**硬不变式**：永不退回、
+    永不重用。这样「改于」一定≠「改前」，而且一版比一版大，手上拿着任何一个旧「基于」的写（另一扇窗的
+    阅读页不带「期望」、CLI、Agent）都必然撞 conflict 重新载入，不会拿插行之前的行号勾到挪过的行上
+    （T2 两扇窗对齐到同一秒：5/5 勾错；R1 连加 100 多条撞到封顶退回真实时间：3/3 勾错）。
+
+    · 只挪临时文件、在记账和 replace **之前**挪（同 _next_bucket）：文件露面时就是最终的 mtime，同步
+      只看见一次改动、认领一笔「门户」，不会把挪动当成「外部」改动再存一版档。
+    · 挪到那一秒的下一整秒再加 10 ms（一个格子，round(·, 2) 也严格靠后）。FAT32 两秒一格，+1 s 落回
+      原秒就 +2 s；两步都设不出更晚的秒 → 不写。
+    · **封顶限速**：挪完领先真实时间超过 COARSE_AHEAD_MAX（100 秒）→ 不退回。领先是**我们自己**这一串连加
+      顶上去的（上一版那一秒不晚于 _todo_hwm 记的、我们发过的最大一秒），而且睡 TODO_WAIT_MAX（3 秒）以内
+      就能压回封顶 → 在锁里睡到不超封顶（到顶之后每条约等一秒，FAT32 两秒），把连加压成限速；人手的
+      速度碰不到这一档。领先不是我们造成的（文件本来就在未来：时钟快的设备同步来的、系统时间往回校
+      过），或者睡 3 秒也压不回去 → 不睡、照样写，只挪了最少的那一格（不报 busy：不然用户要一直加不进去，
+      直到真实时间追上）。所有版本的「门户」记账都按它的 mtime 记（note_portal_write_at），在未来也认领得到。
+    · 这块盘连 +2 秒都设不进去 → 抛 _TodoBusy（调用方不写、回 io「写不进去：busy」）；stat / utime 出错
+      照常抛 OSError（回 io）——不变式保不住就不写。
+    · `tmp`＝临时文件在父目录 `dfd` 里的名字（5.15 S 轮：相对目录 fd 做）。"""
+    st = _lst(tmp, dfd)
+    prev = max(old.st_mtime, based.st_mtime) if based is not None else old.st_mtime
+    sec = _shown_sec(prev)
+    with _todo_hwm_lock:
+        mine = _todo_hwm.get(key)
+    # 领先是不是我们自己连加出来的：上一版那一秒不晚于这个进程给它发过的最大一秒（外部存盘把 mtime
+    # 拨回去也算我们的）。上一版比我们发过的都晚＝文件本来就在未来（别的设备、系统时间往回校过）
+    ours = mine is not None and mine >= sec
+    if mine is not None:
+        sec = max(sec, mine)
+    if _shown_sec(st.st_mtime) <= sec:
+        for k in (1, 2):
+            _utime(tmp, (st.st_atime_ns, (sec + k) * 1_000_000_000 + MT_STEP_NS), dfd)
+            if _shown_sec(_lst(tmp, dfd).st_mtime) > sec:
+                break
+        else:
+            raise _TodoBusy("这块盘设不出更晚的一秒")
+    need = _lst(tmp, dfd).st_mtime - time.time() - COARSE_AHEAD_MAX
+    if ours and 0 < need <= TODO_WAIT_MAX:       # 自己连加顶到封顶：锁里睡着限速
+        time.sleep(need + 0.005)
+    # 别的情形（文件本来就在未来；或者睡 3 秒也压不回去，比如系统时间往回校过）：不睡、照样写，
+    # 只挪了最少的那一格
+
+
+def _todo_hwm_note(key, name, dfd=None):
+    """这一版落盘了：记下发过的最大那一秒；顺手清掉早就过去了的（落后现在 5 分钟以上的不会再起作用）。
+    `name`＝收件箱在父目录 `dfd` 里的名字（5.15 S 轮：相对目录 fd 做）。"""
+    try:
+        sec = _shown_sec(_lst(name, dfd).st_mtime)
+    except OSError:
+        return
+    with _todo_hwm_lock:
+        _todo_hwm[key] = max(sec, _todo_hwm.get(key, sec))
+        if len(_todo_hwm) > 64:
+            old = time.time() - 300
+            for k in [k for k, v in _todo_hwm.items() if v < old]:
+                _todo_hwm.pop(k, None)
+
+
+def _todo_write(pl, data, rel, based=None):
+    """安全写临时文件 → 照原文件权限 → 挪格 → 挪到新的一秒（封顶时限速；保不住就不写，回 io「写不进去：busy」）
+    → 记账 → replace → 补挪。成功回 None。
+    `based`＝读原文那一刻的 fstat（「改前」就是它），跟 replace 前现 stat 的那一版一起当「上一版」。
+
+    临时文件名固定（<名>.amnote-tmp，调用方拿着写锁，进程里不会有第二个写者），
+    但那个名字上**事先有什么都先删掉**——一个指到库外的符号链接也只删链接本身——再用
+    O_CREAT|O_EXCL|O_NOFOLLOW 自己建：open(tmp, "wb") 会顺着链接写到库外（R3-1）。
+    任何一步失败都清掉自己建的那个临时文件、回 io，原文件不动。5.15 S 轮起这一套是共用的 _swap_in，
+    全部相对 `pl`（按目录 fd 走到的收件箱位置）做。"""
+    key = _fold(pl.full)
+
+    def before(tmp, st):
+        _next_bucket(tmp, st, pl.dfd)            # 别跟上一版落进同一个 10 ms 格子，见那一段
+        _todo_new_second(tmp, st, based, key, pl.dfd)   # 严格晚于上一版的那一秒，见那一段
+        # 同 /__task：记账赶在文件露出新 mtime 之前。记在这一版的 mtime 那一刻（可能在未来），
+        # 同步认领总能对上，见 fulltext.note_portal_write_at
+        fulltext.note_portal_write_at(rel, _lst(tmp, pl.dfd).st_mtime, agent=cur_agent())
+
+    def after(st):
+        _settle_bucket(pl.name, st, pl.dfd)      # 秒级精度的盘：replace 之后按整秒补挪
+        _todo_hwm_note(key, pl.name, pl.dfd)
+
+    try:
+        _swap_in(pl, data, before=before, after=after)
+    except _TodoBusy:
+        return _bad(T("写不进去：{e}", e="busy"))
+    except OSError as e:
+        return _bad(T("写失败：{e}", e=e))
+    return None
+
+
+def _todo_create(v, rel, full, pl, text, lang):
+    """收件箱还没有：建随手记目录（只许它）→ 记账 → O_CREAT|O_EXCL 写新建内容。
+    撞上同名（FileExistsError）回 None，调用方回去重新认领、插进那一份。调用方拿着写锁。
+    `pl`＝按目录 fd 走到的收件箱位置（_place）；随手记目录（或它上面某一段）还不在时是 None，
+    在这里按目录 fd 逐段建出来（5.15 S 轮：建目录、建文件、挪 mtime、删半截都相对它做）。
+
+    **新建也守「严格晚于」**（R1 复审-A）：新文件那一秒必须晚于这条路径上以前出现过的版本——
+    本进程给它发过的最大一秒（_todo_hwm：收件箱被删之前连加过），以及随手记目录上一次有东西进出的
+    那一秒（目录原来就在时）：旧的收件箱刚被删掉、外部刚建过又删过，目录的 mtime 都停在那一刻，
+    旧那一篇（不在未来的）每一版都不会晚于它。不然「删掉重建」会在同一秒里落回旧那一篇的某个秒串，
+    拿着旧「基于」又不带「期望」的 /__task 就勾到新文件里内容已换的那一行。
+    要挪的话：先按 _todo_new_second 同一个规矩决定睡不睡（我们自己连加顶到封顶才睡，≤3 秒），
+    睡在文件出现**之前**；建好之后把 mtime 挪到那一秒的下一秒（FAT32 不行就 +2），挪之前把这一笔也按
+    挪完的 mtime 记账（note_portal_write_at），同步看见建出来那一刻、看见挪完那一刻，两笔都认领得到。
+    挪不成就把自己刚建的那一份删掉、回 io「写不进去：busy」——不变式保不住就不留。挪动期间我们拿着
+    这一份的写锁，/__task 进不来，碰不到挪之前那一秒。"""
+    name = TODO_NAMES.get(lang, TODO_ORDER[0])
+    doc = fulltext.todo_new_doc(name, text)
+    if doc is None:
+        return _bad(T("这篇里找不到能安全加一条的地方（比如结尾有没收尾的代码块），打开它手动加吧。"))
+    data = doc.encode("utf-8")
+    key = _fold(full)
+    own = None
+    try:
+        if pl is not None:
+            dir_t = os.fstat(pl.dfd).st_mtime    # 随手记目录原来就在：它上一次有东西进出的那一刻
+        else:
+            dir_t = None
+            pl = own = _place(full, make=True)   # 同 os.makedirs：缺的层逐段建
+    except OSError as e:
+        return _bad(T("写不进去：{e}", e=e))
+    try:
+        return _todo_create_at(v, rel, full, pl, text, doc, data, key, dir_t)
+    finally:
+        if own is not None:
+            own.close()
+
+
+def _todo_create_at(v, rel, full, pl, text, doc, data, key, dir_t):
+    with _todo_hwm_lock:
+        mine = _todo_hwm.get(key)
+    dsec = _shown_sec(dir_t) if dir_t is not None else None
+    if dsec is not None:
+        # 目录 mtime 在未来（同步盘、touch -t、从备份还原）说明不了旧版本用过哪些秒——真的删除会把它盖成
+        # 现在——只当下限用会把新收件箱拖到那个未来（R1 终审：+1 年）。所以最多算到现在这一秒
+        dsec = min(dsec, _shown_sec(time.time()))
+    floor = max(x for x in (mine, dsec, -1) if x is not None)
+    ours = mine is not None and (dsec is None or mine >= dsec)
+    if floor >= 0 and _shown_sec(time.time()) <= floor:
+        need = (floor + 1) + 0.01 - time.time() - COARSE_AHEAD_MAX
+        if ours and 0 < need <= TODO_WAIT_MAX:   # 同 _todo_new_second：自己连加顶到封顶才睡
+            time.sleep(need + 0.005)
+    note_portal_write(rel)                       # 同 new_md：记账赶在文件出现之前
+    names = {pl.name: full}
+    try:
+        fd = os.open(pl.name, _TMP_FLAGS, 0o666, dir_fd=pl.dfd)
+    except FileExistsError:
+        return None
+    except OSError as e:
+        return _bad(T("写不进去：{e}", e=_abs_err(e, names)))
+    try:
+        with os.fdopen(fd, "wb") as f:
+            f.write(data)
+            f.flush()
+            os.fsync(f.fileno())
+        st = _lst(pl.name, pl.dfd)
+        if floor >= 0 and _shown_sec(st.st_mtime) <= floor:
+            fulltext.note_portal_write_at(rel, floor + 1.01, agent=cur_agent())
+            for k in (1, 2):
+                _utime(pl.name, (st.st_atime_ns, (floor + k) * 1_000_000_000 + MT_STEP_NS), pl.dfd)
+                if _shown_sec(_lst(pl.name, pl.dfd).st_mtime) > floor:
+                    break
+            else:
+                raise _TodoBusy("这块盘设不出更晚的一秒")
+    except (OSError, _TodoBusy) as e:
+        try:
+            os.unlink(pl.name, dir_fd=pl.dfd)    # 自己刚建的（半截的、或者秒挪不上去的），删掉
+        except OSError:
+            pass
+        if isinstance(e, _TodoBusy):
+            return _bad(T("写不进去：{e}", e="busy"))
+        return _bad(T("写不进去：{e}", e=_abs_err(e, names)))
+    _todo_hwm_note(key, pl.name, pl.dfd)
+    return _todo_done(v, rel, full, pl, doc, "新建", 2, 0, 0, "- [ ] " + text, "", "")
 
 
 def save_route(req: dict):
@@ -2653,20 +3455,18 @@ def nb_save():
             "笔记本": [{"id": v.vid, "名字": v.name, "路径": v.root,
                         "颜色": v.color, "加入": v.added} for v in nb_all()],
             "默认": dflt.vid if dflt else ""}
-    tmp = NOTEBOOKS_FILE + ".tmp"
+    blob = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8")
     try:
-        os.makedirs(os.path.dirname(NOTEBOOKS_FILE) or ".", exist_ok=True)
-        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-        with os.fdopen(fd, "w", encoding="utf-8") as f:
-            json.dump(data, f, ensure_ascii=False, indent=2)
-        os.chmod(tmp, 0o600)                      # 文件已存在时 O_CREAT 的 mode 不算数
-        os.replace(tmp, NOTEBOOKS_FILE)
+        d = os.path.dirname(NOTEBOOKS_FILE) or "."
+        os.makedirs(d, exist_ok=True)
+        # 临时文件（固定的 notebooks.json.tmp）走 _swap_in（5.15 S 轮）：那个名字上事先有什么先删掉、
+        # O_EXCL|O_NOFOLLOW 自己建，不会顺着符号链接写到别处；建时 0600，再按 fd 钉一次 0600
+        # （umask 再紧也是 0600，同以前的 chmod）。失败清掉自己的临时文件，原文件不动
+        with _Place(os.open(d, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)),
+                    os.path.basename(NOTEBOOKS_FILE), NOTEBOOKS_FILE) as pl:
+            _swap_in(pl, blob, mode=0o600, keep=False, perm=0o600, sync=False, suffix=".tmp")
     except OSError as e:
         print(f"笔记本列表写不了（{NOTEBOOKS_FILE}）：{e}", file=sys.stderr, flush=True)
-        try:
-            os.remove(tmp)
-        except OSError:
-            pass
         return False
     return True
 
@@ -3640,18 +4440,29 @@ def _tpl(name):
         return "", T("缺一份模板：{p}", p=p)
 
 
-def _write_text(path, text):
+def _write_text(path, text, v=None):
     """写一份文本文件，先 .tmp 再改名。返回错误响应或 None。
 
     临时文件是固定的 path + ".tmp"：三个调用方（AGENTS.md、库地图、SKILL.md）都在
     _md_lock 里调它，同一份不会有两个写者撞同一个临时名；固定名还能让上一次留下的
-    残留被下一次重用、收走（理由同 _save_md 那一处）。"""
+    残留被下一次重用、收走（理由同 _save_md 那一处）。
+
+    5.15 S 轮：临时文件走 _swap_in（那个名字上事先有什么先删掉、O_EXCL|O_NOFOLLOW 自己建，R3-1；
+    写失败清掉自己的临时文件——以前留着半截 .tmp）。权限、不 fsync 跟以前一样（新文件 0o666 减 umask）。
+    `v`＝库根里的那两份（AGENTS.md、库地图）落在哪一本：按目录 fd 从那一本的库根走（_place）；
+    不给＝SKILL.md（~/.claude 里，不在任何一本库里）：父目录照旧按字符串解析、缺了照旧建——那条路上的
+    符号链接是用户自己的布置（dotfiles 之类），不去拦。"""
+    data = text.encode("utf-8")
     try:
-        os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
-        tmp = path + ".tmp"
-        with open(tmp, "w", encoding="utf-8") as f:
-            f.write(text)
-        os.replace(tmp, path)
+        if v is not None:
+            pl = _place(os.path.join(v.real_root, os.path.relpath(path, v.root)), v=v, shown=path)
+        else:
+            d = os.path.dirname(path) or "."
+            os.makedirs(d, exist_ok=True)
+            pl = _Place(os.open(d, os.O_RDONLY | getattr(os, "O_DIRECTORY", 0)),
+                        os.path.basename(path), path)
+        with pl:
+            _swap_in(pl, data, mode=0o666, keep=False, sync=False, suffix=".tmp")
     except OSError as e:
         return _bad(T("写不进去：{e}", e=e))
     return None
@@ -3707,7 +4518,7 @@ def _setup_agents_md():
         if os.path.lexists(dest):
             return _bad(T("那个位置已经有一份文件了，先挪开"))
         note_portal_write(AGENTS_FILE)           # 别让下一趟同步记成「外部新增」
-        bad = _write_text(dest, text)
+        bad = _write_text(dest, text, V())
     if bad:
         return bad
     kick_sync()
@@ -3724,7 +4535,7 @@ def _setup_map():
     # 都得是真的；它要是排在后面，会照常撞上「在别处被改过」
     with _md_lock(os.path.realpath(dest)):
         note_portal_write(MAP_FILE)
-        bad = _write_text(dest, MAP_NOTE + "\n" + d["地图"])
+        bad = _write_text(dest, MAP_NOTE + "\n" + d["地图"], V())
     if bad:
         return bad
     kick_sync()
@@ -4590,7 +5401,7 @@ class Handler(SimpleHTTPRequestHandler):
             return
         route = self.path.split("?")[0]
         if route not in ("/__config", "/__reveal", "/__external",
-                         "/__save", "/__task", "/__trash", "/__untrash",
+                         "/__save", "/__task", "/__todo", "/__trash", "/__untrash",
                          "/__state", "/__rescan", "/__extopen",
                          "/__profile", "/__agent_setup", "/__notebooks"):
             self.send_error(404, "not found")
@@ -4639,6 +5450,7 @@ class Handler(SimpleHTTPRequestHandler):
             out = {"/__config": write_config, "/__reveal": reveal,
                    "/__external": open_external, "/__extopen": ext_open,
                    "/__save": save_route, "/__task": task_toggle,
+                   "/__todo": todo_add,
                    "/__state": state_set,
                    "/__trash": trash, "/__untrash": untrash,
                    "/__profile": profile_write,
@@ -4651,7 +5463,7 @@ class Handler(SimpleHTTPRequestHandler):
         # 而且这一趟同步就是这两条路由记流水的地方（trash / untrash 只记活表）。
         # **记账不在这儿**：save_md / new_md / trash / untrash 在真正动文件之前
         # 就记了，见那四处注释
-        if (route in ("/__save", "/__task", "/__trash", "/__untrash")
+        if (route in ("/__save", "/__task", "/__todo", "/__trash", "/__untrash")
                 and isinstance(out, dict) and out.get("ok")):
             kick_sync(V())                       # 只补动过的那一本
         self._json(json.dumps(out, ensure_ascii=False))
