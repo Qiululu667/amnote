@@ -125,7 +125,6 @@ import re
 import secrets
 import shlex
 import signal
-import shutil
 import stat
 import struct
 import subprocess
@@ -2684,15 +2683,196 @@ def _trash_ok(rel: str, on_disk: bool = True):
     return full, ""
 
 
-def _move_file(src: str, dest: str):
-    """搬一份文件。同盘 os.replace 就是一次原子改名；库和家目录不在一个卷上时
-    它会抛 EXDEV，那种才退回 shutil.move（复制＋删原件，慢但跨得过去）。"""
+# ── 搬进 / 搬出废纸篓：库内一端相对父目录 fd，废纸篓一端按路径（5.15.x 废纸篓竞态） ──
+#
+# 旧 _move_file 两头都按字符串（os.replace(src, dest)，EXDEV 退回 shutil.move）。判完之后、
+# os.replace 之前把库内某一层父目录换成指库外的符号链接，os.replace 会顺着它把**库外文件**挪进
+# 废纸篓、或把撤销的文件挪到**库外**（R1 安全复审 §4′ 乙类 ③；§1 的非竞态变体同理）。跟 md 写路
+# 一个根子，一个修法：库内这一端一律从库根逐段 O_DIRECTORY|O_NOFOLLOW 走到父目录 fd（_place），
+# 之后 os.replace 相对那个 fd 做，判完之后谁再换父目录都碰不到我们手上这个目录。
+#
+# **废纸篓那一端按绝对路径信任，绝不开 ~/.Trash 的目录 fd。** 真实的 ~/.Trash 受 macOS「完全磁盘
+# 访问」保护，open(~/.Trash, O_RDONLY|O_DIRECTORY) 在没有该授权的 app 里会 EPERM（scratch 测试的
+# HOME/.Trash 不受保护、测不出来）。所以对废纸篓那一端的系统调用种类不多于旧代码：还是按路径的
+# makedirs / lexists / isfile / rename，EXDEV 退路还是按路径 open/读/utime/chmod/chflags/unlink，
+# 不新增任何对废纸篓目录的 os.open / listdir / scandir。
+
+
+def _fchflags(fd, flags):
+    """os 没包 fchflags，chflags 也不收 dir_fd：对一个 fd 直接 fchflags(2)。只给库内那一端
+    （按路径 chflags 会再穿一遍可能被换掉的父目录）。ENOTSUP/EOPNOTSUPP 由调用方按 copystat 的口径吞掉。"""
+    import ctypes
+    lib = ctypes.CDLL("/usr/lib/libSystem.B.dylib", use_errno=True)
+    if lib.fchflags(ctypes.c_int(fd), ctypes.c_uint(flags)) != 0:
+        err = ctypes.get_errno()
+        raise OSError(err, os.strerror(err))
+
+
+def _copy_data(rfd, wfd):
+    """rfd → wfd，整块读写（同 shutil.copyfileobj 对普通文件的结果）。"""
+    while True:
+        b = os.read(rfd, 1024 * 1024)
+        if not b:
+            break
+        off = 0
+        while off < len(b):
+            off += os.write(wfd, b[off:])
+
+
+def _copystat_lib(pl, src_st, made):
+    """把 src_st 的 atime/mtime 纳秒、权限位、st_flags 落到库内 pl 那一份（同 shutil.copystat 的
+    utime → chmod → chflags 顺序与口径）。`made`＝O_EXCL 建出来那一刻 fstat(wfd) 记下的 stat。
+
+    **三步全落在一个核过 inode 的 fd 上，不再按名字做**（5.15.x 废纸篓竞态复审，R §4a）：写完关闭之后，
+    按名字相对 pl.dfd 以 O_RDONLY|O_NOFOLLOW 重开，st_dev/st_ino 必须＝建时记下的那份，再对这个 fd
+    os.utime → os.fchmod → _fchflags（ENOTSUP/EOPNOTSUPP 吞掉）。按名字 utime/chmod 的话，关闭之后末段被换成
+    指库外同卷文件的**硬链接**（O_NOFOLLOW / follow_symlinks=False 只挡符号链接、挡不住硬链接），元数据就落到
+    库外那个 inode 上——R 实证库外文件 0600→0644、mtime、UF_HIDDEN 都被改。重开不了或 inode 对不上＝目标被人
+    换了：抛 OSError，这次撤销按失败处理（调用方只在那个名字仍指向我们建的 inode 时才清）。"""
     try:
-        os.replace(src, dest)
+        cfd = os.open(pl.name, os.O_RDONLY | _NOFOLLOW, dir_fd=pl.dfd)
+    except OSError as e:
+        raise _abs_err(e, {pl.name: pl.full})          # 被换成符号链接（ELOOP）/ 被删（ENOENT）
+    try:
+        got = os.fstat(cfd)
+        if got.st_dev != made.st_dev or got.st_ino != made.st_ino:
+            # 名字上已不是我们建的那份（硬链接到别处 / 别的文件）：一个字节的元数据都不往上落
+            raise OSError(errno.EEXIST, os.strerror(errno.EEXIST), pl.full)
+        os.utime(cfd, ns=(src_st.st_atime_ns, src_st.st_mtime_ns))
+        os.fchmod(cfd, stat.S_IMODE(src_st.st_mode))
+        try:
+            _fchflags(cfd, getattr(src_st, "st_flags", 0))
+        except OSError as why:
+            _ignore_notsup(why)
+    finally:
+        os.close(cfd)
+
+
+def _unlink_if_ours(pl, made):
+    """失败收尾：只在 pl 那个名字此刻仍指向我们建的那份（st_dev/st_ino＝made）时才删；被人换成别的（硬链接到
+    库外文件、链接、别的文件）就不碰——那是别人的目录项（R §4a）。lstat 到 unlink 之间仍有一线窗口，macOS 没有
+    「inode 对得上才删」的原子操作；最坏删掉的是库内这个目录里别人放的一个目录项，不跟链接、碰不到库外内容。"""
+    try:
+        st = _lst(pl.name, pl.dfd)
+    except OSError:
+        return
+    if st.st_dev == made.st_dev and st.st_ino == made.st_ino:
+        try:
+            os.unlink(pl.name, dir_fd=pl.dfd)
+        except OSError:
+            pass
+
+
+def _ignore_notsup(why):
+    """chflags 在不支持 st_flags 的卷（有的网络盘）上回 ENOTSUP/EOPNOTSUPP：同 shutil.copystat 吞掉，别的往上抛。"""
+    for name in ("EOPNOTSUPP", "ENOTSUP"):
+        if hasattr(errno, name) and why.errno == getattr(errno, name):
+            return
+    raise why
+
+
+def _chflags_path(path, flags):
+    """按路径 chflags（只给废纸篓那一端；库内那一端走 _copystat_lib 的 fchflags）。ENOTSUP 吞掉。"""
+    try:
+        os.chflags(path, flags)
+    except OSError as why:
+        _ignore_notsup(why)
+
+
+def _xdev_err(e, src_abs, dst_abs, relmap):
+    """EXDEV 退路里拷贝 / 元数据这几步的 OSError → 换回旧 shutil.move→copy2 会报的那条路径：
+    库内那一端的相对名按 relmap 换成绝对；raw read/write 的 ENOSPC 之类不带文件名的，按 copy2
+    (fcopyfile) 的口径补上 'src' -> 'dst'（两个绝对路径）。"""
+    e = _abs_err(e, relmap)
+    if isinstance(e, OSError) and e.filename is None and e.filename2 is None:
+        return OSError(e.errno, e.strerror, src_abs, None, dst_abs)
+    return e
+
+
+def _move_out(pl, dest):
+    """trash：把库内 pl 那一份挪进废纸篓绝对路径 dest。源相对父目录 fd、不跟链接；dest 按路径。
+
+    同卷一次 os.replace（源相对 fd、dest 按路径，废纸篓不开目录 fd）。库和家目录不在一个卷上时
+    抛 EXDEV，退回安全拷贝（结果同旧 shutil.move→copy2：内容、atime/mtime、权限、st_flags）。"""
+    try:
+        os.replace(pl.name, dest, src_dir_fd=pl.dfd)
     except OSError as e:
         if e.errno != errno.EXDEV:
-            raise
-        shutil.move(src, dest)
+            raise _abs_err(e, {pl.name: pl.full})     # dest 已是绝对路径，原样；pl.name 换回 full
+        # 读源：相对 fd、O_NOFOLLOW，必须是普通文件（竞态或手造才会是别的）
+        try:
+            rfd = os.open(pl.name, os.O_RDONLY | _NOFOLLOW, dir_fd=pl.dfd)
+        except OSError as e2:
+            raise _abs_err(e2, {pl.name: pl.full})
+        try:
+            src_st = os.fstat(rfd)
+            if not stat.S_ISREG(src_st.st_mode):
+                raise OSError(errno.ELOOP, os.strerror(errno.ELOOP), pl.full)
+            made = False
+            try:
+                # dest 按路径建（废纸篓那一端信任；_trash_dest 已挑了不撞名的落点，同旧 open("wb")）
+                fdst = open(dest, "wb"); made = True
+                try:
+                    _copy_data(rfd, fdst.fileno())
+                finally:
+                    fdst.close()
+                os.utime(dest, ns=(src_st.st_atime_ns, src_st.st_mtime_ns))
+                os.chmod(dest, stat.S_IMODE(src_st.st_mode))
+                _chflags_path(dest, getattr(src_st, "st_flags", 0))
+            except OSError as e3:
+                if made:                              # 只清自己建的半截目标，源不动（旧 shutil.move 会把半截留在目标处）
+                    try:
+                        os.unlink(dest)
+                    except OSError:
+                        pass
+                raise _xdev_err(e3, pl.full, dest, {pl.name: pl.full})
+            try:
+                os.unlink(pl.name, dir_fd=pl.dfd)
+            except OSError as e4:
+                # 拷成功、删源失败：废纸篓那份留着、库内源也在（同旧 shutil.move）；相对名换回绝对路径，
+                # 文案同旧 os.unlink(src)（复审 R §4b）
+                raise _abs_err(e4, {pl.name: pl.full})
+        finally:
+            os.close(rfd)
+
+
+def _move_in(src, pl):
+    """untrash：把废纸篓绝对路径 src 挪回库内 pl 那一份。src 按路径；目标相对父目录 fd、不跟链接。
+
+    同卷一次 os.replace（src 按路径、目标相对 fd）。跨卷退回安全拷贝（同 _move_out，方向相反）。"""
+    try:
+        os.replace(src, pl.name, dst_dir_fd=pl.dfd)
+    except OSError as e:
+        if e.errno != errno.EXDEV:
+            raise _abs_err(e, {pl.name: pl.full})     # src 已是绝对路径，原样；pl.name 换回 full
+        st = os.lstat(src)                             # 废纸篓那一端按路径
+        if not stat.S_ISREG(st.st_mode):
+            raise OSError(errno.ELOOP, os.strerror(errno.ELOOP), src)
+        rfd = os.open(src, os.O_RDONLY)                # 废纸篓信任，不开目录 fd；读文件本身
+        try:
+            src_st = os.fstat(rfd)
+            # 建目标：相对 fd、O_EXCL|O_NOFOLLOW（0o666，权限随后由 _copystat_lib 覆盖）
+            try:
+                wfd = os.open(pl.name, _TMP_FLAGS, 0o666, dir_fd=pl.dfd)
+            except OSError as e2:
+                raise _abs_err(e2, {pl.name: pl.full})
+            made = None                                # 建时 fstat：之后元数据和收尾都只认这个 inode（R §4a）
+            placed = False
+            try:
+                try:
+                    with os.fdopen(wfd, "wb") as fdst:
+                        made = os.fstat(fdst.fileno())
+                        _copy_data(rfd, fdst.fileno())
+                    _copystat_lib(pl, src_st, made)    # 拷数据 → 关闭 → 重开核 inode → utime → chmod → chflags
+                    placed = True
+                except OSError as e3:
+                    raise _xdev_err(e3, src, pl.full, {pl.name: pl.full})
+            finally:
+                if not placed and made is not None:
+                    _unlink_if_ours(pl, made)          # 只清自己建的那份；名字被人换了就不碰。源留在废纸篓
+            os.unlink(src)                             # 废纸篓那一端按路径删
+        finally:
+            os.close(rfd)
 
 
 def _trash_dest(name: str) -> str:
@@ -2761,22 +2941,34 @@ def trash(req: dict):
     # 写锁（见 _md_lock）：正在存这一份的那条写完了再挪。不然它读完原文、replace
     # 之前文件被挪走，replace 会在原位置重新放出一份，废纸篓里那份也撤不回来了
     with _md_lock(full):
-        if not os.path.isfile(full):
+        # 源一端按目录 fd 从库根逐段走（5.15.x 废纸篓竞态，见 _move_out 上面那段）：判完之后父目录
+        # 被换成链接，这个 fd 碰不到。走不到父目录 / 末段不在 / 末段不是普通文件——都＝旧 isfile 为假
+        # 的那些情形，回「文件不在了」（判完之后冒出来的链接 / 目录一律当「不在了」）
+        try:
+            pl = _place(full, v=v)
+        except OSError:
             return _bad(T("文件不在了"))
-        try:
-            os.makedirs(TRASH_DIR, exist_ok=True)
-        except OSError as e:
-            return _bad(T("打不开废纸篓：{e}", e=e))
-        # 废纸篓里的名字、活表里的路径，都用盘上逐字的那一份，不用请求里的大小写
-        real_rel = _fix_rel(rel, full)
-        dest = _trash_dest(os.path.basename(full))
-        try:
-            # 记账赶在文件消失之前，同 save_md：晚一步就会被同步判成「外部删除」
-            fulltext.note_portal_move(real_rel, agent=cur_agent())
-            _move_file(full, dest)
-        except OSError as e:
-            fulltext.take_portal_move(real_rel)   # 没挪成，把刚记的那笔收回来
-            return _bad(T("挪不进废纸篓：{e}", e=e))
+        with pl:
+            try:
+                st = _lst(pl.name, pl.dfd)
+            except OSError:
+                return _bad(T("文件不在了"))
+            if not stat.S_ISREG(st.st_mode):
+                return _bad(T("文件不在了"))
+            try:
+                os.makedirs(TRASH_DIR, exist_ok=True)
+            except OSError as e:
+                return _bad(T("打不开废纸篓：{e}", e=e))
+            # 废纸篓里的名字、活表里的路径，都用盘上逐字的那一份，不用请求里的大小写
+            real_rel = _fix_rel(rel, full)
+            dest = _trash_dest(os.path.basename(full))
+            try:
+                # 记账赶在文件消失之前，同 save_md：晚一步就会被同步判成「外部删除」
+                fulltext.note_portal_move(real_rel, agent=cur_agent())
+                _move_out(pl, dest)
+            except OSError as e:
+                fulltext.take_portal_move(real_rel)   # 没挪成，把刚记的那笔收回来
+                return _bad(T("挪不进废纸篓：{e}", e=e))
     now = time.time()
     key = (v.vid, real_rel)
     with _lock:
@@ -2785,6 +2977,27 @@ def trash(req: dict):
         _trashed.move_to_end(key)                # 同一份删两回，记最新那次
         _prune_trashed(now)
     return {"ok": True, "路径": out(v, real_rel), "废纸篓": dest}
+
+
+def _untrash_target(src_at: str, v):
+    """撤销目标现解析、同 _trash_ok 判据再判（5.15.x 废纸篓竞态，契约 §2.3）。返回 (tgt, 错误)。
+
+    `src_at`＝删时记下的真实落点（撤销记录里的「原位」）。父目录现 realpath 一遍（用户在库内把目录
+    重组成链接时，跟旧代码一样跟进到同一个真目录），末段按原名拼上；再按 `_trash_ok` 那两条落点判据
+    判它：必须在这一本 real_root + sep 之内、relpath 的每一段不 _seg_blocked。
+
+    同一个笔记本 id 的 real_root 在进程里只有「重新定位」会变，而「重新定位」（和「移除」）都走
+    `_nb_forget` 清掉这本的 _trashed 记录，所以活着的记录其 vid 现有的 real_root 必＝删时那一个，
+    不用在记录里另存删时的 real_root。改名 / 颜色 / 默认不动 real_root。（T1-report §2 有实证。）
+    """
+    d = os.path.realpath(os.path.dirname(src_at))
+    tgt = os.path.join(d, os.path.basename(src_at))
+    if not tgt.startswith(v.real_root + os.sep):
+        return None, T("路径越出库根")
+    for seg in os.path.relpath(tgt, v.real_root).split(os.sep):
+        if _seg_blocked(seg):
+            return None, T("这个位置不给删")
+    return tgt, ""
 
 
 def untrash(req: dict):
@@ -2816,19 +3029,35 @@ def untrash(req: dict):
             _trashed.pop(key, None)
         return _bad(T("废纸篓里已经没有这份了"))
     # 写锁（见 _md_lock）：「原位空着」查完到挪回来之间，不能让 /__save 新建、改名
-    # 在这个名字上放出一份来——_move_file 是 os.replace，会把那份整个盖掉
+    # 在这个名字上放出一份来——_move_in 的 os.replace 会把那份整个盖掉。锁键照旧用「原位」。
     with _md_lock(full):
-        if os.path.lexists(full):
-            return _bad(T("原来那个位置又有文件了，先挪开"))
-        if not os.path.isdir(os.path.dirname(full)):
-            return _bad(T("原来那个目录不在了"))
+        # 撤销目标现解析、同一判据再判（5.15.x 废纸篓竞态，见 _untrash_target）：原位的父目录这会儿
+        # 若指到库外 / 被挡目录就拒，顺带堵掉「请求路径里有库内链接、原位却经别的链接落到库外」那个
+        # 非竞态变体。正常情况（删了之后没人动过目录结构）tgt 跟原位逐字相同，行为不变。
+        tgt, err = _untrash_target(full, v)
+        if err:
+            return _bad(err)
+        # 目标一端按目录 fd 从库根逐段走：走不到父目录＝「原来那个目录不在了」（含判完之后某层被换成
+        # 链接的竞态变体）；末段 lstat 到任何东西（含链接）＝「原来那个位置又有文件了」。两句的先后
+        # 与旧代码等价（旧先 lexists 再 isdir；父目录没了时 lexists 必为假，照样落到「目录不在了」）。
         try:
-            # 记账赶在文件出现之前，同 save_md：晚一步就会被同步判成「外部新增」
-            fulltext.note_portal_move(real_rel, agent=cur_agent())
-            _move_file(src, full)
-        except OSError as e:
-            fulltext.take_portal_move(real_rel)   # 没挪成，把刚记的那笔收回来
-            return _bad(T("挪不回去：{e}", e=e))
+            pl = _place(tgt, v=v)
+        except OSError:
+            return _bad(T("原来那个目录不在了"))
+        with pl:
+            try:
+                _lst(pl.name, pl.dfd)
+            except OSError:
+                pass                              # 末段不在＝可以挪回来
+            else:
+                return _bad(T("原来那个位置又有文件了，先挪开"))
+            try:
+                # 记账赶在文件出现之前，同 save_md：晚一步就会被同步判成「外部新增」
+                fulltext.note_portal_move(real_rel, agent=cur_agent())
+                _move_in(src, pl)
+            except OSError as e:
+                fulltext.take_portal_move(real_rel)   # 没挪成，把刚记的那笔收回来
+                return _bad(T("挪不回去：{e}", e=e))
     with _lock:
         _trashed.pop(key, None)
     return {"ok": True, "路径": out(v, real_rel)}
