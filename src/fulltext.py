@@ -73,12 +73,15 @@ html 那一改要对已经进库的 html 补一次重抽（只重写 正文 列�
 
 import codecs
 import csv
+import errno
+import fcntl
 import json
 import math
 import os
 import re
 import secrets
 import sqlite3
+import stat
 import subprocess
 import sys
 import threading
@@ -376,6 +379,62 @@ PDF_TIMEOUT = 180
 # 共用一把的话 A 本在扫 B 本就得排队，/__status 的进度也会互相串。
 
 
+# ── 只打开普通文件（FIFO 阻塞加固）─────────────────────────────
+#
+# 库里一个名字可能是 FIFO（具名管道，mkfifo 不要 root）：只读打开它会一直等写端，只写打开（不带 O_EXCL）会一直
+# 等读端。卡住的是一条请求线程或后台同步，连同它手里的写锁 / sync_lock / sqlite 写事务——之后同一份的保存、这一本
+# 的同步全跟着卡；.amnote/config.json 是 FIFO 时服务连端口都绑不上。所以打开库内文件的地方一律先带 O_NONBLOCK 开
+# （FIFO 立刻返回：读打开开得出来，写打开没有读端回 ENXIO），fstat 看一眼：既不是普通文件也不是目录的（FIFO /
+# 套接字 / 设备）关掉 fd、抛 OSError(EFTYPE)，落到各处原有的「读不了 / 写不了」分支，不新增文案；普通文件和目录把
+# O_NONBLOCK 清掉再交回，之后的读写跟原来逐字一样（读写本来就不受它影响，清掉是为了网络盘 / FUSE 也一样）。
+# 打开那一下不全是：macOS 13+ 上要打破 smbd（系统「文件共享」）持有的文件租约时，带 O_NONBLOCK 的打开立刻回 EAGAIN、
+# 不带的会等对方放手——所以遇到 EAGAIN 仍带 O_NONBLOCK 短重试几次（LEASE_RETRY），用完照原样抛（K-report §2、§5）。
+# 目录放行：按 os.open 的那几处原来拿到目录就是一个 fd，内建 open 的那几处由 FileIO 自己报 IsADirectoryError，
+# 两边都跟以前一样。flags 原样透传：原来带 O_NOFOLLOW 的照带，原来跟随符号链接的照旧跟随（库内合法链接照常读）。
+# 内建 open 的点写成 open(…, opener=reg_opener)：f.name 仍是路径、新建权限 0o666、'a' 照样 seek 到末尾、
+# 打不开时的错误文案（ENOENT / EISDIR …）逐字不变。
+_O_NONBLOCK = getattr(os, "O_NONBLOCK", 0)
+_EFTYPE = getattr(errno, "EFTYPE", errno.EINVAL)
+LEASE_RETRY = (0.02, 0.05, 0.1, 0.2, 0.4)        # 回 EAGAIN 时每次重试前等多久（秒），合计约 0.77 s
+
+
+def open_regular(name, flags, mode=0o666, dir_fd=None):
+    """os.open 的替身：只开普通文件（和目录）→ fd。FIFO / 套接字 / 设备：关掉 fd、抛 OSError(EFTYPE)。
+    打开回 EAGAIN（BlockingIOError，FIFO 不会回这个）就按 LEASE_RETRY 再非阻塞地开几次，用完照原样抛。"""
+    for delay in LEASE_RETRY + (None,):
+        try:
+            fd = os.open(name, flags | _O_NONBLOCK, mode, dir_fd=dir_fd)
+            break
+        except BlockingIOError:
+            if delay is None:
+                raise
+            # 租约只落在普通文件上（K §4）；pty 之类回 EAGAIN 的不是租约，不该重试——否则每打开一次从「立刻失败」
+            # 变成约 0.77 s 后失败、还按条累加（R-report P2-2）。先 stat 一眼（stat 不会被 FIFO/pty 卡住），不是普通
+            # 文件就立刻照原样抛；stat 失败（比如刚被删）照旧继续重试，跟随与否同 flags 里的 O_NOFOLLOW。
+            try:
+                pre = os.stat(name, dir_fd=dir_fd, follow_symlinks=not (flags & getattr(os, "O_NOFOLLOW", 0)))
+            except OSError:
+                pre = None
+            if pre is not None and not stat.S_ISREG(pre.st_mode):
+                raise
+            time.sleep(delay)
+    try:
+        st = os.fstat(fd)
+        if not (stat.S_ISREG(st.st_mode) or stat.S_ISDIR(st.st_mode)):
+            raise OSError(_EFTYPE, os.strerror(_EFTYPE), name)
+        if _O_NONBLOCK and not (flags & _O_NONBLOCK):
+            fcntl.fcntl(fd, fcntl.F_SETFL, fcntl.fcntl(fd, fcntl.F_GETFL) & ~_O_NONBLOCK)
+    except BaseException:
+        os.close(fd)
+        raise
+    return fd
+
+
+def reg_opener(name, flags):
+    """内建 open(…, opener=reg_opener) 用的那一个：flags 是内建 open 自己算的，权限同内建 open 的 0o666。"""
+    return open_regular(name, flags, 0o666)
+
+
 # ── 配置：收录规则的唯一来源 ─────────────────────────────────
 #
 # config.json 是唯一该动的地方。这里留一份同样的默认值，是为了配置文件被删、
@@ -423,7 +482,7 @@ def load_config(path=None):
     if not path or not os.path.exists(path):
         return cfg, problems
     try:
-        with open(path, encoding="utf-8") as f:
+        with open(path, encoding="utf-8", opener=reg_opener) as f:
             raw = json.load(f)
     except (OSError, ValueError) as e:
         problems.append(str(_T("config.json 读不了，整份用默认值：{e}", e=e)))
@@ -535,6 +594,10 @@ def walk_files():
                 st = os.stat(full)
             except OSError:
                 continue
+            # 只收普通文件（链接照旧跟随，看的是它指到的那一份）：FIFO / 套接字 / 设备不进索引。下面抽正文一打开
+            # 就会卡住（FIFO 等写端），pdf 是交给 osascript 去开的、那边也卡（见 open_regular 上面那段）
+            if not stat.S_ISREG(st.st_mode):
+                continue
             kind = ("md" if ext == ".md" else
                     "html" if ext in (".html", ".htm") else ATT_EXT[ext])
             out[rel_u] = (round(st.st_mtime, 2), st.st_size, kind)
@@ -604,7 +667,7 @@ def _extract_md(full):
     """
     try:
         size = os.path.getsize(full)
-        with open(full, encoding="utf-8", errors="replace", newline="") as f:
+        with open(full, encoding="utf-8", errors="replace", newline="", opener=reg_opener) as f:
             raw = _read_lf(f, MD_MAX_BYTES)
     except OSError as e:
         return "", None, f"读不了：{e}"
@@ -632,7 +695,7 @@ def _extract_html(full):
     """
     try:
         size = os.path.getsize(full)
-        with open(full, encoding="utf-8", errors="replace") as f:
+        with open(full, encoding="utf-8", errors="replace", opener=reg_opener) as f:
             raw = f.read(HTML_READ_BYTES)
     except OSError as e:
         return "", None, f"读不了：{e}"
@@ -806,10 +869,17 @@ def _shared_strings(z, need):
 
 def _read_xlsx(full, sheet, max_rows, max_cols):
     try:
-        z = zipfile.ZipFile(full)
+        # 自己按「只开普通文件」打开再交给 ZipFile：ZipFile(路径) 里那一句 open 遇 FIFO 会卡住（见 open_regular）。
+        # 传进去的文件对象 ZipFile 不替我们关——构造失败就在这儿关，成功的由下面那个 with 关
+        fp = open(full, "rb", opener=reg_opener)
+        try:
+            z = zipfile.ZipFile(fp)
+        except BaseException:
+            fp.close()
+            raise
     except (zipfile.BadZipFile, OSError) as e:
         return {"ok": False, "错误": f"打不开这份 xlsx：{e}"}
-    with z:
+    with fp, z:
         sheets = _sheet_list(z)
         if not sheets:
             return {"ok": False, "错误": "这份文件里没有工作表"}
@@ -905,7 +975,7 @@ def _sniff_encoding(head: bytes) -> str:
 
 def _read_csv(full, max_rows, max_cols):
     try:
-        with open(full, "rb") as f:
+        with open(full, "rb", opener=reg_opener) as f:
             head = f.read(64 * 1024)
     except OSError as e:
         return {"ok": False, "错误": f"读不了：{e}"}
@@ -917,7 +987,7 @@ def _read_csv(full, max_rows, max_cols):
         delim = "\t" if full.lower().endswith(".tsv") else ","
     rows = []
     try:
-        with open(full, "r", encoding=enc, errors="replace", newline="") as f:
+        with open(full, "r", encoding=enc, errors="replace", newline="", opener=reg_opener) as f:
             for r in csv.reader(f, delimiter=delim):
                 rows.append([str(x) for x in r[:max_cols]])
                 if len(rows) >= max_rows:
@@ -1091,6 +1161,32 @@ def extract_links(rel, body):
 
 # ── 数据库 ──────────────────────────────────────────────────
 
+def _guard_db_journal(writable):
+    """开 sqlite 之前挡住 `.amnote/fulltext.db-journal` 是非普通文件的情形（R-report P2-1）。
+
+    sqlite 打开有内容的库（WAL 库也先于发现 WAL）会做热日志检查：`-journal` 存在、库有页、没人持 RESERVED 锁时，
+    只读打开它读 1 字节——它是没写端的 FIFO 就永远等，connect/_connect_ro 的第一条语句永久阻塞，`busy_timeout` 管不到。
+    `-journal` 在我们自己的 `.amnote` 下，非普通文件不可能是有效热日志：
+      · 不存在 / 是普通文件 → 照旧（**绝不碰普通文件的 -journal**，那是 sqlite 要用来回滚的热日志）；
+      · 是 FIFO / 套接字 / 设备 → 可写连接删掉这个目录项再开（只删它本身）；只读连接抛 OperationalError，
+        落各路由既有的「fulltext.db 读不了」分支。
+    lstat 到 sqlite 自己打开之间还有一线窗口（µs 级，要本地库写权限才能赢），记已知限制。"""
+    jp = V().db_path + "-journal"
+    try:
+        st = os.lstat(jp)
+    except OSError:
+        return                                        # 不在（最常见）
+    if stat.S_ISREG(st.st_mode):
+        return                                        # 普通热日志：留给 sqlite 回滚，不碰
+    if writable:
+        try:
+            os.unlink(jp)
+        except OSError:
+            pass
+    else:
+        raise sqlite3.OperationalError("unable to open database file")
+
+
 def _connect_ro():
     """纯读地开索引库。**一个字节都不往库文件夹里写。**
 
@@ -1108,6 +1204,7 @@ def _connect_ro():
     退化的后果最多是「读到的是上一次 checkpoint 那一版」——命令行离线本来就是
     「用上次的索引」，stderr 上也这么说了。
     """
+    _guard_db_journal(False)                          # -journal 是非普通文件：只读连接报错，不卡（P2-1）
     uri = "file:" + urllib.parse.quote(V().db_path) + "?mode=ro"
     con = None
     try:
@@ -1197,6 +1294,7 @@ def connect():
     调用方（命令行的离线通道）自己回一句「先打开 AM·Note」。"""
     if V().readonly:
         return _connect_ro()
+    _guard_db_journal(True)                           # -journal 是非普通文件：删掉再开，不卡（P2-1）
     con = sqlite3.connect(V().db_path, timeout=30)
     con.execute("PRAGMA journal_mode=WAL")
     con.execute("PRAGMA synchronous=NORMAL")
@@ -1396,8 +1494,9 @@ def archive_text(rel, old_text):
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")[:-3]
         name = f"{flat}__{stamp}.bak"
         try:
-            fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | _BAK_ONOFOLLOW,
-                         0o666, dir_fd=dfd)
+            # 名字上要是一个 FIFO：不等读端、不往管道里写旧版原文，当「这一份没写成」（见 open_regular）
+            fd = open_regular(name, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | _BAK_ONOFOLLOW,
+                              0o666, dir_fd=dfd)
             with os.fdopen(fd, "w", encoding="utf-8") as f:
                 f.write(old_text)
         except OSError:
@@ -1451,7 +1550,7 @@ def archive_read(name):
     if not os.path.isfile(p):
         return None
     try:
-        with open(p, encoding="utf-8", errors="replace") as f:
+        with open(p, encoding="utf-8", errors="replace", opener=reg_opener) as f:
             return f.read()
     except OSError:
         return None
@@ -1636,7 +1735,7 @@ def _journal_append(entries):
     if not entries:
         return
     try:
-        with open(V().journal, "a", encoding="utf-8") as f:
+        with open(V().journal, "a", encoding="utf-8", opener=reg_opener) as f:
             for e in entries:
                 f.write(json.dumps(e, ensure_ascii=False) + "\n")
     except OSError:
@@ -1684,7 +1783,7 @@ def _journal_add(entries, seq):
     recs = []
     journal = V().journal
     try:
-        with open(journal, encoding="utf-8") as f:
+        with open(journal, encoding="utf-8", opener=reg_opener) as f:
             for line in f:
                 line = line.rstrip("\n")
                 if not line:
@@ -1756,7 +1855,7 @@ def journal_read(after_seq=0, limit=500):
     """读流水，只回序号大于 after_seq 的，最多 limit 条（从新往旧截）。"""
     out = []
     try:
-        with open(V().journal, encoding="utf-8") as f:
+        with open(V().journal, encoding="utf-8", opener=reg_opener) as f:
             for line in f:
                 try:
                     e = json.loads(line)
@@ -2626,7 +2725,7 @@ def _utf8_ok(full):
         return False
     dec = codecs.getincrementaldecoder("utf-8")("strict")
     try:
-        with open(full, "rb") as f:
+        with open(full, "rb", opener=reg_opener) as f:
             while True:
                 b = f.read(_UTF8_CHUNK)
                 if not b:

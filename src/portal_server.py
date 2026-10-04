@@ -137,6 +137,7 @@ import urllib.request
 import zlib
 from collections import OrderedDict, deque
 from datetime import datetime
+import http.server
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -753,7 +754,7 @@ def read_raw(rel: str, section: str = "", lines: str = ""):
     if not full.endswith(".md"):
         return _bad(T("只有 md 能在门户里读源码"))
     try:
-        with open(full, encoding="utf-8") as f:
+        with open(full, encoding="utf-8", opener=fulltext.reg_opener) as f:
             text = f.read()
     except (OSError, UnicodeDecodeError) as e:
         return _bad(T("读不了：{e}", e=e))
@@ -1118,9 +1119,10 @@ def _place_step(fd, seg, here, nxt, make, shown):
 
 
 def _open_read(pl):
-    """只读打开 pl 那一份（末段不跟符号链接）→ fd。"""
+    """只读打开 pl 那一份（末段不跟符号链接）→ fd。判完之后被换成 FIFO 之类的：不等写端（那样会拿着这一份的
+    写锁一直卡着），当「读不了原文」（fulltext.open_regular）。"""
     try:
-        return os.open(pl.name, os.O_RDONLY | _NOFOLLOW, dir_fd=pl.dfd)
+        return fulltext.open_regular(pl.name, os.O_RDONLY | _NOFOLLOW, dir_fd=pl.dfd)
     except OSError as e:
         raise _abs_err(e, {pl.name: pl.full})
 
@@ -1275,8 +1277,9 @@ def _backup(rel: str, old: str, force: bool = False) -> str:
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")[:-3]
         name = f"{flat}__{stamp}.bak"
         try:
-            fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | _NOFOLLOW,
-                         0o666, dir_fd=dfd)
+            # 名字上要是一个 FIFO：不等读端、不往管道里写旧版原文，当「备份写不了」（fulltext.open_regular）
+            fd = fulltext.open_regular(name, os.O_WRONLY | os.O_CREAT | os.O_TRUNC | _NOFOLLOW,
+                                       0o666, dir_fd=dfd)
             with os.fdopen(fd, "w", encoding="utf-8") as f:
                 f.write(old)
         except OSError:
@@ -1626,7 +1629,7 @@ def _read_local_img(path: str):
     if sz <= 0:
         return None, T("图片是空的")
     try:
-        with open(full, "rb") as f:
+        with open(full, "rb", opener=fulltext.reg_opener) as f:
             blob = f.read()
     except OSError as e:
         return None, T("读不了这张图：{e}", e=e)
@@ -2730,9 +2733,10 @@ def _copystat_lib(pl, src_st, made):
     库外那个 inode 上——R 实证库外文件 0600→0644、mtime、UF_HIDDEN 都被改。重开不了或 inode 对不上＝目标被人
     换了：抛 OSError，这次撤销按失败处理（调用方只在那个名字仍指向我们建的 inode 时才清）。"""
     try:
-        cfd = os.open(pl.name, os.O_RDONLY | _NOFOLLOW, dir_fd=pl.dfd)
+        cfd = fulltext.open_regular(pl.name, os.O_RDONLY | _NOFOLLOW, dir_fd=pl.dfd)
     except OSError as e:
-        raise _abs_err(e, {pl.name: pl.full})          # 被换成符号链接（ELOOP）/ 被删（ENOENT）
+        # 被换成符号链接（ELOOP）/ 被删（ENOENT）/ 换成 FIFO 之类（EFTYPE：不等写端，见 fulltext.open_regular）
+        raise _abs_err(e, {pl.name: pl.full})
     try:
         got = os.fstat(cfd)
         if got.st_dev != made.st_dev or got.st_ino != made.st_ino:
@@ -2799,9 +2803,9 @@ def _move_out(pl, dest):
     except OSError as e:
         if e.errno != errno.EXDEV:
             raise _abs_err(e, {pl.name: pl.full})     # dest 已是绝对路径，原样；pl.name 换回 full
-        # 读源：相对 fd、O_NOFOLLOW，必须是普通文件（竞态或手造才会是别的）
+        # 读源：相对 fd、O_NOFOLLOW，必须是普通文件（竞态或手造才会是别的；FIFO 之类不等写端，见 open_regular）
         try:
-            rfd = os.open(pl.name, os.O_RDONLY | _NOFOLLOW, dir_fd=pl.dfd)
+            rfd = fulltext.open_regular(pl.name, os.O_RDONLY | _NOFOLLOW, dir_fd=pl.dfd)
         except OSError as e2:
             raise _abs_err(e2, {pl.name: pl.full})
         try:
@@ -2810,8 +2814,10 @@ def _move_out(pl, dest):
                 raise OSError(errno.ELOOP, os.strerror(errno.ELOOP), pl.full)
             made = False
             try:
-                # dest 按路径建（废纸篓那一端信任；_trash_dest 已挑了不撞名的落点，同旧 open("wb")）
-                fdst = open(dest, "wb"); made = True
+                # dest 按路径建（废纸篓那一端信任；_trash_dest 已挑了不撞名的落点，同旧 open("wb")）。挑完之后那个名字上
+                # 冒出 FIFO 之类：不等读端、不往管道里写（reg_opener，5.15.0 的 copyfile 在这儿有一道 FIFO 预判）；made 仍是
+                # False，下面的收尾不删它——那不是我们建的
+                fdst = open(dest, "wb", opener=fulltext.reg_opener); made = True
                 try:
                     _copy_data(rfd, fdst.fileno())
                 finally:
@@ -2848,7 +2854,8 @@ def _move_in(src, pl):
         st = os.lstat(src)                             # 废纸篓那一端按路径
         if not stat.S_ISREG(st.st_mode):
             raise OSError(errno.ELOOP, os.strerror(errno.ELOOP), src)
-        rfd = os.open(src, os.O_RDONLY)                # 废纸篓信任，不开目录 fd；读文件本身
+        # 废纸篓信任，不开目录 fd；读文件本身（按路径，同旧）。lstat 之后被换成 FIFO 之类：不等写端（open_regular）
+        rfd = fulltext.open_regular(src, os.O_RDONLY)
         try:
             src_st = os.fstat(rfd)
             # 建目标：相对 fd、O_EXCL|O_NOFOLLOW（0o666，权限随后由 _copystat_lib 覆盖）
@@ -3081,7 +3088,7 @@ def read_config(v=None):
     raw = {}
     if os.path.exists(path):
         try:
-            with open(path, encoding="utf-8") as f:
+            with open(path, encoding="utf-8", opener=fulltext.reg_opener) as f:
                 raw = json.load(f)
         except (OSError, ValueError):
             raw = {}
@@ -3103,7 +3110,7 @@ def write_config(req: dict):
     out = {}
     if os.path.exists(config_path):
         try:
-            with open(config_path, encoding="utf-8") as f:
+            with open(config_path, encoding="utf-8", opener=fulltext.reg_opener) as f:
                 out = json.load(f)
         except (OSError, ValueError):
             out = {}
@@ -3126,7 +3133,7 @@ def write_config(req: dict):
 
     try:
         os.makedirs(os.path.dirname(config_path) or ".", exist_ok=True)
-        with open(config_path, "w", encoding="utf-8") as fp:
+        with open(config_path, "w", encoding="utf-8", opener=fulltext.reg_opener) as fp:
             json.dump(out, fp, ensure_ascii=False, indent=2)
     except OSError as e:
         return _bad(T("写失败：{e}", e=e))
@@ -3884,7 +3891,7 @@ def agent_marks():
     # 半条，丢掉；剩下的再按行数收进 deque
     tail = deque(maxlen=JOURNAL_TAIL)
     try:
-        with open(V().journal, "rb") as f:
+        with open(V().journal, "rb", opener=fulltext.reg_opener) as f:
             f.seek(0, os.SEEK_END)
             size = f.tell()
             back = min(size, JOURNAL_TAIL_BYTES)
@@ -4131,7 +4138,7 @@ def tree_one(v):
         full = os.path.join(nd, fn)
         try:
             st = os.stat(full)
-            with open(full, encoding="utf-8", errors="replace") as f:
+            with open(full, encoding="utf-8", errors="replace", opener=fulltext.reg_opener) as f:
                 raw = f.read(20000)
         except OSError:
             continue
@@ -4281,7 +4288,7 @@ def outline_view(query):
     if not kind:
         return _bad(T("这个格式门户不认"))
     try:
-        with open(full, encoding="utf-8", errors="replace") as f:
+        with open(full, encoding="utf-8", errors="replace", opener=fulltext.reg_opener) as f:
             text = f.read(fulltext.MD_MAX_BYTES)
     except OSError as e:
         return _bad(T("读不了：{e}", e=e))
@@ -4546,7 +4553,7 @@ def meta_view(query):
     head = ""
     if kind == "md":
         try:
-            with open(full, encoding="utf-8", errors="replace") as f:
+            with open(full, encoding="utf-8", errors="replace", opener=fulltext.reg_opener) as f:
                 head = f.read(20000)
         except OSError:
             pass
@@ -4974,7 +4981,7 @@ def ext_doc(query):
     if not ent:
         return _bad(T("这份没登记过，重新拖一次"))
     try:
-        with open(ent["路径"], encoding="utf-8", errors="replace") as f:
+        with open(ent["路径"], encoding="utf-8", errors="replace", opener=fulltext.reg_opener) as f:
             text = f.read(EXT_MAX)
         st = os.stat(ent["路径"])
     except OSError as e:
@@ -5009,7 +5016,7 @@ def ext_asset(query):
     try:
         if os.path.getsize(full) > EXT_ASSET_MAX:
             return None, T("这张图太大了")
-        with open(full, "rb") as f:
+        with open(full, "rb", opener=fulltext.reg_opener) as f:
             return f.read(), ctype
     except OSError as e:
         return None, T("读不了：{e}", e=e)
@@ -5328,6 +5335,25 @@ def pmingliu_file():
             except OSError:
                 pass
             return ""
+
+
+# ── 静态下发也只开普通文件（FIFO 阻塞加固）──────────────────────
+#
+# 库里的文件（阅读页取 md 原文、html 标签页、图片）是基类 SimpleHTTPRequestHandler.send_head 发的，它里面那一句
+# `f = open(path, 'rb')` 遇到 FIFO 会一直等写端：一个 FIFO 命名的 x.md / 图.png / index.html 就挂住一条连接。
+# translate_path 先 stat 一眼也挡不住「判完之后才被换掉」的那一种，所以换的是那一句 open 本身：send_head 用的是
+# http.server 模块全局的名字 `open`，在模块上放一个同名的包装，就只给它补上 opener=fulltext.reg_opener。
+# 核过 3.9.6（app 用的就是它）和 3.13 / 3.14 的 http/server.py：模块里调用裸名 open 的函数只有 send_head 一个
+# （3.14 另有一处在 `if __name__ == "__main__"` 的命令行入口里，服务进程走不到），模块自己没有定义 / import /
+# 赋值 open，所以这个名字只影响那一句。打不开（FIFO / 套接字 / 设备）落基类原有的 `except OSError → 404`；
+# 普通文件拿到的还是同一种文件对象（f.name 也还是路径），头和体一个字节不变。
+def _static_open(file, mode="r", *args, **kw):
+    if len(args) < 6:                            # opener 是内建 open 的第 8 个位置参数；位置上没给才补
+        kw.setdefault("opener", fulltext.reg_opener)
+    return open(file, mode, *args, **kw)
+
+
+http.server.open = _static_open
 
 
 class Handler(SimpleHTTPRequestHandler):
