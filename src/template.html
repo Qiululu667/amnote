@@ -6946,6 +6946,7 @@ function showTab(id){
   if(prev && prev.id!==id && prev.editing) flushSave(prev);   // 切文档强制落盘
   curTab=id;
   $$('#panes .pane').forEach(p=>p.classList.toggle('on', p.id==='pane-'+id));
+  growAllEd();                       // 藏着时换过字的源码框（别的标签里点了「改用对方的」）这时才量得出高度，不量下半截被裁掉
   // 编辑区的判据看的是 #doc，所以 id 跟着当前这一份走
   $$('#panes .md').forEach(m=>m.removeAttribute('id'));
   const md=paneOf(t) && paneOf(t).querySelector('.md');
@@ -7449,7 +7450,14 @@ async function saveBeforeLeave(t){
   const p=paneOf(t);
   // toggleSrc 认的是当前标签；t 不是当前标签就别回排版，saveEdit 自己会读源码框里的字
   if(p && p.classList.contains('src') && t.id===curTab) toggleSrc();   // 先回排版，再按正文那条路存
-  if(t.conflict){ bnr('conflict', true); notify(TR('这份在外部被改过了，先挑一个再走。')); return false; }
+  /* 被冲突拦下：横幅已经绑着这一篇就只亮出来，服务端那句带时间的原话留着；没绑着而它是眼前这篇，改绑过来（showConflict 挂
+     conflictTab），不然两颗按钮点了只是收起。后台标签（saveAllForReload 挨个过、关后台标签）不绑：横幅不写篇名，绑过去的话
+     在眼前点「改用对方的」丢的是后台那篇的改动——跟 5.15.1 一样只亮横幅；切到那篇点胶囊就会绑上 */
+  if(t.conflict){
+    if(conflictTab!==t && t.id===curTab) showConflict(t, '');
+    else bnr('conflict', true);
+    notify(TR('这份在外部被改过了，先挑一个再走。')); return false;
+  }
   if(t.finishing) return false;
   t.finishing=true;
   let ok=false;
@@ -7483,11 +7491,15 @@ async function finishEdit(){
   notify(TR('已保存，继续阅读。'));
 }
 
-/* 源码框跟着内容长高，不自己开一层滚动条。 */
+/* 源码框跟着内容长高，不自己开一层滚动条。
+   先设 height:auto 才量得出缩回去的高度，长文滚到下面时这一下会把外层 .pane 的滚动夹回顶上
+   （源码模式里打一个字就跳回文首，10-04 修），量完放回去。 */
 function growEd(ta){
   if(!ta) return;
+  const p=ta.closest('.pane'), top=p ? p.scrollTop : 0;
   ta.style.height='auto';
   ta.style.height=Math.max(350, ta.scrollHeight+4)+'px';
+  if(p) p.scrollTop=top;
 }
 /* 高度是按当时的宽度算出来的，窗口一窄、版心一改，算出来的就旧了。
    框上是 overflow:hidden，不重算就等于把下半截源码裁掉，还滚不到。
@@ -7731,6 +7743,7 @@ function newPane(t){
       const s=ta.selectionStart, x=ta.selectionEnd;
       ta.value=ta.value.slice(0,s)+'  '+ta.value.slice(x);
       ta.selectionStart=ta.selectionEnd=s+2;
+      t.work=ta.value; t.touched=true; growEd(ta); autoKick(t);   // 改 value 不发 input，这里补上（同块源码框）
     }
   });
   $('#panes').appendChild(p);
@@ -11228,6 +11241,8 @@ function endEdit(t){
   p.classList.remove('edit','src','fresh');
   t.editing=false; t.work=undefined; t.reg=null; t.touched=false;
   t.pendingBad=null; t.stuckEls=null; t.saveErr=null; t.retryN=0; t.redraw=null; t.composeWait=0; t.again=false;
+  // 冲突跟着编辑态一起了结：放弃修改以后还挂着的话，下次进编辑一进来就说有冲突、「完成」被拦（10-04 修）
+  t.conflict=null; if(conflictTab===t) conflictTab=null;
   bnr('conflict', false);
   syncBar();
 }
@@ -11363,7 +11378,9 @@ async function saveEdit(force, opt){
     body=plan.text;
     redraw=v.redraw;
   }
-  if(body===t.raw){
+  /* 「保留我的」（opt.keep）不走这条：跟手上那份一样不等于跟盘上一样（冲突就是盘上换了），照发强制写——
+     盘上恰好也一样服务端回「没有改动」、走成功那条清掉冲突；不一样就盖上去，对方那版服务端先留档 */
+  if(body===t.raw && !opt.keep){
     t.touched=srcBlkPending(t); saveOk(t);          // 块源码框里还有没落的字：没存完（J 轮）
     queueRedraw(t, redraw);
     if(t.id===curTab){ syncStatusLine(); syncNative(); }
@@ -11392,7 +11409,10 @@ async function saveEdit(force, opt){
       if(auto){ showConflict(t, r.错误||''); return false; }
       if(ask(TR('这份在外部被改过了，仍然保存吗？'),
              (r.错误||'')+'\n'+TR('外部那一版会被你这一版覆盖，覆盖前会先留档。'),
-             TR('仍然保存'), TR('取消'), true)) return saveEdit(true, {tab:t});
+             TR('仍然保存'), TR('取消'), true)){
+        t.loadSeq=(t.loadSeq|0)+1; t.loading=false;      // 点了就算数：在途的「改用对方的」回来认不出这一趟、作废（同「保留我的」）
+        return saveEdit(true, {tab:t});
+      }
       // 手动这条路上按了「取消」＝不存了，冲突就此揭过，别让 pill 和「完成」一直卡着
       t.conflict=null;
       if(t.id===curTab) syncStatusLine();
@@ -11528,20 +11548,54 @@ function showConflict(t, why){
 }
 $('#keepMine').onclick=()=>{
   const t=conflictTab; bnr('conflict', false); conflictTab=null;
-  if(t && t.editing) saveEdit(true, {tab:t});
+  if(!t || !t.editing) return;
+  // 以用户最后点的为准：当场推一格代号，在途的「改用对方的」回来就作废——强制写的回执比 /__raw 还晚回来也一样
+  t.loadSeq=(t.loadSeq|0)+1; t.loading=false;
+  saveEdit(true, {tab:t, keep:true});
 };
 $('#takeTheirs').onclick=async()=>{
   const t=conflictTab; bnr('conflict', false); conflictTab=null;
   if(!t) return;
+  const path=t.path, seq=t.loadSeq|0;                  // 点的这一刻：哪一篇、哪一趟
   try{
     const r=await (await fetch('/__raw?path='+encodeURIComponent(t.path)+'&lang='+LANG,
                                {cache:'no-store'})).json();
     if(!r.ok){ flash(r.错误||TR('读不到源码')); return; }
+    /* 等回来这一会儿什么都可能发生，先核一遍：标签关了就算了（以前 prepEdit 抛错、报成「服务没应答」）；
+       换了篇、回了开始页／待办页、重进过编辑、存成过一次（保留我的、⌘S 仍然保存，都推 loadSeq）：这份对方的不作数，
+       什么都别动——这一条排在最前，那时横幅可能已经是别的冲突；
+       途中又撞的那次冲突（停笔自动保存、切走 flushSave，基于是旧的，存的正是要丢掉的这份，不推 loadSeq）跟着作废；
+       已经不在编辑态（途中 Esc 放弃了）只按阅读态重载——以前照样 prepEdit，把阅读页做成了 contenteditable。 */
+    const p=paneOf(t); if(!p) return;
+    if(t.path!==path || kindOfTab(t)!=='md' || (t.loadSeq|0)!==seq) return;
+    if(conflictTab===t){ conflictTab=null; bnr('conflict', false); }
+    if(!t.editing){ t.conflict=null; loadMd(t); return; }
+    clearTimeout(t.autoT); t.autoT=null; t.again=false;     // 点之前挂着的停笔计时作废：源码模式下它到点会照存源码框里那份
+    unwatch(t);
+    // 开着的块源码框：同 toggleSrc，先挂 closing 再拿掉。不然 paintWork 冲掉它时 Chromium 同步发 blur，框里的字落进旧台账、置 touched
+    p.querySelectorAll('.md > textarea.blk').forEach(x=>{ x.dataset.closing='1'; x.remove(); });
+    /* 整篇源码框跟着换，不分模式（途中刚切进源码的也对）：源码模式下存盘、退出读的都是它，只换 .md 的话
+       退出编辑又把自己那版存回去、盖掉对方的（10-04 修）。不派发 input——不是用户改的。
+       光标、滚动留在原处：换字之前取 selectionStart（按新长度截断）和 scrollTop。 */
+    const ta=p.querySelector('.ed'), at=ta.selectionStart|0, top=p.scrollTop;
     t.raw=r.正文; t.rawAt=r.改于; t.work=r.正文; t.touched=false; t.conflict=null;
+    ta.value=t.work;
     t.loadSeq=(t.loadSeq|0)+1; t.loading=false;        // V 轮：改用对方的＝现读的正主，在途的旧重载作废
-    saveOk(t); t.redraw=null;                     // 改用对方的：之前没存上的那几次、等着重画的块都作废
-    paintWork(t); prepEdit(t); buildToc(); ensureCaret(t);
-    if(t.id===curTab) syncStatusLine();
+    saveOk(t); t.redraw=null; t.pendingBad=null; t.stuckEls=null;   // 之前没存上的那几次、等着重画的块、存不进的块都作废
+    paintWork(t); prepEdit(t);
+    if(t.id===curTab){                                  // 不是当前标签：焦点、选区一概不动，大纲和状态行切回来时会重画
+      if(p.classList.contains('src')){                  // 源码模式不走 ensureCaret：它认 .md，会把选区拽进藏着的正文，打字哪儿都不进
+        const k=Math.min(at, ta.value.length), ae=document.activeElement;
+        growEd(ta);
+        // 等的这一会儿用户去了别的输入框（⌘K 之类），或开着设置／⌘K／快看／排版／标签列表／个人资料这些浮层（判据都是 AMN.escape 里现成的）：
+        // 别把焦点挪到它后面，只换字
+        const busy=cfgOn() || quickOn() || qlOn || typeOn() || tabPickOn() || userPopOn();
+        if(!busy && (!ae || ae===document.body || (ae.closest && ae.closest('#conflict')) || p.contains(ae))){ ta.focus(); ta.setSelectionRange(k, k); }
+        p.scrollTop=top;
+      }else ensureCaret(t);
+      buildToc(); syncStatusLine(); syncNative();
+    }
+    syncTabDirty();
   }catch(e){ flash(TR('服务没应答')); }
 };
 
