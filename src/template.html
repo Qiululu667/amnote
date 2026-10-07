@@ -5392,24 +5392,32 @@ function lineTaskText(line){
   return s.slice(a, i);
 }
 
-/* ── 开始页：续读卡下面那一行 ──
-   最近 7 天改过的笔记里还有几件没勾完；0 件整行不画。骨架整套借 .nrow（noteRowHtml 是母本），
-   左边 40 位是一枚点不了的记号。用 data-act 不用 data-open：右键菜单和中键开新标签只认
-   data-open，那是给文档的。开始页那枚「全部 / Markdown / HTML」不管这一行（任务只在 md 里）。 */
+/* ── 开始页：续读卡下面那一行，一直画 ──
+   最近 7 天改过的笔记里还有没勾完的：标题「还有 {n} 件没勾完」，副行是第一条任务。
+   一件都没有（含只有更早的）：标题「待办」，副行是固定提示，点进去照样能新建。
+   骨架整套借 .nrow（noteRowHtml 是母本），左边 40 位是一枚点不了的记号。
+   用 data-act 不用 data-open：右键菜单和中键开新标签只认 data-open，那是给文档的。
+   开始页那枚「全部 / Markdown / HTML」不管这一行（任务只在 md 里）。 */
 function todoDoorHtml(){
   const now=Date.now()/1000;
   const docs=todoDocs().filter(i=>todoRecent(i, now));
   let n=0;
   docs.forEach(i=>{ n+=i.任务.length; });
-  if(!n) return '';
-  const first=docs[0].任务.reduce((a,b)=>b[0]<a[0]?b:a);
-  const head=TR('还有 {n} 件没勾完',{n});
   const go=cls=>`<span class="nmeta ${cls}"><span class="todo-go">${esc(TR('查看'))}</span></span>`;
+  let head, sub;
+  if(n){
+    const first=docs[0].任务.reduce((a,b)=>b[0]<a[0]?b:a);
+    head=TR('还有 {n} 件没勾完',{n});
+    sub=taskText(first[1]);
+  }else{
+    head=TR('待办##page');
+    sub=TR('记一件，或看看笔记里的勾选');
+  }
   return `<div class="notelist todo-door"><button type="button" class="nrow" data-act="todo">`
     + `<span class="nthumb todo-mark" aria-hidden="true">${icon('checklist',22)}</span>`
     + `<span class="nmain">`
     +   `<span class="ntop"><span class="ntitle">${esc(head)}</span><span class="nleader"></span>${go('wide')}</span>`
-    +   `<span class="ndesc"><span class="ntx">${esc(taskText(first[1]))}</span>${go('narrow')}</span>`
+    +   `<span class="ndesc"><span class="ntx">${esc(sub)}</span>${go('narrow')}</span>`
     + `</span></button></div>`;
 }
 
@@ -5538,7 +5546,7 @@ function todoHtml(td){
   };
   const rec=rows(td.rec), old=rows(td.old);
   if(!rec.length && !old.length)
-    return emptyHtml(TR('都勾完了'), esc(TR('点「新建待办」记一件，或者在任何笔记里写个勾选列表。')), {mark:'checklist',
+    return emptyHtml(TR('还没有待办'), esc(TR('点「新建待办」记一件，或者在任何笔记里写个勾选列表。')), {mark:'checklist',
       buttons:`<button type="button" class="hbtn key" data-act="todoadd">${icon('plus',15)}<span class="lbl">${esc(TR('新建待办'))}</span></button>`});
   /* 段头的数＝这一桶里页面上还没勾的行。勾、勾回时 todoMark 就地改这个字。 */
   const cnt=(k, list)=>`<span class="section-meta num" data-todo-n="${k}">${esc(TR('{n} 件',{n:todoLeft(list)}))}</span>`;

@@ -604,7 +604,8 @@ window.AMN_I18N["en"] = {
     "one": "Show {n} more to-do",
     "other": "Show {n} more to-dos"
   },
-  "都勾完了": "All done",
+  "记一件，或看看笔记里的勾选": "Jot one down, or look through the checklists in your notes.",
+  "还没有待办": "No to-dos yet",
   "这篇正在编辑，先退出编辑再勾": "This note is being edited — finish editing, then tick it",
   "这篇刚改过，正在刷新": "This note just changed — refreshing",
   "这篇刚在别处改过，已刷新": "This note just changed elsewhere — refreshed",
