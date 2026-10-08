@@ -1043,18 +1043,30 @@ kbd{
 .todo-row:hover{background:var(--hover)}
 /* 原生框，跟阅读页 .md li.task input 同一条：accent-color、指针（那条写在 .md 底下，
    页面类标签里 .md 整个藏着，只能照抄一份） */
-.todo-row input{flex:none;margin:0;accent-color:var(--accent);cursor:pointer}
+.todo-row input[type=checkbox]{flex:none;margin:0;accent-color:var(--accent);cursor:pointer}
 /* 文字 · 点线 · 笔记名：同 .ntop 的排法（flex-end 底对齐、gap 10、点线抬到基线上方） */
 .todo-line{flex:1 1 auto;min-width:0;display:flex;align-items:flex-end;gap:10px}
 .todo-tx{display:block;flex:0 1 auto;min-width:0;max-width:72%;text-align:left;
-  font-size:14px;font-weight:400;line-height:20px;color:var(--t1);
+  font-size:14px;font-weight:400;line-height:20px;color:var(--t1);cursor:text;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .todo-tx:active:not([disabled]){transform:none}
-.todo-leader{flex:1 1 auto;min-width:32px;height:2px;margin-bottom:8.5px;
+.todo-leader{position:relative;flex:1 1 auto;min-width:32px;height:2px;margin-bottom:8.5px;cursor:text;
   background-image:radial-gradient(circle at center, var(--leader) .6px, rgba(0,0,0,0) .75px);
   background-size:5px 2px;background-repeat:repeat-x;background-position:left center}
+/* 点线本身只有 2px，点文字旁边那一截空白也要能改。点不进左右两边的字和笔记名。 */
+.todo-leader::before{content:"";position:absolute;left:0;right:0;top:-14px;bottom:-8px}
 .todo-src{flex:none;max-width:40%;display:flex;align-items:center;min-width:0;
-  font-size:12px;line-height:20px;margin-bottom:-1px;color:var(--t3);white-space:nowrap}
+  font-size:12px;line-height:20px;margin-bottom:-1px;color:var(--t3);white-space:nowrap;text-align:left}
+.todo-src:hover{color:var(--t1)}
+.todo-src:active:not([disabled]){transform:none}
+/* 就地改这一行的字：整行一道强调色的线（同新建那一行），点线让开，输入框占住文字那一截。 */
+.todo-row.editing{box-shadow:inset 0 0 0 1px var(--accent)}
+.todo-row.editing .todo-leader{display:none}
+.todo-tx-edit{flex:1 1 auto;min-width:0;max-width:none;height:20px;margin:0;padding:0;border:0;
+  border-radius:0;background:none;outline:none;box-shadow:none;font-family:inherit;
+  font-size:14px;font-weight:400;line-height:20px;color:var(--t1);cursor:text}
+.todo-tx-edit:focus-visible{outline:none}
+.todo-row.editing .todo-line{align-items:center}
 .todo-src .nd{margin-right:7px}
 .todo-nm{min-width:0;overflow:hidden;text-overflow:ellipsis}
 /* 刚勾掉：同阅读页 input:checked+span（--t3 ＋ 删除线），行留在原位，离开这一页才消失 */
@@ -1070,7 +1082,7 @@ kbd{
 @media (max-width:700px){
   .todo-list{margin:0 -10px}
   .todo-row{padding:10px}
-  .todo-tx{font-size:13px}
+  .todo-tx,.todo-tx-edit{font-size:13px}
 }
 /* ── 5.15 新建待办：页头下面那一行输入 ──
    平时不画（hidden），点页头「＋ 新建待办」才展开。跟任务行对齐：同样的 40 高、内边距、圆角、
@@ -5463,6 +5475,7 @@ function todoRenew(n, i){
   n.base=i.基于||'';
   n.v++; n.gen++;
   n.on=new Map(); n.ok=new Map(); n.hit=new Set();
+  n.pendTx=new Map();
 }
 function todoMerge(td){
   const by=new Map(items.map(i=>[i.路径, i]));
@@ -5511,16 +5524,23 @@ function todoSame(n, ts){
 }
 const todoLeft = list => list.reduce((s, n)=>s+n.ts.filter(x=>n.on.get(x[0])!==true).length, 0);
 /* 一行：原生勾选框（同阅读页 li.task 那一枚）＋ 任务文字 ···· ● 所在笔记。
-   框在任何 [data-open] 外面，点框不会冒到下面去把那篇打开；文字那颗按钮挂 data-open ＋
-   data-line：点＝打开并定位到那一行，右键菜单、中键开新标签走现成的那一套。 */
-function todoRowHtml(n, x, name, dot){
-  const ln=x[0], tx=taskText(x[1]), on=n.on.get(ln)===true;
-  return `<div class="todo-row${on?' done':''}" data-p="${esc(n.p)}" data-l="${ln}">`
+   框在任何 [data-open] 外面，点框不会冒到下面去把那篇打开。
+   文字和后面的点线：点一下就在这一行改字（todoEditBegin）。右边笔记名才挂 data-open ＋
+   data-line：点＝打开并定位到那一行，右键菜单、中键开新标签走现成的那一套。
+   正在改的那一行不画按钮，留一个槽，paintTodo 把活着的输入框放回去（重画碰不到组字）。 */
+function todoRowHtml(td, n, x, name, dot){
+  const ln=x[0], raw=(n.pendTx && n.pendTx.has(ln)) ? n.pendTx.get(ln) : x[1];
+  const tx=taskText(raw), on=n.on.get(ln)===true;
+  const ed=td && td.edit, editing=!!(ed && !ed.done && ed.x===x);
+  const text=editing
+    ? `<span class="todo-edit-hold"></span>`
+    : `<button type="button" class="todo-tx" data-act="todoedit" title="${esc(tx)}">${esc(tx)}</button>`;
+  return `<div class="todo-row${on?' done':''}${editing?' editing':''}" data-p="${esc(n.p)}" data-l="${ln}">`
     + `<input type="checkbox"${on?' checked':''} aria-label="${esc(tx)}">`
     + `<span class="todo-line">`
-    +   `<button type="button" class="todo-tx" data-open="${esc(n.p)}" data-kind="md" data-line="${ln}" title="${esc(tx)}">${esc(tx)}</button>`
+    +   text
     +   `<span class="todo-leader"></span>`
-    +   `<span class="todo-src">${dot}<span class="todo-nm">${esc(name)}</span></span>`
+    +   `<button type="button" class="todo-src" data-open="${esc(n.p)}" data-kind="md" data-line="${ln}" title="${esc(name)}">${dot}<span class="todo-nm">${esc(name)}</span></button>`
     + `</span></div>`;
 }
 /* 页头：聚焦某一本时 h1 后面带「· ● 本名」（同文件夹页）：这一页没有笔记本条，不写就看不出
@@ -5528,7 +5548,7 @@ function todoRowHtml(n, x, name, dot){
    这一颗补一个可访问名（审查 R2-10；别的页那颗不带，逐字不变）。 */
 function todoHeadHtml(){
   return greetingHtml(icon('checklist',13), TR('从笔记里集中过来'), TR('待办##page'),
-    TR('还没勾上的都在这里，勾一下就写回原来那一行。'),
+    TR('还没勾上的都在这里。点一下字就能改，勾一下写回原来那一行。'),
     Object.assign({btn:{act:'todoadd', label:TR('新建待办'), aria:TR('新建待办')}}, (NB.multi && NB.cur) ? {here:NB.cur} : null));
 }
 /* 页头以下、输入行以下的那一片（两节 / 空态）。5.15 起页头和它分开画，中间夹着输入行。 */
@@ -5540,7 +5560,7 @@ function todoHtml(td){
       const i=by.get(n.p);
       const name=i ? cleanTitle(i) : String(n.p).split('/').pop().replace(/\.md$/i,'');
       const dot=nbDot(NB.of(n.p), {sm:true});
-      n.ts.forEach(x=>out.push(todoRowHtml(n, x, name, dot)));
+      n.ts.forEach(x=>out.push(todoRowHtml(td, n, x, name, dot)));
     });
     return out;
   };
@@ -5599,9 +5619,33 @@ function paintTodo(t, box, quiet){
     todoAddWire(t, sk.inp);
     todoDraftTake(t, sk);            // 换语言整页重来之前框里打到一半的字（todoAddHide 存的）
   }
+  todoEditRevalidate(t, td);
   const head=todoHeadHtml(), html=todoHtml(td);
   if(fresh || !quiet || sk.hd._h!==head){ sk.hd.innerHTML=head; sk.hd._h=head; }
-  if(fresh || !quiet || html!==td.html || !sk.bd.firstElementChild){ td.html=html; sk.bd.innerHTML=html; }
+  if(fresh || !quiet || html!==td.html || !sk.bd.firstElementChild){
+    /* 正在改的那一行：输入框先摘下来，重画之后放回槽里。摘的这一下会失焦，hold 挡住，
+       别把没写完的字当成一次提交。 */
+    const ed=td.edit;
+    let focused=false, selA=0, selB=0;
+    if(ed && !ed.done && ed.node){
+      focused=document.activeElement===ed.node;
+      selA=ed.node.selectionStart||0; selB=ed.node.selectionEnd==null?selA:ed.node.selectionEnd;
+      ed.hold=true;
+      if(ed.node.parentNode) ed.node.remove();
+    }
+    td.html=html; sk.bd.innerHTML=html;
+    if(ed && !ed.done && ed.node){
+      const slot=sk.bd.querySelector('.todo-edit-hold');
+      if(slot){
+        slot.replaceWith(ed.node);
+        ed.hold=false;
+        if(focused){
+          ed.node.focus();
+          try{ ed.node.setSelectionRange(selA, selB); }catch(e){}
+        }
+      }else ed.hold=false;
+    }
+  }
   todoAddSync(t, sk);
   todoLostPaint(sk);
   todoFlashNew(td, sk);
@@ -5759,13 +5803,266 @@ function todoAfterOk(p, ln, raw, want, base, r){
     if(k==='start' || k==='todo') paintPage(x, {quiet:true});
   });
 }
-/* 待办页上点任务文字：把这一条的原文带给 openDoc，打开后拿它核对那一行。 */
+/* 待办页上点右边的笔记名：把这一条的原文带给 openDoc，打开后拿它核对那一行。 */
 function todoLineOpt(t, row){
   const ln=row && row.dataset.line;
   if(ln==null || ln==='') return null;
   const td=t && t.td, n=td && todoFind(td, row.dataset.open);
   const x=n && n.ts.find(a=>a[0]===+ln);
   return {line:+ln, task:x ? x[1] : undefined};
+}
+
+/* ═══ 待办页就地改字 ════════════════════════════════
+   点任务文字（或后面的点线）→ 这一行变成输入框，改的是原来那一行方括号后面的字。
+   回车，或点到别处：写回去（POST /__task，带「文」）。Esc：放弃。
+   字空了不删这一条，原样留着。右边笔记名仍是打开那一篇。
+   输入框跟「新建」那一行一样要活过重画：paintTodo 摘下来再放回槽里，组字才不断。
+   跟勾选、新建串在同一条队上（n.q、TODO_FLY、TODO_GATE），免得行号错位写到别的行。 */
+function todoEditEsc(t){
+  const ed=t && t.td && t.td.edit;
+  if(!ed || ed.done || document.activeElement!==ed.node) return false;
+  todoEditCancel(t, t.td, ed);
+  return true;
+}
+function todoEditRevalidate(t, td){
+  const ed=td && td.edit;
+  if(!ed || ed.done) return;
+  if(ed.n && ed.n.v===ed.v && ed.n.ts && ed.n.ts.indexOf(ed.x)>=0) return;
+  const n=ed.n && todoFind(td, ed.n.p);
+  if(n){
+    const hits=n.ts.filter(a=>a[1]===ed.orig);
+    if(hits.length===1){ ed.n=n; ed.x=hits[0]; ed.v=n.v; ed.gen=n.gen; return; }
+  }
+  const text=ed.node ? todoClean(ed.node.value) : '';
+  ed.hold=true; ed.done=true; td.edit=null;
+  if(ed.node && ed.node.parentNode) ed.node.remove();
+  if(text && text!==ed.orig) notify(todoEditSay(TR('这篇刚在别处改过，已刷新'), todoEditKeep(t, text)));
+}
+function todoEditSay(reason, where){
+  const tail=where==='box' ? TR('没改上，字留在上面了') : where==='lost' ? TR('没改上，字留在「没记上」里') : '';
+  if(reason && tail) return reason+(LANG==='en' ? '. ' : '。')+tail;
+  return reason || tail || '';
+}
+/* 没写上的字不能丢：输入行空着就放回去；正在打别的，就收进「没记上」（重试会另外记一条）。 */
+function todoEditKeep(t, text){
+  text=todoClean(text);
+  if(!text) return '';
+  const sk=todoSkelOf(t);
+  if(sk && !sk.inp.disabled && !todoClean(sk.inp.value)){
+    sk.add.hidden=false;
+    sk.inp.value=text;
+    todoAddSync(t, sk);
+    return 'box';
+  }
+  todoLostAdd({text, book:todoAddBook()});
+  todoLostPaintAll();
+  return 'lost';
+}
+function todoEditSwap(ed, raw){
+  const btn=document.createElement('button');
+  btn.type='button';
+  btn.className='todo-tx';
+  btn.dataset.act='todoedit';
+  const tx=taskText(raw);
+  btn.textContent=tx;
+  btn.title=tx;
+  const row=ed.node && ed.node.closest && ed.node.closest('.todo-row');
+  if(ed.node && ed.node.parentNode) ed.node.replaceWith(btn);
+  if(row) row.classList.remove('editing');
+}
+function todoEditSchedule(t, td){
+  td.html='';
+  setTimeout(()=>{ if(t && t.td===td && !(td.edit && !td.edit.done)) paintPage(t, {quiet:true}); }, 0);
+}
+function todoEditCancel(t, td, ed){
+  if(!ed || ed.done) return;
+  ed.done=true; ed.hold=true;
+  td.edit=null;
+  todoEditSwap(ed, ed.x ? ed.x[1] : ed.orig);
+  todoEditSchedule(t, td);
+}
+function todoEditBegin(t, row){
+  const td=t && t.td;
+  if(!td || !row) return;
+  const live=td.edit;
+  if(live && !live.done){
+    if(live.node && live.node.closest('.todo-row')===row){ live.node.focus(); return; }
+    todoEditCommit(t, td, live);
+  }
+  const p=row.dataset.p, ln=+row.dataset.l;
+  const n=todoFind(td, p), x=n && n.ts.find(a=>a[0]===ln);
+  if(!n || !x) return;
+  if(!IS_HTTP || !canEditPath(p)){ notify(TR('这一份是只读的，改不了')); return; }
+  if(TABS.some(o=>!o.ext && o.path===p && o.editing)){ notify(TR('这篇正在编辑，先退出编辑再改')); return; }
+  if(!n.base || td.stale.has(p)){ td.stale.add(p); notify(TR('这篇刚改过，正在刷新')); todoRescan(); return; }
+  const btn=row.querySelector('.todo-tx');
+  if(!btn) return;
+  const inp=document.createElement('input');
+  inp.type='text';
+  inp.className='todo-tx-edit';
+  inp.maxLength=TODO_ADD_MAX;
+  inp.autocomplete='off';
+  inp.spellcheck=false;
+  inp.enterKeyHint='done';
+  inp.setAttribute('aria-label', TR('修改待办'));
+  const shown=(n.pendTx && n.pendTx.has(ln)) ? n.pendTx.get(ln) : x[1];
+  inp.value=shown;
+  const ed={n, x, node:inp, orig:shown, v:n.v, gen:n.gen, done:false, hold:false};
+  td.edit=ed;
+  todoEditWire(t, td, ed);
+  btn.replaceWith(inp);
+  row.classList.add('editing');
+  td.html=todoHtml(td);
+  inp.focus();
+  const c=inp.value.length;
+  try{ inp.setSelectionRange(c, c); }catch(e){}
+}
+function todoEditWire(t, td, ed){
+  const inp=ed.node;
+  inp.addEventListener('keydown', e=>{
+    if(e.isComposing || e.keyCode===229) return;
+    if(e.key==='Enter'){ e.preventDefault(); todoEditCommit(t, td, ed); }
+  });
+  inp.addEventListener('paste', e=>{
+    const dt=e.clipboardData; if(!dt) return;
+    const s=dt.getData('text/plain');
+    if(!s || !/[\r\n\u2028\u2029]/.test(s)) return;
+    e.preventDefault();
+    todoAddInsert(inp, s.replace(/\r\n|[\r\n\u2028\u2029]/g, ' '));
+  });
+  inp.addEventListener('drop', e=>{
+    const dt=e.dataTransfer; if(!dt) return;
+    const s=dt.getData('text/plain');
+    if(!s || !/[\r\n\u2028\u2029]/.test(s)) return;
+    e.preventDefault();
+    if(document.activeElement!==inp){
+      inp.focus();
+      const c=inp.value.length; try{ inp.setSelectionRange(c, c); }catch(err){}
+    }
+    todoAddInsert(inp, s.replace(/\r\n|[\r\n\u2028\u2029]/g, ' '));
+  });
+  inp.addEventListener('blur', ()=>{
+    if(ed.hold || ed.done) return;
+    todoEditCommit(t, td, ed);
+  });
+}
+function todoEditCommit(t, td, ed){
+  if(!ed || ed.done) return;
+  const text=todoClean(ed.node.value);
+  if(!text || text===ed.orig){ todoEditCancel(t, td, ed); return; }
+  ed.done=true; ed.hold=true;
+  const n=ed.n, x=ed.x;
+  if(!n.pendTx) n.pendTx=new Map();
+  n.pendTx.set(x[0], text);
+  n.hit.add(x[0]);
+  td.edit=null;
+  todoEditSwap(ed, text);
+  todoEditSchedule(t, td);
+  const v=n.v, gen=n.gen, seq=++TODO_SEQ;
+  n.pend=(n.pend|0)+1;
+  n.q=(n.q||Promise.resolve()).then(()=>todoEditSend(t, td, n, v, gen, x, text, seq)).catch(()=>{}).then(()=>{ n.pend--; });
+}
+async function todoEditSend(t, td, n, v, gen, x, text, seq){
+  const g=TODO_GATE.get(inboxKey(n.p));
+  if(g && seq>g.seq) await g.p;
+  /* 只清这一下自己挂上的字。后面又改了一遍的话，那一版还在 pendTx 里，不能一起清掉。 */
+  const dropPend=()=>{ if(n.pendTx && n.pendTx.get(x[0])===text) n.pendTx.delete(x[0]); };
+  const fail=(reason)=>{
+    const same=t.td===td && n.v===v;
+    if(same){
+      dropPend();
+      td.html='';
+      paintPage(t, {quiet:true});
+    }
+    notify(todoEditSay(reason, todoEditKeep(t, text)));
+  };
+  if(t.td!==td || n.v!==v){ fail(TR('这篇刚在别处改过，已刷新')); return; }
+  const ln=x[0];
+  if(n.gen!==gen){ fail(TR('这篇刚在别处改过，已刷新')); return; }
+  if(TABS.some(o=>!o.ext && o.path===n.p && o.editing)){ fail(TR('这篇正在编辑，先退出编辑再改')); return; }
+  /* 期望按发出去这一刻的原文，不按点下去那一刻。排在前面的改字已经写上的话，
+     快照里的原文是新的；还用旧的那截，服务端会当成别处改过。 */
+  const base=n.base, expect=x[1];
+  const pr=postTaskText(n.p, ln, base, expect, text);
+  todoFly(n.p, pr);
+  const r=await pr;
+  const same=n.v===v && t.td===td;
+  if(r && r.ok){
+    const shown=typeof r.文==='string' ? r.文 : text;
+    const full=typeof r.全文==='string' ? r.全文 : text;
+    if(same){
+      if(x[1]===expect) x[1]=shown;
+      if(n.pendTx && (n.pendTx.get(ln)===text || n.pendTx.get(ln)===shown)) n.pendTx.delete(ln);
+      if(r.改于) n.base=r.改于;
+      td.html='';
+    }
+    if(!r.未改) todoEditAfterOk(n.p, ln, expect, shown, full, base, r);
+    else if(same) paintPage(t, {quiet:true});
+    return;
+  }
+  if(same) dropPend();
+  if(same){ td.html=''; paintPage(t, {quiet:true}); }
+  if(!r){ notify(todoEditSay(TR('没存上，这一下不算数'), todoEditKeep(t, text))); return; }
+  const code=r.代码||'';
+  if(code==='conflict'){
+    if(same){ n.gen++; td.stale.add(n.p); }
+    notify(todoEditSay(TR('这篇刚在别处改过，已刷新'), todoEditKeep(t, text)));
+    todoRescan();
+    return;
+  }
+  if(code==='gone' || code==='offline' || code==='no_notebook'){
+    notify(todoEditSay(TR('找不到这篇了，已刷新'), todoEditKeep(t, text)));
+    todoRescan();
+    return;
+  }
+  if(code==='long'){
+    notify(todoEditSay(TR('这句比较长，去原来的笔记里改'), todoEditKeep(t, text)));
+    return;
+  }
+  notify(todoEditSay((code==='bad_path' || code==='bad_type') ? TR('这一份是只读的，改不了') : TR('没存上，这一下不算数'),
+    todoEditKeep(t, text)));
+}
+function todoEditAfterOk(p, ln, oldRaw, shown, full, base, r){
+  const it=items.find(i=>i.路径===p);
+  if(it && (it.基于||'')===base){
+    if(Array.isArray(it.任务)) it.任务=it.任务.map(a=>a[0]===ln && a[1]===oldRaw ? [ln, shown] : [a[0], a[1]]);
+    it.基于=r.改于||it.基于||'';
+    const now=Date.now()/1000;
+    it.修改时间=now; it.日期=ymd(now);
+    const h=TODO_HOLD.get(p);
+    if(h && r.改于){ h.at=r.改于; h.t=Date.now(); }
+  }
+  TABS.forEach(x=>{
+    if(x.ext || x.path!==p || kindOfTab(x)!=='md' || x.editing || typeof x.raw!=='string' || x.loading) return;
+    if(!x.rawAt || x.rawAt!==base) return;
+    const L=x.raw.split('\n');
+    if(ln>=L.length || lineTaskText(L[ln])!==oldRaw || typeof r.行文!=='string') return;
+    L[ln]=r.行文;
+    x.raw=L.join('\n');
+    if(r.改于) x.rawAt=r.改于;
+    const md=paneOf(x) && paneOf(x).querySelector('.md');
+    const li=md && elOfLine(md, ln);
+    const span=(li && li.matches('li.task')) ? li.querySelector(':scope>span') : null;
+    if(span){ const html=inl(full, dirOf(x.path)); span.innerHTML=html || '<br>'; }
+    drawDocMeta(x);
+  });
+  TABS.forEach(x=>{
+    if(kindOfTab(x)!=='todo' || !x.td) return;
+    const n=todoFind(x.td, p);
+    if(!n) return;
+    const row=n.ts.find(a=>a[0]===ln && a[1]===oldRaw);
+    if(row) row[1]=shown;
+    if(n.pendTx){
+      const pnd=n.pendTx.get(ln);
+      if(pnd===oldRaw || pnd===shown) n.pendTx.delete(ln);
+    }
+    if(r.改于 && (n.base||'')===base) n.base=r.改于;
+    x.td.html='';
+  });
+  TABS.forEach(x=>{
+    const k=kindOfTab(x);
+    if(k==='start' || k==='todo') paintPage(x, {quiet:true});
+  });
 }
 
 /* ═══ 5.15 新建待办 ══════════════════════════
@@ -6164,6 +6461,7 @@ function todoAddModel(td, p, r, ts, at){
       n.ts.sort((a,b)=>a[0]-b[0]);
       const re=m=>{ const o=new Map(); m.forEach((v, key)=>o.set(mv(key), v)); return o; };
       n.on=re(n.on); n.ok=re(n.ok); n.hit=new Set([...n.hit].map(mv));
+      if(n.pendTx) n.pendTx=re(n.pendTx);
       n.base=at;
       moved=true;
     }
@@ -7578,6 +7876,8 @@ function newPane(t){
        框不在任何 [data-open] 里面，不会冒到下面那条去把那一篇打开。 */
     const tcb=e.target.closest('.todo-row input[type=checkbox]');
     if(tcb){ todoToggle(t, tcb); return; }
+    const lead=e.target.closest('.todo-leader');
+    if(lead){ todoEditBegin(t, lead.closest('.todo-row')); return; }
     const act=e.target.closest('[data-act]');
     if(act){
       if(act.dataset.act==='focusomni'){ focusOmnibox({pulse:true}); return; }
@@ -7587,6 +7887,7 @@ function newPane(t){
       if(act.dataset.act==='todofold'){ todoFold(t); return; }
       if(act.dataset.act==='todomore'){ todoMore(t); return; }
       if(act.dataset.act==='todoadd'){ todoAddOpen(t); return; }       // 5.15 页头 / 空态的「＋ 新建待办」
+      if(act.dataset.act==='todoedit'){ todoEditBegin(t, act.closest('.todo-row')); return; }
       if(act.dataset.act==='todolostretry'){ todoLostRetry(t, [act.dataset.id]); return; }   // 5.15 U2「没记上」
       if(act.dataset.act==='todolostall'){ todoLostRetry(t, null); return; }
       if(act.dataset.act==='todolostdrop'){ todoLostRemove(act.dataset.id); return; }
@@ -8143,6 +8444,17 @@ async function postTask(path, ln, want, base, expect){
   if(expect!==undefined) body.期望=expect;
   /* V 轮（契约 §10.2-3，复审 U-3）：一次勾选（阅读页、待办页都走这里）6 秒还没回执＝服务挂住了，说一声；
      回执晚到照常处理（成功照常翻、冲突照常刷新），不吞。 */
+  const slow=setTimeout(()=>notify(TR('服务一直没应答，回来后会自动刷新')), TODO_SLOW_MS);
+  try{
+    return await (await fetch('/__task', {method:'POST', headers:hdrs(), body:JSON.stringify(body)})).json();
+  }catch(e){ return null; }
+  finally{ clearTimeout(slow); }
+}
+
+/* POST /__task 带「文」：不翻勾，只换这一行方括号后面的字。回 null＝没应答。
+   expect＝发出去这一刻快照里的原文。服务端整段比这一截长就拒，免得写回去把后面砍掉。 */
+async function postTaskText(path, ln, base, expect, text){
+  const body={路径:path, 行:ln, 基于:base||'', 期望:expect, 文:text};
   const slow=setTimeout(()=>notify(TR('服务一直没应答，回来后会自动刷新')), TODO_SLOW_MS);
   try{
     return await (await fetch('/__task', {method:'POST', headers:hdrs(), body:JSON.stringify(body)})).json();
@@ -14337,6 +14649,7 @@ window.AMN = {
     /* 5.15 待办页页头下那一行输入开着：收起、没提交的字丢掉。排在菜单／浮层／⌘K／设置之后、退出编辑之前；
        没展开不吃这一下。壳里 Esc 只走这里（app_shell.m 截走 keyCode 53；输入法拼字时它放行，不来这儿），
        浏览器里全局 keydown 先过了 isComposing 再来。 */
+    { const at=active(); if(at && todoEditEsc(at)) return; }
     { const at=active(); if(at && todoAddClose(at)) return; }
     /* 窄窗里关联是覆在正文上的一层，Esc 先收它。宽窗停靠着的那一档不收——
        它跟大纲一样是常驻栏，不该被 Esc 关掉。专注模式下它 opacity:0 看不见，

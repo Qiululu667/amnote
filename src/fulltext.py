@@ -2578,6 +2578,18 @@ _FENCE_RUN = re.compile(_JS_WS + r"*(`+|~+)")
 _JS_WS_TAIL = re.compile(_JS_WS + r"*\Z")
 
 
+def task_body_of(line):
+    """一行待办方括号后面的整段字：去掉行尾的 \\r、首尾空白，不封顶。
+    不是 TASK_RE 认的待办行回 None。task_text_of 是它再切到 TASK_TEXT_MAX。"""
+    m = TASK_RE.match(line)
+    if not m:
+        return None
+    s = line[m.end():]
+    if s.endswith("\r"):
+        s = s[:-1]
+    return s.strip()
+
+
 def task_text_of(line):
     """一行待办的「原文」：`[ ]`（或 `[x]`）后面那一截，去掉行尾的 \\r、首尾空白，
     最多 TASK_TEXT_MAX 个字。不是 TASK_RE 认的待办行回 None。
@@ -2586,13 +2598,24 @@ def task_text_of(line):
     待办页每勾一下都是假冲突。/__task 那边的行是二进制读、按 \\n 切的，CRLF 文件
     行尾带着 \\r，所以这里先去掉它。
     """
-    m = TASK_RE.match(line)
-    if not m:
+    s = task_body_of(line)
+    if s is None:
         return None
-    s = line[m.end():]
-    if s.endswith("\r"):
-        s = s[:-1]
-    return s.strip()[:TASK_TEXT_MAX]
+    return s[:TASK_TEXT_MAX]
+
+
+def task_retitle_line(line, text):
+    """把这一行待办的字换成 text。text 须是非空的一行（调用方已用 todo_text 规整）。
+
+    前缀原样留着：缩进、列表记号、方括号里那一个字符、它后面那一个空白。
+    行尾的 \\r（CRLF 那一行）也留着。不是待办行、或 text 为空，回 None。
+    """
+    m = TASK_RE.match(line)
+    if not m or not text or "\n" in text or "\r" in text:
+        return None
+    tail = line[m.end():]
+    cr = "\r" if tail.endswith("\r") else ""
+    return line[:m.end()] + text + cr
 
 
 def _fence_open(line):

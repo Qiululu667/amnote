@@ -77,6 +77,7 @@ v24（5.6，个人资料 ＋ Agent 协作）加了三摊，都在下面各自的
     好好的 UTF-8 也会打印成 Big5 乱码。要验用原生 API 读回来。
     /__save      POST，写 md（含随手记）。见下。
     /__task      POST，{路径, 行, 勾, 基于[, 期望]}，只翻一行方括号里那一个字符。   ← 5.10
+                 带了「文」则不翻勾，把这一行方括号后面的字换成「文」（别的字节不动）。
     /__todo      POST，{文[, nb]}，往随手记里的「待办」那篇插一行 `- [ ] 文`，
                  没有就建。只插那一行，别的字节一个不动。见 todo_add。          ← 5.15
     /__trash     POST，{路径}，把一份 md/html 移进 ~/.Trash/。见下。      ← v22
@@ -92,8 +93,9 @@ v24（5.6，个人资料 ＋ Agent 协作）加了三摊，都在下面各自的
 **写库内文件的路由一共三条，分两类：**
     · **改内容的只有 /__save 一条**——新建、贴图、覆写都挂在它下面，
       放开到全库 md。别的路由一个字节的正文都不写。
-      （后来加的两条**行级写**：/__task 只翻一个字符（5.10），/__todo 只插一行、
-      没有收件箱就建一份（5.15）。两条都走同一把按文件的写锁、同样先留档。）
+      （后来加的两条**行级写**：/__task 只翻一个字符，或带「文」时只换这一行的字
+      （5.10 / 待办页就地改），/__todo 只插一行、没有收件箱就建一份（5.15）。
+      两条都走同一把按文件的写锁、同样先留档。）
     · **只搬位置不改内容的是 /__trash 和 /__untrash**（v22）：把一份 md/html
       挪进当前用户的 ~/.Trash/，或者把刚挪走的那份挪回原位。文件原样搬走，
       内容不动，废纸篓里还捞得回来。撤销表只在内存里，重启即清。
@@ -1999,7 +2001,12 @@ def task_toggle(req: dict):
     同样是 5.14：从读原文到 replace、连同回执里的「改于」，整段拿着这份的写锁
     （见 _md_lock）。同一份的两条写前后脚到，后一条读到的是前一条写完的那版，
     校验照常把它拦成 conflict，不再两边都以为写成了。
+
+    请求里带了「文」时不走上面这条，改去 task_retitle（只换这一行的字）。
+    不带「文」时，下面每一步、每一条回执都跟以前一样。
     """
+    if "文" in req:
+        return task_retitle(req)
     v, rel, err = resolve((req.get("路径") or "").strip())
     if err:
         return _bad(err)
@@ -2094,6 +2101,97 @@ def _task_stale(now: str):
     out2["需确认"] = True
     out2["改于"] = now
     return out2
+
+
+def task_retitle(req: dict):
+    """把某一行待办方括号后面的字换成「文」。勾选状态、别的行、一个字节都不动。
+
+    请求：{路径, 行, 基于, 期望, 文}
+    回：{ok, 路径, 行, 行文, 文, 改于, 留档}。字跟现在一样时不写盘，多一个「未改」。
+
+    校验跟勾选同一套，外加一条：行上的整段字（不封顶）必须跟「期望」逐字相等。
+    索引只留前 300 个字，待办页手上往往只有这一截。更长的在这里改会把后面砍掉，
+    所以不写，回 long。
+    """
+    v, rel, err = resolve((req.get("路径") or "").strip())
+    if err:
+        return _bad(err)
+    full, err = _task_target(rel)
+    if err:
+        return _bad(err)
+    n = req.get("行")
+    if isinstance(n, bool) or not isinstance(n, int) or n < 0:
+        return _bad(T("行号超出这份的范围"))
+    with _md_lock(full):
+        return _task_retitle(req, v, rel, full, n)
+
+
+def _task_retitle(req, v, rel, full, n):
+    try:
+        pl = _place(full)
+    except OSError as e:
+        return _bad(T("读不了原文：{e}", e=e))
+    with pl:
+        return _task_retitle_at(req, v, rel, pl, n)
+
+
+def _task_retitle_at(req, v, rel, pl, n):
+    text = fulltext.todo_text(req.get("文"))
+    if not text:
+        return _bad(T("要记的事是空的"))
+    if len(text) > fulltext.TODO_TEXT_MAX:
+        return _bad(T("一条待办最多 {n} 字", n=fulltext.TODO_TEXT_MAX))
+    try:
+        with os.fdopen(_open_read(pl), "rb") as f:
+            old = f.read().decode("utf-8")
+    except (OSError, UnicodeDecodeError) as e:
+        return _bad(T("读不了原文：{e}", e=e))
+
+    lines = old.split("\n")
+    now = _mtime_at(pl)
+    based = (req.get("基于") or "").strip()
+    if not based or based != now:
+        return _task_stale(now)
+    if n >= len(lines):
+        return _bad(T("行号超出这份的范围"))
+
+    body = fulltext.task_body_of(lines[n])
+    shown = task_text_of(lines[n])
+    expect = req.get("期望")
+    if body is None or not isinstance(expect, str) or shown != expect:
+        return _task_stale(now)
+    # 索引把 300 字以后的砍掉了。页面只拿得着这一截，写回去会把后面弄丢。
+    if body != expect:
+        return _bad(T("这句比较长，去原来的笔记里改"))
+    if body == text:
+        return {"ok": True, "未改": True, "路径": out(v, rel), "行": n,
+                "行文": lines[n], "文": shown, "全文": text, "改于": now, "留档": ""}
+
+    new_line = fulltext.task_retitle_line(lines[n], text)
+    if not new_line or fulltext.task_body_of(new_line) != text:
+        return _task_stale(now)
+    old_lines = lines[:]
+    lines[n] = new_line
+    if len(lines) != len(old_lines) or any(lines[i] != old_lines[i] for i in range(len(lines)) if i != n):
+        return _task_stale(now)
+    written = "\n".join(lines)
+
+    bak = _backup(rel, old)
+
+    def before(tmp, st):
+        _next_bucket(tmp, st, pl.dfd)
+        note_portal_write(rel)
+
+    try:
+        _swap_in(pl, written.encode("utf-8"), before=before,
+                 after=lambda st: _settle_bucket(pl.name, st, pl.dfd))
+    except OSError as e:
+        return _bad(T("写失败：{e}", e=e))
+
+    return {"ok": True, "路径": out(v, rel), "行": n, "行文": lines[n],
+            "文": task_text_of(lines[n]), "全文": text,
+            "留档": bak,
+            "改于": _mtime_at(pl)}
 
 
 # ── 新建待办：往随手记里的「待办」那篇插一行（5.15） ─────────────────
@@ -5719,8 +5817,8 @@ class Handler(SimpleHTTPRequestHandler):
         # **记账不在这儿**：save_md / new_md / trash / untrash 在真正动文件之前
         # 就记了，见那四处注释
         if (route in ("/__save", "/__task", "/__todo", "/__trash", "/__untrash")
-                and isinstance(out, dict) and out.get("ok")):
-            kick_sync(V())                       # 只补动过的那一本
+                and isinstance(out, dict) and out.get("ok") and not out.get("未改")):
+            kick_sync(V())                       # 只补动过的那一本。字没变的就地改不写盘，不必扫
         self._json(json.dumps(out, ensure_ascii=False))
 
     def send_header(self, keyword, value):
