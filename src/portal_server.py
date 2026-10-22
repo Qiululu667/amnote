@@ -77,9 +77,7 @@ v24（5.6，个人资料 ＋ Agent 协作）加了三摊，都在下面各自的
     好好的 UTF-8 也会打印成 Big5 乱码。要验用原生 API 读回来。
     /__save      POST，写 md（含随手记）。见下。
     /__task      POST，{路径, 行, 勾, 基于[, 期望]}，只翻一行方括号里那一个字符。   ← 5.10
-                 带了「文」则不翻勾，把这一行方括号后面的字换成「文」（别的字节不动）。
-    /__todo      POST，{文[, nb]}，往随手记里的「待办」那篇插一行 `- [ ] 文`，
-                 没有就建。只插那一行，别的字节一个不动。见 todo_add。          ← 5.15
+                 旧版带「文」的改字请求现已退役，会拒绝写入。
     /__trash     POST，{路径}，把一份 md/html 移进 ~/.Trash/。见下。      ← v22
     /__untrash   POST，{路径}，把刚才那份从废纸篓挪回原位（前端的「撤销」）。← v22
 
@@ -93,8 +91,7 @@ v24（5.6，个人资料 ＋ Agent 协作）加了三摊，都在下面各自的
 **写库内文件的路由一共三条，分两类：**
     · **改内容的只有 /__save 一条**——新建、贴图、覆写都挂在它下面，
       放开到全库 md。别的路由一个字节的正文都不写。
-      （后来加的两条**行级写**：/__task 只翻一个字符，或带「文」时只换这一行的字
-      （5.10 / 待办页就地改），/__todo 只插一行、没有收件箱就建一份（5.15）。
+      （/__task 的**行级写**只翻方括号里的一个字符（5.10）。
       两条都走同一把按文件的写锁、同样先留档。）
     · **只搬位置不改内容的是 /__trash 和 /__untrash**（v22）：把一份 md/html
       挪进当前用户的 ~/.Trash/，或者把刚挪走的那份挪回原位。文件原样搬走，
@@ -121,7 +118,6 @@ import errno
 import hashlib
 import hmac
 import json
-import math
 import os
 import re
 import secrets
@@ -995,7 +991,7 @@ def _settle_bucket(name: str, old, dfd=None):
 #   · 出错的文案跟以前逐字一样：相对目录 fd 报出来的 OSError 只带末段名字，_abs_err 换回旧代码会报
 #     的那个绝对路径。
 # 用它的：/__save 覆写（_save_md）、新建（new_md）、带「新路径」的改名（_rename_md），/__task
-# （_task_toggle），/__todo 插入与新建（_todo_insert / _todo_write / _todo_create），_write_text
+# （_task_toggle），_write_text
 # （AGENTS.md / 库地图 / SKILL.md），nb_save（notebooks.json，只用 _swap_in）。
 # **动作的先后、挪格、记账、留档、权限、回执跟以前一一对应**，只是每一步落在同一个目录 fd 上。
 
@@ -1960,9 +1956,8 @@ def _save_md_at(req, rel, full, pl, body, force):
 #
 # 判据跟渲染器逐条对齐（template.html:3482 的 LIRE ＋ 3780 的 /^\[([ xX])\]\s+/）：
 # 方括号后面必须还有一个空白，`- [ ]` 这种光秃秃的在页面上是字面文字不是勾选框。
-# 5.14 起正则本体搬进 fulltext（索引抽待办要用同一份，fulltext 又不能反过来
-# import 这里），这里留别名，行为一个字不变。取「[ ] 后面那截原文」的
-# task_text_of 同理：待办页的「期望」校验跟抽取共用它。
+# 正则和取「[ ] 后面那截原文」的函数在 fulltext，这里保留别名；
+# 与阅读页的行格式和「期望」校验保持同一口径。
 TASK_RE = fulltext.TASK_RE
 task_text_of = fulltext.task_text_of
 
@@ -1970,10 +1965,6 @@ task_text_of = fulltext.task_text_of
 def _task_target(rel: str):
     """/__task 写得进的那一份：_edit_ok（库内、`.md` 结尾、路径每段都不受限、
     realpath 不出库）＋ 文件在。回 (realpath, 错误)。
-
-    task_toggle 和 /__tree 出「任务」共用这一个判据（5.14）：树上带着任务的每一篇，
-    /__task 都不会因为路径被拒。点开头的文件夹、大写 `.MD`、指到库外的符号链接
-    都进索引，但这里过不去，树上就不给它们带任务。
     """
     return _edit_full(rel, must_exist=True)
 
@@ -1992,21 +1983,18 @@ def task_toggle(req: dict):
         防的是行号飘了（别处在前面插删过行）：mtime 防「别人改过」，
         这一条防「我算错了」，两个都要。对不上就拒，绝不盲写。
 
-    5.14 加第三道，**只在请求带了「期望」时才查**（待办页带，阅读页不带；
-    不带时上面每一步、每一条错误回执都跟以前逐字一样）：那一行用 task_text_of
-    取出来的原文必须等于「期望」，不等同样回 conflict。待办页手上是索引快照，
-    比阅读页现读的旧；同一秒内的改动、改完把 mtime 拨回去这类边角，前两道
-    都可能放行，多核一道原文，勾错行就不可能了。
+    第三道，**只在请求带了「期望」时才查**：那一行用 task_text_of 取出来的原文
+    必须等于「期望」，不等同样回 conflict。同一秒内的改动、改完把 mtime 拨回去
+    这类边角，前两道都可能放行，多核一道原文可以挡住行号没变但内容已换的请求。
 
     同样是 5.14：从读原文到 replace、连同回执里的「改于」，整段拿着这份的写锁
     （见 _md_lock）。同一份的两条写前后脚到，后一条读到的是前一条写完的那版，
     校验照常把它拦成 conflict，不再两边都以为写成了。
 
-    请求里带了「文」时不走上面这条，改去 task_retitle（只换这一行的字）。
-    不带「文」时，下面每一步、每一条回执都跟以前一样。
+    旧版待办页的改字请求带「文」，现在明确拒绝，避免缺少「勾」时被解释成取消勾选。
     """
     if "文" in req:
-        return task_retitle(req)
+        return _bad(T("这个接口只支持勾选"))
     v, rel, err = resolve((req.get("路径") or "").strip())
     if err:
         return _bad(err)
@@ -2053,7 +2041,7 @@ def _task_toggle_at(req, v, rel, pl, n, want):
     # 现在这一格必须还是「翻之前」的样子：要勾就得原来没勾，要去勾就得原来勾着
     if not m or (m.group(1) == " ") != want:
         return _task_stale(now)
-    # 第三道（带了才查）：这一行的原文还是待办页看见的那一句。
+    # 第三道（带了才查）：这一行的原文还是阅读页看见的那一句。
     # 带了 null、数字这类不是字符串的，一律当对不上——宁可多一次冲突，不盲写
     if "期望" in req:
         expect = req.get("期望")
@@ -2101,569 +2089,6 @@ def _task_stale(now: str):
     out2["需确认"] = True
     out2["改于"] = now
     return out2
-
-
-def task_retitle(req: dict):
-    """把某一行待办方括号后面的字换成「文」。勾选状态、别的行、一个字节都不动。
-
-    请求：{路径, 行, 基于, 期望, 文}
-    回：{ok, 路径, 行, 行文, 文, 改于, 留档}。字跟现在一样时不写盘，多一个「未改」。
-
-    校验跟勾选同一套，外加一条：行上的整段字（不封顶）必须跟「期望」逐字相等。
-    索引只留前 300 个字，待办页手上往往只有这一截。更长的在这里改会把后面砍掉，
-    所以不写，回 long。
-    """
-    v, rel, err = resolve((req.get("路径") or "").strip())
-    if err:
-        return _bad(err)
-    full, err = _task_target(rel)
-    if err:
-        return _bad(err)
-    n = req.get("行")
-    if isinstance(n, bool) or not isinstance(n, int) or n < 0:
-        return _bad(T("行号超出这份的范围"))
-    with _md_lock(full):
-        return _task_retitle(req, v, rel, full, n)
-
-
-def _task_retitle(req, v, rel, full, n):
-    try:
-        pl = _place(full)
-    except OSError as e:
-        return _bad(T("读不了原文：{e}", e=e))
-    with pl:
-        return _task_retitle_at(req, v, rel, pl, n)
-
-
-def _task_retitle_at(req, v, rel, pl, n):
-    text = fulltext.todo_text(req.get("文"))
-    if not text:
-        return _bad(T("要记的事是空的"))
-    if len(text) > fulltext.TODO_TEXT_MAX:
-        return _bad(T("一条待办最多 {n} 字", n=fulltext.TODO_TEXT_MAX))
-    try:
-        with os.fdopen(_open_read(pl), "rb") as f:
-            old = f.read().decode("utf-8")
-    except (OSError, UnicodeDecodeError) as e:
-        return _bad(T("读不了原文：{e}", e=e))
-
-    lines = old.split("\n")
-    now = _mtime_at(pl)
-    based = (req.get("基于") or "").strip()
-    if not based or based != now:
-        return _task_stale(now)
-    if n >= len(lines):
-        return _bad(T("行号超出这份的范围"))
-
-    body = fulltext.task_body_of(lines[n])
-    shown = task_text_of(lines[n])
-    expect = req.get("期望")
-    if body is None or not isinstance(expect, str) or shown != expect:
-        return _task_stale(now)
-    # 索引把 300 字以后的砍掉了。页面只拿得着这一截，写回去会把后面弄丢。
-    if body != expect:
-        return _bad(T("这句比较长，去原来的笔记里改"))
-    if body == text:
-        return {"ok": True, "未改": True, "路径": out(v, rel), "行": n,
-                "行文": lines[n], "文": shown, "全文": text, "改于": now, "留档": ""}
-
-    new_line = fulltext.task_retitle_line(lines[n], text)
-    if not new_line or fulltext.task_body_of(new_line) != text:
-        return _task_stale(now)
-    old_lines = lines[:]
-    lines[n] = new_line
-    if len(lines) != len(old_lines) or any(lines[i] != old_lines[i] for i in range(len(lines)) if i != n):
-        return _task_stale(now)
-    written = "\n".join(lines)
-
-    bak = _backup(rel, old)
-
-    def before(tmp, st):
-        _next_bucket(tmp, st, pl.dfd)
-        note_portal_write(rel)
-
-    try:
-        _swap_in(pl, written.encode("utf-8"), before=before,
-                 after=lambda st: _settle_bucket(pl.name, st, pl.dfd))
-    except OSError as e:
-        return _bad(T("写失败：{e}", e=e))
-
-    return {"ok": True, "路径": out(v, rel), "行": n, "行文": lines[n],
-            "文": task_text_of(lines[n]), "全文": text,
-            "留档": bak,
-            "改于": _mtime_at(pl)}
-
-
-# ── 新建待办：往随手记里的「待办」那篇插一行（5.15） ─────────────────
-#
-# POST /__todo {文, nb?}：往这一本随手记目录里的收件箱插一行 `- [ ] 文`，没有收件箱就建一份。
-# 跟 /__task 一样是**行级写**：除了插进去的那一行（和必要的空行 / 换行），一个字节都不动。
-# 插在哪、插完的自检在 fulltext.todo_plan（纯函数，不碰盘）；这里管认领、判据、锁和写盘。
-#
-# **收件箱**：随手记目录这一层里叫 待办.md / 待辦.md / To-dos.md（NFC ＋ casefold 比）的
-# **普通文件**（lstat，不跟符号链接）——先认这次请求的语言那个，再按 待办 → 待辦 → To-dos。
-# 都没有就按语言新建（名字写死、不走词典：简体 待办、繁体 待辦、英文 To-dos）。不记配置：
-# 用户改名、挪走、删了，下次再建一份新的。要新建的那个名字被一个不是普通文件的东西占着
-# （文件夹、符号链接——库内库外都算），不写，回 bad_path。
-# **路径一律用盘上的真名**（返工 R2-5）：随手记目录的每一段按目录列举换成盘上的写法（配置写
-# Inbox、盘上是 inbox；配置是 NFC、盘上是 NFD），认领、锁键、回执的「路径」都用它——跟索引
-# （os.walk 列出来的）逐字相等，页面不会把同一篇当成两篇。见 _todo_disk_dir。
-# **判据**：在 _edit_ok（写得进）之外，还得进得了索引——随手记目录命中跳过 / 噪声规则、
-# 路径上有一段是符号链接（os.walk 不跟，索引里不会是这个路径），都不写、回 bad_path：
-# 写进去了待办页也永远看不见，等于丢了。
-# **锁**：收件箱那一份的写锁（跟 /__task、/__save 同一把）＋ 一把「这个随手记目录的收件箱」
-# 键，一次给全。后一把让两条不同语言的「都没有、都想新建」排队：后到的在锁里重新认领，
-# 看见前一条刚建的那份就插进去，不会一边一份。锁里认领的结果跟锁外不一样（刚被建 / 删 /
-# 改名），就放锁重来，最多三回。
-# **临时文件**（R3-1）：名字照旧是固定的 <名>.amnote-tmp（锁里安全、长名字不超限），
-# 但写之前那个名字上不管有什么（比如一个指到库外的符号链接）先删掉，再 O_CREAT|O_EXCL|
-# O_NOFOLLOW 自己建；任何一步失败都清掉自己建的临时文件、回 io，原文件不动。
-# 5.15 S 轮起这套写法抽成 _swap_in，/__save、/__task、_write_text 共用；锁里的认领、读、建、写、
-# replace 也都相对按目录 fd 走出来的随手记目录做（_place，堵复审-B 父目录 TOCTOU）。
-# **新的一秒**：插完的这一版，mtime 显示出来的那一秒必须严格晚于上一版的（「改于」≠「改前」，
-# 而且一版比一版大），见 _todo_new_second。「加」会挪行号，而「基于」只有秒精度：别的窗口
-# 手上拿着同一秒的旧「基于」点框（阅读页不带「期望」），就会拿插行之前的行号勾到挪过的行上。
-# 这是**硬不变式**（返工 R1-P1）：永不退回、永不重用。我们自己连加顶到封顶时在锁里小睡限速
-# （≤3 秒）；睡 3 秒也压不回封顶的（文件本来就在未来：时钟快的设备同步来的、系统时间往回校过）
-# 不睡、照样写，只挪最少的那一格。
-
-TODO_NAMES = {"zh-Hans": "待办", "zh-HK": "待辦", "en": "To-dos"}
-TODO_ORDER = ("待办", "待辦", "To-dos")
-TODO_TRIES = 3
-
-
-def _todo_book(nb):
-    """落哪一本：单本忽略 nb；多本给了名字就按名字找（找不到 no_notebook，不回落），
-    没给就是默认那本（同「新建随手记」）。要在线，离线回 offline。"""
-    if not nb_multi():
-        v = nb_main()
-    else:
-        raw = _nfc(nb if nb is not None else "").strip()
-        if raw:
-            v = nb_by_name(raw)
-            if v is None:
-                return None, T("没有叫「{n}」这个名字的笔记本", n=raw)
-        else:
-            v = nb_default()
-    if v is None:
-        return None, T("还没有添加任何笔记本")
-    if not v.online:
-        return None, T("笔记本「{n}」现在找不到，它的文件夹可能被挪走了", n=v.name)
-    return v, ""
-
-
-def _todo_claim(d, lang, at=None):
-    """随手记目录（绝对路径 d）这一层里认领收件箱 → (盘上的文件名, 状态)。
-    状态：'file' 普通文件，就用它；'none' 都没有，按这个名字（当前语言的）新建；
-    'taken' 当前语言那个名字被一个不是普通文件的东西占着（文件夹、符号链接……）。
-
-    **只看这一次 listdir 列出来的**（每个对得上的名字 lstat 一下）。别再拿 lexists 补查：
-    列目录和补查之间别的请求刚好把收件箱建出来，就会被误判成「被占着」（4.1 并发测出来
-    的）。没列出来、实际却在的（刚被建、列不出来的权限），交给新建那一步的 O_EXCL：撞上
-    FileExistsError 就回去重新认领。
-
-    `at`（5.15 S 轮）：锁里那一遍传按目录 fd 走到的随手记目录（_Place）——列目录、lstat 都相对它，
-    跟随后的读、建、写落在同一个目录上；走不到（随手记目录还不在）传 False，当它是空的。
-    不传＝锁外那一遍，照旧按路径 d 看。"""
-    first = TODO_NAMES.get(lang, TODO_ORDER[0])
-    want = [first] + [n for n in TODO_ORDER if n != first]
-    folds = {_fold(n + ".md") for n in want}
-    try:
-        names = [] if at is False else sorted(os.listdir(d if at is None else at.dfd))
-    except OSError:
-        names = []
-    kinds = {}                                   # 折叠后的名字 → [(盘上的名字, 是不是普通文件)]
-    for fn in names:
-        k = _fold(fn)
-        if k not in folds:
-            continue
-        try:
-            st = os.lstat(os.path.join(d, fn)) if at is None else _lst(fn, at.dfd)
-            reg = stat.S_ISREG(st.st_mode)
-        except OSError:                          # 列完就没了：当它不在
-            continue
-        kinds.setdefault(k, []).append((fn, reg))
-    for n in want:
-        for fn, reg in kinds.get(_fold(n + ".md"), ()):
-            if reg:
-                return fn, "file"
-    mine = first + ".md"
-    if kinds.get(_fold(mine)):
-        return mine, "taken"
-    return mine, "none"
-
-
-def _todo_disk_seg(parent, seg):
-    """parent 这一层里，文件系统把名字 seg 认成的那一项在盘上的真名（大小写、NFC/NFD 都按盘上的）。
-    还不存在（随手记目录还没建）、认不出来，都原样回 seg。只在文件系统**自己**把 seg 解析到那一项时
-    才换（比 inode）：分大小写的盘上 Inbox 和 inbox 是两个目录，不能替用户换成另一个。"""
-    if not seg or seg in (".", ".."):
-        return seg
-    try:
-        st = os.lstat(os.path.join(parent, seg))
-        names = os.listdir(parent)
-    except OSError:
-        return seg
-    if seg in names:
-        return seg
-    key = _fold(seg)
-    for n in sorted(names):
-        if _fold(n) != key:
-            continue
-        try:
-            s2 = os.lstat(os.path.join(parent, n))
-        except OSError:
-            continue
-        if (s2.st_dev, s2.st_ino) == (st.st_dev, st.st_ino):
-            return n
-    return seg
-
-
-def _todo_disk_dir(v, nd):
-    """随手记目录（配置写法）→ 每一段换成盘上的真名，跟索引里这一篇的路径逐字一样。"""
-    out, cur = [], v.root
-    for seg in nd.split("/"):
-        real = _todo_disk_seg(cur, seg)
-        out.append(real)
-        cur = os.path.join(cur, real)
-    return "/".join(out)
-
-
-def _todo_seen(v, rel):
-    """这个库内路径进不进得了索引、写不写得进：(realpath, 错误)。错误分两种口径——
-    随手记目录本身不行（跳过 / 噪声、_edit_ok 不过、路径上有符号链接）回那句「不在收录
-    范围里」；只有文件名那一段不行（比如认领到的是 待办.MD）照 _edit_ok 自己的话回。"""
-    try:
-        full, err = _edit_ok(rel)
-    except (OSError, ValueError):                # 孤立代理项之类让 realpath 抛
-        full, err = None, T("路径不合法")
-    if (err or fulltext.should_skip(rel) or fulltext.is_noise(rel)
-            or os.path.relpath(full, v.real_root).replace(os.sep, "/") != rel):
-        return None, err or T("随手记文件夹不在收录范围里，待办页看不到，先在设置里换个随手记文件夹")
-    return full, ""
-
-
-def todo_add(req: dict):
-    """POST /__todo：{文, nb?} → 往那一本的收件箱插一行 `- [ ] 文`（没有就建）。
-
-    回 {ok, 路径, 新建, 方式, 行, 起, 增行, 行文, 文, 改前, 改于, 任务, 标题, 留档}：
-      路径   out() 加过前缀，跟 /__tree 的路径逐字相等
-      方式   "前插"（插在第一条没勾的顶层待办前面）| "文末" | "新建"
-      行     新任务行的 0 基行号（＝ /__task 的「行」）
-      起/增行  旧行号 ≥ 起 的整体 + 增行（新建时 0 / 0）；页面据此平移同一篇的行号
-      行文   新任务行在文件里的样子（CRLF 文件带尾 \\r，同 /__task）
-      文     task_text_of(行文)，≤300 码位，跟树上「任务」里那一条逐字相等
-      改前   写之前那一版的 mtime 串（新建为 ""）；页面拿它判断能不能只平移
-      改于   锁里、挪格之后现取＝下一次 /__task 的「基于」
-      任务   写完之后这一篇的全部未勾，跟 /__tree 的「任务」同口径同形
-      标题   跟 /__tree 同一个取法（一级标题，没有就文件名主干）
-      留档   空串＝10 分钟节流跳过（同 /__task）；新建没有
-    失败一律 HTTP 200 ＋ 代码：bad_type / too_big / bad_path / no_notebook / offline / io / no_spot。
-
-    **「重试」去重**（契约 §10.1-2）：请求带 `重试: true`（页面「没记上」列表里点重试时才带）——锁里先看
-    收件箱里有没有一条**没勾的**、文跟这次规整后的文相同的待办；有就**不写**，回
-    {ok, 重复:true, 路径, 改于, 任务, 标题}（锁里现读的当前状态）。两扇窗同时「全部重试」、回执丢了
-    （服务重启）再重试，都不会记成两条；不用服务端记状态，跨重启也有效。不带「重试」照旧总是插。
-    收件箱还不存在就照常新建。
-    """
-    if not isinstance(req, dict):
-        return _bad(T("要记的事是空的"))
-    text = fulltext.todo_text(req.get("文"))
-    if not text:
-        return _bad(T("要记的事是空的"))
-    if len(text) > fulltext.TODO_TEXT_MAX:
-        return _bad(T("一条待办最多 {n} 字", n=fulltext.TODO_TEXT_MAX))
-    # 「重试」只认 JSON 的 true（「没记上」列表里重试时才带）；别的值一律当没带，行为跟以前逐字一样
-    retry = req.get("重试") is True
-    v, err = _todo_book(req.get("nb"))
-    if err:
-        return _bad(err)
-    bind(v)
-    lang = get_lang()
-    nd = _todo_disk_dir(v, note_dir(v).rstrip("/"))   # 盘上的真名（大小写、NFC/NFD），见 _todo_disk_dir
-    probe, err = _todo_seen(v, nd + "/" + TODO_NAMES.get(lang, TODO_ORDER[0]) + ".md")
-    if err:
-        return _bad(T("随手记文件夹不在收录范围里，待办页看不到，先在设置里换个随手记文件夹"))
-    d = os.path.dirname(probe)
-    key = os.path.join(d, "\x00todo")             # 「这个随手记目录的收件箱」，不是任何真文件
-    for _ in range(TODO_TRIES):
-        name, state = _todo_claim(d, lang)
-        if state == "taken":
-            return _bad(T("这个位置不给写"))
-        rel = nd + "/" + name
-        full, err = _todo_seen(v, rel)
-        if err:
-            return _bad(err)
-        with _md_lock(full, key):
-            # 锁里的认领、读、建、写都相对按目录 fd 走到的随手记目录做（5.15 S 轮，见 _place）：
-            # 判完之后随手记目录（或它上面哪一段）被换成指库外的链接，就走不过去、不写（复审-B）
-            try:
-                pl = _place(full)
-            except (FileNotFoundError, NotADirectoryError):
-                # 随手记目录还不在（或路径上哪一层是个普通文件）：当它不在，建的时候再逐段建——
-                # 那一步跟 os.makedirs 报一样的错；是符号链接的那一步照样走不过去、不写
-                pl = None
-            except OSError as e:
-                return _bad(T("写不进去：{e}", e=e))
-            try:
-                if _todo_claim(d, lang, pl if pl is not None else False) != (name, state):
-                    continue                         # 锁外认领之后刚被建 / 删 / 改名：重来
-                if state == "file":
-                    return _todo_insert(v, rel, full, pl, text, retry)
-                got = _todo_create(v, rel, full, pl, text, lang)
-                if got is not None:
-                    return got
-                # None＝建的时候撞上同名（刚被别处建了）：回去重新认领，插进那一份
-            finally:
-                if pl is not None:
-                    pl.close()
-    return _bad(T("写不进去：{e}", e="busy"))
-
-
-def _todo_done(v, rel, full, pl, new, how, at, start, add, row, before, bak):
-    """两条写路共用的回执。写完之后、还拿着锁的时候调（「改于」得是自己这一笔的）。"""
-    generic = tuple(cfg(v).get("通用标题") or ())
-    return {"ok": True, "路径": out(v, rel), "新建": how == "新建", "方式": how,
-            "行": at, "起": start, "增行": add, "行文": row, "文": task_text_of(row),
-            "改前": before, "改于": _mtime_at(pl),
-            "任务": fulltext.index_tasks(new, full=full),
-            # 标题跟 /__tree 同一个取法：tree_one 拿索引正文的前 4000 字喂 title_of
-            "标题": title_of(rel, new.replace("\r\n", "\n")[:4000], "md", generic),
-            "留档": bak}
-
-
-def _todo_has_open(old, text, full):
-    """收件箱原文里有没有一条**没勾的**待办（tasks_of 的口径：待办页列得出来的那些，围栏 / frontmatter
-    里的不算），文跟 text 相同。比的是那一行完整的文（同 task_text_of、但不截 300 码位）：长的那条重试
-    照样认得出，两条前 300 字相同的长文也不会被当成同一条。"""
-    lines = old.replace("\r\n", "\n").split("\n")
-    for ln, _ in fulltext.tasks_of("\n".join(lines), full=full):
-        m = TASK_RE.match(lines[ln])
-        if m and lines[ln][m.end():].rstrip("\r").strip() == text:
-            return True
-    return False
-
-
-def _todo_insert(v, rel, full, pl, text, retry=False):
-    """收件箱已经在：读（不跟符号链接）→（重试：已经有同文的没勾待办就不写）→ 选点、拼、自检 → 留档 →
-    安全写临时文件 → replace。调用方拿着这一份的写锁；`pl`＝按目录 fd 走到的收件箱位置（_place）。"""
-    try:
-        with os.fdopen(_open_read(pl), "rb") as f:
-            st0 = os.fstat(f.fileno())
-            raw = f.read()
-        old = raw.decode("utf-8")
-    except (OSError, UnicodeDecodeError) as e:
-        return _bad(T("读不了原文：{e}", e=e))
-    before = datetime.fromtimestamp(st0.st_mtime).strftime("%Y-%m-%d %H:%M:%S")  # 同 _mtime_str
-    if retry and _todo_has_open(old, text, full):
-        generic = tuple(cfg(v).get("通用标题") or ())
-        return {"ok": True, "重复": True, "路径": out(v, rel), "改于": before,
-                "任务": fulltext.index_tasks(old, full=full),
-                "标题": title_of(rel, old.replace("\r\n", "\n")[:4000], "md", generic)}
-    plan = fulltext.todo_plan(old, text)
-    if plan is None:
-        return _bad(T("这篇里找不到能安全加一条的地方（比如结尾有没收尾的代码块），打开它手动加吧。"))
-    new = plan["新"]
-    bak = _backup(rel, old)                      # 同 /__task：自带 10 分钟节流
-    err = _todo_write(pl, new.encode("utf-8"), rel, st0)
-    if err:
-        return err
-    return _todo_done(v, rel, full, pl, new, plan["方式"], plan["行"], plan["起"], plan["增行"],
-                      plan["行文"], before, bak)
-
-
-def _shown_sec(t):
-    """_mtime_str 显示出来的那一秒（epoch 秒）。datetime.fromtimestamp 先把小数按微秒四舍五入
-    再取整秒（x.9999996 显示成下一秒），这里照它算，不拿纳秒直接整除。"""
-    frac, whole = math.modf(t)
-    return int(whole) + (1 if round(frac * 1e6) >= 1_000_000 else 0)
-
-
-TODO_WAIT_MAX = 3.0                   # 领先到封顶时锁里最多睡这么久（秒），再不行就不写
-_todo_hwm = {}                        # 收件箱（_fold(realpath)）→ 这个进程里 /__todo 给它发过的最大那一秒
-_todo_hwm_lock = threading.Lock()
-
-
-class _TodoBusy(Exception):
-    """新的一版设不出一个「严格晚于上一版」的秒（这块盘连 +2 秒都设不进去）：不写，回 io「写不进去：busy」。"""
-
-
-def _todo_new_second(tmp, old, based=None, key="", dfd=None):
-    """「加」写出的新一版：mtime 显示出来的那一秒，必须**严格晚于**上一版（`old`＝replace 前现 stat 的、
-    `based`＝读原文那一刻的，取晚的）——也晚于这个进程里 /__todo 给这一份发过的所有秒（`_todo_hwm`：
-    外部存盘把 mtime 拨回去之后，下一条也不会跟之前连加发过的某一秒撞上）。**硬不变式**：永不退回、
-    永不重用。这样「改于」一定≠「改前」，而且一版比一版大，手上拿着任何一个旧「基于」的写（另一扇窗的
-    阅读页不带「期望」、CLI、Agent）都必然撞 conflict 重新载入，不会拿插行之前的行号勾到挪过的行上
-    （T2 两扇窗对齐到同一秒：5/5 勾错；R1 连加 100 多条撞到封顶退回真实时间：3/3 勾错）。
-
-    · 只挪临时文件、在记账和 replace **之前**挪（同 _next_bucket）：文件露面时就是最终的 mtime，同步
-      只看见一次改动、认领一笔「门户」，不会把挪动当成「外部」改动再存一版档。
-    · 挪到那一秒的下一整秒再加 10 ms（一个格子，round(·, 2) 也严格靠后）。FAT32 两秒一格，+1 s 落回
-      原秒就 +2 s；两步都设不出更晚的秒 → 不写。
-    · **封顶限速**：挪完领先真实时间超过 COARSE_AHEAD_MAX（100 秒）→ 不退回。领先是**我们自己**这一串连加
-      顶上去的（上一版那一秒不晚于 _todo_hwm 记的、我们发过的最大一秒），而且睡 TODO_WAIT_MAX（3 秒）以内
-      就能压回封顶 → 在锁里睡到不超封顶（到顶之后每条约等一秒，FAT32 两秒），把连加压成限速；人手的
-      速度碰不到这一档。领先不是我们造成的（文件本来就在未来：时钟快的设备同步来的、系统时间往回校
-      过），或者睡 3 秒也压不回去 → 不睡、照样写，只挪了最少的那一格（不报 busy：不然用户要一直加不进去，
-      直到真实时间追上）。所有版本的「门户」记账都按它的 mtime 记（note_portal_write_at），在未来也认领得到。
-    · 这块盘连 +2 秒都设不进去 → 抛 _TodoBusy（调用方不写、回 io「写不进去：busy」）；stat / utime 出错
-      照常抛 OSError（回 io）——不变式保不住就不写。
-    · `tmp`＝临时文件在父目录 `dfd` 里的名字（5.15 S 轮：相对目录 fd 做）。"""
-    st = _lst(tmp, dfd)
-    prev = max(old.st_mtime, based.st_mtime) if based is not None else old.st_mtime
-    sec = _shown_sec(prev)
-    with _todo_hwm_lock:
-        mine = _todo_hwm.get(key)
-    # 领先是不是我们自己连加出来的：上一版那一秒不晚于这个进程给它发过的最大一秒（外部存盘把 mtime
-    # 拨回去也算我们的）。上一版比我们发过的都晚＝文件本来就在未来（别的设备、系统时间往回校过）
-    ours = mine is not None and mine >= sec
-    if mine is not None:
-        sec = max(sec, mine)
-    if _shown_sec(st.st_mtime) <= sec:
-        for k in (1, 2):
-            _utime(tmp, (st.st_atime_ns, (sec + k) * 1_000_000_000 + MT_STEP_NS), dfd)
-            if _shown_sec(_lst(tmp, dfd).st_mtime) > sec:
-                break
-        else:
-            raise _TodoBusy("这块盘设不出更晚的一秒")
-    need = _lst(tmp, dfd).st_mtime - time.time() - COARSE_AHEAD_MAX
-    if ours and 0 < need <= TODO_WAIT_MAX:       # 自己连加顶到封顶：锁里睡着限速
-        time.sleep(need + 0.005)
-    # 别的情形（文件本来就在未来；或者睡 3 秒也压不回去，比如系统时间往回校过）：不睡、照样写，
-    # 只挪了最少的那一格
-
-
-def _todo_hwm_note(key, name, dfd=None):
-    """这一版落盘了：记下发过的最大那一秒；顺手清掉早就过去了的（落后现在 5 分钟以上的不会再起作用）。
-    `name`＝收件箱在父目录 `dfd` 里的名字（5.15 S 轮：相对目录 fd 做）。"""
-    try:
-        sec = _shown_sec(_lst(name, dfd).st_mtime)
-    except OSError:
-        return
-    with _todo_hwm_lock:
-        _todo_hwm[key] = max(sec, _todo_hwm.get(key, sec))
-        if len(_todo_hwm) > 64:
-            old = time.time() - 300
-            for k in [k for k, v in _todo_hwm.items() if v < old]:
-                _todo_hwm.pop(k, None)
-
-
-def _todo_write(pl, data, rel, based=None):
-    """安全写临时文件 → 照原文件权限 → 挪格 → 挪到新的一秒（封顶时限速；保不住就不写，回 io「写不进去：busy」）
-    → 记账 → replace → 补挪。成功回 None。
-    `based`＝读原文那一刻的 fstat（「改前」就是它），跟 replace 前现 stat 的那一版一起当「上一版」。
-
-    临时文件名固定（<名>.amnote-tmp，调用方拿着写锁，进程里不会有第二个写者），
-    但那个名字上**事先有什么都先删掉**——一个指到库外的符号链接也只删链接本身——再用
-    O_CREAT|O_EXCL|O_NOFOLLOW 自己建：open(tmp, "wb") 会顺着链接写到库外（R3-1）。
-    任何一步失败都清掉自己建的那个临时文件、回 io，原文件不动。5.15 S 轮起这一套是共用的 _swap_in，
-    全部相对 `pl`（按目录 fd 走到的收件箱位置）做。"""
-    key = _fold(pl.full)
-
-    def before(tmp, st):
-        _next_bucket(tmp, st, pl.dfd)            # 别跟上一版落进同一个 10 ms 格子，见那一段
-        _todo_new_second(tmp, st, based, key, pl.dfd)   # 严格晚于上一版的那一秒，见那一段
-        # 同 /__task：记账赶在文件露出新 mtime 之前。记在这一版的 mtime 那一刻（可能在未来），
-        # 同步认领总能对上，见 fulltext.note_portal_write_at
-        fulltext.note_portal_write_at(rel, _lst(tmp, pl.dfd).st_mtime, agent=cur_agent())
-
-    def after(st):
-        _settle_bucket(pl.name, st, pl.dfd)      # 秒级精度的盘：replace 之后按整秒补挪
-        _todo_hwm_note(key, pl.name, pl.dfd)
-
-    try:
-        _swap_in(pl, data, before=before, after=after)
-    except _TodoBusy:
-        return _bad(T("写不进去：{e}", e="busy"))
-    except OSError as e:
-        return _bad(T("写失败：{e}", e=e))
-    return None
-
-
-def _todo_create(v, rel, full, pl, text, lang):
-    """收件箱还没有：建随手记目录（只许它）→ 记账 → O_CREAT|O_EXCL 写新建内容。
-    撞上同名（FileExistsError）回 None，调用方回去重新认领、插进那一份。调用方拿着写锁。
-    `pl`＝按目录 fd 走到的收件箱位置（_place）；随手记目录（或它上面某一段）还不在时是 None，
-    在这里按目录 fd 逐段建出来（5.15 S 轮：建目录、建文件、挪 mtime、删半截都相对它做）。
-
-    **新建也守「严格晚于」**（R1 复审-A）：新文件那一秒必须晚于这条路径上以前出现过的版本——
-    本进程给它发过的最大一秒（_todo_hwm：收件箱被删之前连加过），以及随手记目录上一次有东西进出的
-    那一秒（目录原来就在时）：旧的收件箱刚被删掉、外部刚建过又删过，目录的 mtime 都停在那一刻，
-    旧那一篇（不在未来的）每一版都不会晚于它。不然「删掉重建」会在同一秒里落回旧那一篇的某个秒串，
-    拿着旧「基于」又不带「期望」的 /__task 就勾到新文件里内容已换的那一行。
-    要挪的话：先按 _todo_new_second 同一个规矩决定睡不睡（我们自己连加顶到封顶才睡，≤3 秒），
-    睡在文件出现**之前**；建好之后把 mtime 挪到那一秒的下一秒（FAT32 不行就 +2），挪之前把这一笔也按
-    挪完的 mtime 记账（note_portal_write_at），同步看见建出来那一刻、看见挪完那一刻，两笔都认领得到。
-    挪不成就把自己刚建的那一份删掉、回 io「写不进去：busy」——不变式保不住就不留。挪动期间我们拿着
-    这一份的写锁，/__task 进不来，碰不到挪之前那一秒。"""
-    name = TODO_NAMES.get(lang, TODO_ORDER[0])
-    doc = fulltext.todo_new_doc(name, text)
-    if doc is None:
-        return _bad(T("这篇里找不到能安全加一条的地方（比如结尾有没收尾的代码块），打开它手动加吧。"))
-    data = doc.encode("utf-8")
-    key = _fold(full)
-    own = None
-    try:
-        if pl is not None:
-            dir_t = os.fstat(pl.dfd).st_mtime    # 随手记目录原来就在：它上一次有东西进出的那一刻
-        else:
-            dir_t = None
-            pl = own = _place(full, make=True)   # 同 os.makedirs：缺的层逐段建
-    except OSError as e:
-        return _bad(T("写不进去：{e}", e=e))
-    try:
-        return _todo_create_at(v, rel, full, pl, text, doc, data, key, dir_t)
-    finally:
-        if own is not None:
-            own.close()
-
-
-def _todo_create_at(v, rel, full, pl, text, doc, data, key, dir_t):
-    with _todo_hwm_lock:
-        mine = _todo_hwm.get(key)
-    dsec = _shown_sec(dir_t) if dir_t is not None else None
-    if dsec is not None:
-        # 目录 mtime 在未来（同步盘、touch -t、从备份还原）说明不了旧版本用过哪些秒——真的删除会把它盖成
-        # 现在——只当下限用会把新收件箱拖到那个未来（R1 终审：+1 年）。所以最多算到现在这一秒
-        dsec = min(dsec, _shown_sec(time.time()))
-    floor = max(x for x in (mine, dsec, -1) if x is not None)
-    ours = mine is not None and (dsec is None or mine >= dsec)
-    if floor >= 0 and _shown_sec(time.time()) <= floor:
-        need = (floor + 1) + 0.01 - time.time() - COARSE_AHEAD_MAX
-        if ours and 0 < need <= TODO_WAIT_MAX:   # 同 _todo_new_second：自己连加顶到封顶才睡
-            time.sleep(need + 0.005)
-    note_portal_write(rel)                       # 同 new_md：记账赶在文件出现之前
-    names = {pl.name: full}
-    try:
-        fd = os.open(pl.name, _TMP_FLAGS, 0o666, dir_fd=pl.dfd)
-    except FileExistsError:
-        return None
-    except OSError as e:
-        return _bad(T("写不进去：{e}", e=_abs_err(e, names)))
-    try:
-        with os.fdopen(fd, "wb") as f:
-            f.write(data)
-            f.flush()
-            os.fsync(f.fileno())
-        st = _lst(pl.name, pl.dfd)
-        if floor >= 0 and _shown_sec(st.st_mtime) <= floor:
-            fulltext.note_portal_write_at(rel, floor + 1.01, agent=cur_agent())
-            for k in (1, 2):
-                _utime(pl.name, (st.st_atime_ns, (floor + k) * 1_000_000_000 + MT_STEP_NS), pl.dfd)
-                if _shown_sec(_lst(pl.name, pl.dfd).st_mtime) > floor:
-                    break
-            else:
-                raise _TodoBusy("这块盘设不出更晚的一秒")
-    except (OSError, _TodoBusy) as e:
-        try:
-            os.unlink(pl.name, dir_fd=pl.dfd)    # 自己刚建的（半截的、或者秒挪不上去的），删掉
-        except OSError:
-            pass
-        if isinstance(e, _TodoBusy):
-            return _bad(T("写不进去：{e}", e="busy"))
-        return _bad(T("写不进去：{e}", e=_abs_err(e, names)))
-    _todo_hwm_note(key, pl.name, pl.dfd)
-    return _todo_done(v, rel, full, pl, doc, "新建", 2, 0, 0, "- [ ] " + text, "", "")
 
 
 def save_route(req: dict):
@@ -4077,63 +3502,6 @@ def tree_view():
             "笔记本": nb_entries()}
 
 
-def _tree_tasks(d, rel, mt, size, raw, watch):
-    """树上的一篇带上「任务」「基于」两个键（5.14）。只对索引里任务非空的 md 调。
-
-    · 先过写回判据（_task_target，跟 /__task 是同一个函数）：过不了的整篇不带键
-      ——点开头的文件夹、大写 `.MD`、指到库外的符号链接都进索引，但勾不动。
-    · 「任务」：[[行, 原文], …]，索引里存的那一份原样给（原文没洗行内 Markdown，
-      页面拿阅读页的 inl() 渲染再取纯文字）。
-    · 「基于」：**现 stat 这一篇**，(round(mtime, 2), 大小) 跟索引里那一对相等才给，
-      值跟 _mtime_str 同一个式子（逐字相等，/__task 拿它跟现读的比）。不等＝索引
-      落后于磁盘（刚改过、同步还没跑到）：行号是按索引那一版算的，不给「基于」，
-      页面当「过期」先重扫再说。stat 不了也不给。
-      **不能**拿库里的 mtime 或「改于」换算：库里存的是 round(st_mtime, 2)，小数
-      ≥ .995 时进位到下一秒，格式化出来多一秒；文件不再改，这个错就一直在，
-      那一篇每勾一下都是冲突、重扫也救不回来（M1 地图 §B2 实测）。
-
-    缓存：树按索引库的指纹缓存，「基于」却是现 stat 的。所以这一篇 stat 到的
-    (round2 mtime, 大小) 记进 `watch`，跟树一起缓存；下一次命中缓存之前先把这几篇
-    再 stat 一遍（_watch_same），有一篇变了就整棵重算——外部刚改过、同步还没跑到的
-    那几秒里，树上这一篇就不再带着旧的「基于」。带任务的篇几十份，一遍 stat 是
-    零点几毫秒。（就算漏了，旧「基于」也只会让 /__task 第一道闸回 conflict，不会写错。）
-    """
-    full, err = _task_target(rel)
-    if err:
-        return
-    try:
-        got = json.loads(raw)
-    except ValueError:
-        return
-    if not (isinstance(got, list) and got and all(
-            isinstance(x, list) and len(x) == 2 and isinstance(x[0], int)
-            and isinstance(x[1], str) for x in got)):
-        return
-    d["任务"] = got
-    try:
-        st = os.stat(full)
-    except OSError:
-        watch.append((full, None))
-        return
-    now = (round(st.st_mtime, 2), st.st_size)
-    watch.append((full, now))
-    if now == (mt, size):
-        d["基于"] = datetime.fromtimestamp(st.st_mtime).strftime("%Y-%m-%d %H:%M:%S")
-
-
-def _watch_same(watch):
-    """缓存的树里带任务的那几篇，磁盘上的 (round2 mtime, 大小) 还跟算树那一刻一样吗。"""
-    for full, was in watch:
-        try:
-            st = os.stat(full)
-            now = (round(st.st_mtime, 2), st.st_size)
-        except OSError:
-            now = None
-        if now != was:
-            return False
-    return True
-
-
 def tree_one(v):
     """一本的树。路径都是库内相对路径，不带前缀——加前缀是 tree_view 的事。
 
@@ -4153,8 +3521,6 @@ def tree_one(v):
     （见 agent_marks）。没有这回事就没有这个键。**流水的指纹也进缓存键**——
     署名只落在流水里，光盯 db 的话卡片上那行 ✦ 会等到下一次索引变动才出现。
 
-    5.14 起有没勾待办、又写得回去的 md 多「任务」和（多半有的）「基于」两个键，
-    见 _tree_tasks。没有任务的篇一个字不变。
     """
     bind(v)
     if not v.online:
@@ -4162,9 +3528,7 @@ def tree_one(v):
     key = (_db_key(), _journal_key())
     with _lock:
         c = _tree_cache.get(v.vid)
-    # 带任务的那几篇另外现 stat 一遍（_tree_tasks 的「缓存」那一段）：锁外做，别让
-    # 几十次 stat 挡着别的请求
-    if c and c["key"] == key and c["data"] and _watch_same(c.get("watch") or ()):
+    if c and c["key"] == key and c["data"]:
         return c["data"]
 
     try:
@@ -4175,12 +3539,10 @@ def tree_one(v):
         # 探一下，没有就取空串，卡片画一张白纸，不至于整棵树读不出来。
         cols = {r[1] for r in con.execute("PRAGMA table_info(文档)")}
         sk_col = "骨架" if "骨架" in cols else "''"
-        # 任务（5.14）同理：老库还没补上这一列时当「还没算」，一篇都不带
-        tk_col = "任务" if "任务" in cols else "NULL"
         # 只取正文开头：标题在第一个 `# ` 里，整份 md 拉出来白读几 MB
-        rows = con.execute("SELECT 路径,类型,mtime,substr(正文,1,4000),%s,大小,%s "
+        rows = con.execute("SELECT 路径,类型,mtime,substr(正文,1,4000),%s "
                            "FROM 文档 WHERE 类型 IN ('md','html')"
-                           % (sk_col, tk_col)).fetchall()
+                           % sk_col).fetchall()
         synced = fulltext.meta_get(con, "上次同步")
         con.close()
     except Exception as e:
@@ -4189,13 +3551,10 @@ def tree_one(v):
     generic = tuple(cfg().get("通用标题") or ())
     marks = agent_marks()
     docs = []
-    watch = []                                   # 带任务的那几篇算树时的 stat，见 _tree_tasks
-    for rel, kind, mt, head, sk, size, tasks in rows:
+    for rel, kind, mt, head, sk in rows:
         d = {"路径": rel, "标题": title_of(rel, head or "", kind, generic),
              "类型": kind, "改于": round(mt or 0, 1),
              "预览": list_preview(head or "", kind), "骨架": sk or ""}
-        if tasks and kind == "md":
-            _tree_tasks(d, rel, mt, size, tasks, watch)
         if marks.get(rel):
             d["代理"] = marks[rel]
         docs.append(d)
@@ -4254,7 +3613,7 @@ def tree_one(v):
            "根文档": sum(1 for r in docs if "/" not in r["路径"]),
            "总数": len(docs), "生成时间": (synced or "")[:16]}
     with _lock:
-        _tree_cache[v.vid] = {"key": key, "data": out, "watch": tuple(watch)}
+        _tree_cache[v.vid] = {"key": key, "data": out}
     return out
 
 
@@ -5754,7 +5113,7 @@ class Handler(SimpleHTTPRequestHandler):
             return
         route = self.path.split("?")[0]
         if route not in ("/__config", "/__reveal", "/__external",
-                         "/__save", "/__task", "/__todo", "/__trash", "/__untrash",
+                         "/__save", "/__task", "/__trash", "/__untrash",
                          "/__state", "/__rescan", "/__extopen",
                          "/__profile", "/__agent_setup", "/__notebooks"):
             self.send_error(404, "not found")
@@ -5803,7 +5162,6 @@ class Handler(SimpleHTTPRequestHandler):
             out = {"/__config": write_config, "/__reveal": reveal,
                    "/__external": open_external, "/__extopen": ext_open,
                    "/__save": save_route, "/__task": task_toggle,
-                   "/__todo": todo_add,
                    "/__state": state_set,
                    "/__trash": trash, "/__untrash": untrash,
                    "/__profile": profile_write,
@@ -5816,9 +5174,9 @@ class Handler(SimpleHTTPRequestHandler):
         # 而且这一趟同步就是这两条路由记流水的地方（trash / untrash 只记活表）。
         # **记账不在这儿**：save_md / new_md / trash / untrash 在真正动文件之前
         # 就记了，见那四处注释
-        if (route in ("/__save", "/__task", "/__todo", "/__trash", "/__untrash")
+        if (route in ("/__save", "/__task", "/__trash", "/__untrash")
                 and isinstance(out, dict) and out.get("ok") and not out.get("未改")):
-            kick_sync(V())                       # 只补动过的那一本。字没变的就地改不写盘，不必扫
+            kick_sync(V())                       # 只补动过的那一本
         self._json(json.dumps(out, ensure_ascii=False))
 
     def send_header(self, keyword, value):

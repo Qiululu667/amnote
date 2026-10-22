@@ -55,12 +55,7 @@ html 那一改要对已经进库的 html 补一次重抽（只重写 正文 列�
       md 的结构缩影，索引时算一次存下来，首页卡片照它画一张「纸」。老库开库时
       自动 ALTER ＋ 回填一次，**只在可写连接上**（见 _add_skeleton_col）；
       规则在 skeleton_of，跟页面上的 skeletonOf() 是同一套，改要一起改。
-    · **5.14 起再多一列 `任务`**：md 里没勾的待办，`[[行, 文], …]` 的 JSON——
-      阅读页会画出可点的空框、`/__task` 也勾得动的那些行（规则在 tasks_of）。
-      **NULL＝还没算，''＝算过、一条都没有。** 新增／修改时跟 骨架 一起在
-      _sync_once 那条 INSERT 里算；老库开库只 ALTER 加列（_add_task_col），
-      补算放在 _sync_once 收尾、分批、可续（_fill_tasks）。同一轮起 md 的 正文
-      只把 \\r\\n 换成 \\n、孤立的 \\r 原样留着（见 _extract_md）。
+    · 旧库里的「任务」列保留兼容，新库不再创建；独立待办已退役，索引不再抽取或补算。
 
 用法（都能单独跑，不用起服务；--root 可写在任意位置）：
     python3 fulltext.py --root /path --sync
@@ -1263,31 +1258,6 @@ def _add_skeleton_col(con):
         con.commit()
 
 
-def _add_task_col(con):
-    """老库补「任务」那一列（5.14）。**只 ALTER，不回填**。
-
-    跟 _add_skeleton_col 不一样的地方：回填不放在这儿。connect() 谁都会调
-    （请求线程、后台同步），回填放这儿就会落在请求线程上、还可能几条线程一起补；
-    而且「ALTER 抢成功的那条连接负责补」不可续——补到一半退出，列已经在了，
-    剩下的永远不再补。所以这里只加列（默认 NULL＝还没算），补算交给
-    _sync_once 收尾时的 _fill_tasks：拿着 sync_lock，同一本串行，断了下次接着补。
-
-    抢输的那条连接吃一个 `duplicate column name`，库只读 / 盘满也是
-    OperationalError：都直接退出，读侧探列兜底，下一次 connect 再试。
-    """
-    try:
-        cols = {r[1] for r in con.execute("PRAGMA table_info(文档)")}
-    except sqlite3.Error:
-        return
-    if not cols or "任务" in cols:
-        return
-    try:
-        con.execute("ALTER TABLE 文档 ADD COLUMN 任务 TEXT")
-        con.commit()
-    except sqlite3.OperationalError:
-        return
-
-
 def connect():
     """开索引库。configure(readonly=True) 之后是**纯读**：URI 的 mode=ro，
     不改 journal_mode（那一句会写主库文件的头）、不建表。库不在就直接抛，
@@ -1303,7 +1273,7 @@ def connect():
     CREATE TABLE IF NOT EXISTS 文档(
       路径 TEXT PRIMARY KEY, 类型 TEXT, mtime REAL, 大小 INTEGER,
       正文 TEXT DEFAULT '', 原文 TEXT, 备注 TEXT DEFAULT '',
-      骨架 TEXT DEFAULT '', 任务 TEXT);
+      骨架 TEXT DEFAULT '');
     CREATE TABLE IF NOT EXISTS 链接(
       源 TEXT, 类型 TEXT, 目标 TEXT, 文本 TEXT);
     CREATE INDEX IF NOT EXISTS 链接_目标 ON 链接(目标);
@@ -1311,7 +1281,6 @@ def connect():
     CREATE TABLE IF NOT EXISTS 元(键 TEXT PRIMARY KEY, 值 TEXT);
     """)
     _add_skeleton_col(con)
-    _add_task_col(con)
     return con
 
 
@@ -1322,109 +1291,6 @@ def meta_get(con, k, dflt=""):
 
 def meta_set(con, k, v):
     con.execute("INSERT OR REPLACE INTO 元(键,值) VALUES(?,?)", (k, str(v)))
-
-
-# ── 「任务」列的口径与补算（5.14）─────────────────────────────
-#
-# 元 表里两个键，分工不同：
-#   任务口径  列里**现有的那些值**是按哪一版规则（TASK_RULES）算的。对不上就先整本
-#             置 NULL 再算——只置这一回，置完立刻记下，补到一半断了也不会再置第二遍。
-#   任务规则  **全补完**才写：值是当前版本，说明每一份 md 都按这一版算过了。
-# 只用一个键做不到「规则一变就重抽」和「断了接着补」同时成立：拿「全补完才写」的
-# 那个键判要不要置 NULL，补到一半断了它还是旧值，下一趟又从头置一遍，大库可能
-# 永远补不完。
-
-TASK_BATCH = 200                       # 补算一批几份（正文整份读，大的一份 4 MB）
-
-
-def _task_rules_ready(con):
-    """「任务」列在不在（在才往里写）；在的话先把它对到当前规则上。
-
-    口径对不上（规则改了；或者是口径没记下来的老值）：md 行的「任务」整本
-    置回 NULL，同一笔事务里把 `任务口径` 记成当前版本。之后这一趟 INSERT 现算的、
-    _fill_tasks 补的，就全是当前规则的。老库刚 ALTER 上来的列本来就全是 NULL，
-    这一步只扫一遍、一行不改。出错就当这一趟没有这一列（INSERT 照旧版八列写，
-    「任务」落成默认的 NULL，下一趟补）。
-    """
-    try:
-        cols = {r[1] for r in con.execute("PRAGMA table_info(文档)")}
-        if "任务" not in cols:
-            return False
-        if meta_get(con, "任务口径") != TASK_RULES:
-            con.execute("UPDATE 文档 SET 任务=NULL "
-                        "WHERE 类型='md' AND 任务 IS NOT NULL")
-            meta_set(con, "任务口径", TASK_RULES)
-            con.commit()
-    except sqlite3.Error:
-        try:
-            con.rollback()
-        except sqlite3.Error:
-            pass
-        return False
-    return True
-
-
-def _fill_tasks(con, log=None):
-    """把「任务」列里的 NULL（＝还没算）补齐，补完写 `元.任务规则`。返回补了几份。
-
-    _sync_once 收尾时调：拿着 sync_lock，同一本串行；开机那一趟后台同步就会跑到。
-    NULL 从三处来——老库刚加上这一列；规则变了被 _task_rules_ready 置回去的；
-    降级到 5.14 以前跑过一阵，旧版的 INSERT OR REPLACE 不认这一列，动过的那几篇
-    被冲成了默认的 NULL。所以**每一趟都查**（只看行头，NULL 和 '' 都不用去读
-    溢出页，几千份是毫秒级），不只看 `任务规则` 那个键。
-
-    **可续**：200 份一批、每批 commit，`任务规则` 最后才写。中途退出，下一趟从
-    剩下的 NULL 接着补。从已经存着的 正文 现算（整份，不能像骨架那样只取开头），
-    不碰 mtime／大小——碰了下一趟 sync 会把整本当成「全改过」。例外见
-    _tasks_from_disk：抽出任务的那几篇按磁盘重读一遍。
-    """
-    rels = [r for r, in con.execute(
-        "SELECT 路径 FROM 文档 WHERE 类型='md' AND 任务 IS NULL")]
-    for i in range(0, len(rels), TASK_BATCH):
-        chunk = rels[i:i + TASK_BATCH]
-        upd = []
-        # 一行一行地取，别 fetchall：一批 200 份里可能有几份 4 MB 的
-        for rel, mt, sz, body, note in con.execute(
-                "SELECT 路径,mtime,大小,正文,备注 FROM 文档 WHERE 路径 IN (%s)"
-                % ",".join("?" * len(chunk)), chunk):
-            got = tasks_of(body, cut=(note == "超长截断"))
-            # 正文里带 U+FFFD 的那几篇也回盘上看一眼：是不是坏 UTF-8 得看文件（_utf8_ok）
-            if got or ("\ufffd" in (body or "") and "[ ]" in (body or "")):
-                again = _tasks_from_disk(rel, mt, sz)
-                if again is not None:
-                    got = again
-            upd.append((task_json(got), rel))
-        con.executemany("UPDATE 文档 SET 任务=? WHERE 路径=?", upd)
-        con.commit()
-    if meta_get(con, "任务规则") != TASK_RULES:
-        meta_set(con, "任务规则", TASK_RULES)
-        con.commit()
-    if rels and log:
-        log("任务补算 %d 份" % len(rels))
-    return len(rels)
-
-
-def _tasks_from_disk(rel, mt, sz):
-    """补算时，抽出了任务的那一篇按 5.14 的读法从磁盘重读再抽一次。
-
-    正文可能是 5.14 以前存的：那时孤立的 \\r 被当成换行，从那儿往后行号都多一，
-    按它算出来的行号拿去勾会勾到别的行。磁盘上还是索引那一版（mtime 按两位
-    小数、大小都对得上——就是同步判「没改过」的那一对）才重读。对不上、
-    读不了就回 None，调用方退回正文算的那一份：对不上说明文件改过了，下一趟
-    同步会整篇重抽，而在那之前 /__tree 也不会给这一篇出「基于」（同一对值），
-    页面不会拿旧行号去勾。只有任务非空的才走这儿（几十篇），不重读整本库。
-    """
-    full = _full(rel)
-    try:
-        st = os.stat(full)
-    except OSError:
-        return None
-    if (round(st.st_mtime, 2), st.st_size) != (mt, sz):
-        return None
-    body, _, note = _extract_md(full)
-    if note.startswith("读不了"):
-        return None
-    return tasks_of(body, cut=(note == "超长截断"), full=full)
 
 
 # ── 留档（跟门户编辑备份同目录同规则） ───────────────────────
@@ -1620,25 +1486,6 @@ def note_portal_write(rel, agent=None):
     with _pw_lock:
         _portal_writes.setdefault(key, []).append((now, (agent or "").strip()))
         _pw_prune(now)
-        if len(_portal_writes) > PW_FILES:        # 兜底，正常到不了
-            for k in list(_portal_writes)[:len(_portal_writes) - PW_FILES]:
-                _portal_writes.pop(k, None)
-
-
-def note_portal_write_at(rel, at, agent=None):
-    """同 note_portal_write，只是这一笔记在给定的时刻 `at`（这一版落盘后的 mtime），不是「现在」。
-
-    5.15 /__todo 用：它要求每一版的秒严格晚于上一版，收件箱本来就在未来（时钟快的设备同步来的、
-    系统时间被往回校过）时，新的一版也跟着落在未来。按「现在」记，跟文件 mtime 差出 PW_WINDOW 以外，
-    同步认领不到，就记成「外部」、白存一版档。记在 mtime 那一刻，认领总能对上。别的写法照旧用
-    note_portal_write。"""
-    if not rel:
-        return
-    now = time.time()
-    key = (V().vid, rel)
-    with _pw_lock:
-        _portal_writes.setdefault(key, []).append((float(at), (agent or "").strip()))
-        _pw_prune(now)                            # 未来那一笔 now − at < 0，留到它过了窗口为止
         if len(_portal_writes) > PW_FILES:        # 兜底，正常到不了
             for k in list(_portal_writes)[:len(_portal_writes) - PW_FILES]:
                 _portal_writes.pop(k, None)
@@ -1905,9 +1752,6 @@ def _sync_once(log):
         return {"ok": False, "说明": "库根现在不在，这一趟跳过", "库根": v.root}
     t0 = time.time()
     con = connect()
-    # 「任务」那一列（5.14）可能还没加上：ALTER 撞上锁、库所在的盘只读……
-    # 没有就照旧版的八列写，下一趟 connect 再加。有的话先对一下规则口径
-    has_task = _task_rules_ready(con)
     cur = walk_files()
     old = {r: (m, s, k) for r, m, s, k in
            con.execute("SELECT 路径,mtime,大小,类型 FROM 文档")}
@@ -2005,11 +1849,9 @@ def _sync_once(log):
     # 抽正文。pdf 攒一批交给 osascript，其余就地抽
     todo = added + changed
     pdf_todo = []
-    # 任务列在就九列：INSERT OR REPLACE 是整行换掉，不写明的列会落回默认的 NULL
-    # （＝「还没算」），每一份都得在这儿算好
-    cols = "路径,类型,mtime,大小,正文,原文,备注,骨架" + (",任务" if has_task else "")
-    ins = "INSERT OR REPLACE INTO 文档(%s) VALUES(%s)" % (
-        cols, ",".join("?" * (9 if has_task else 8)))
+    # 旧库可能仍有「任务」列，不再读写；只更新搜索和卡片使用的这八列。
+    ins = ("INSERT OR REPLACE INTO 文档(路径,类型,mtime,大小,正文,原文,备注,骨架) "
+           "VALUES(?,?,?,?,?,?,?,?)")
     for r in todo:
         kind = cur[r][2]
         full = _full(r)
@@ -2024,12 +1866,9 @@ def _sync_once(log):
             body, raw, note = _extract_sheet(full, kind)
         else:                                      # xls / docx / pptx：只记不抽
             body, raw, note = "", None, "没有抽取器"
-        # 骨架、任务只有 md 有（html 的卡片画的是一扇窗，pdf／表格不在门户里列；
-        # html 里的勾选框是网页自己的，/__task 也不写 html）
+        # 骨架只有 md 有（html 的卡片画的是一扇窗，pdf／表格不在门户里列）。
         vals = (r, kind, cur[r][0], cur[r][1], body, raw, note,
                 skeleton_of(body) if kind == "md" else "")
-        if has_task:
-            vals += (task_cell(body, note, full) if kind == "md" else "",)
         con.execute(ins, vals)
         if kind == "md":
             con.execute("DELETE FROM 链接 WHERE 源=?", (r,))
@@ -2048,21 +1887,8 @@ def _sync_once(log):
             body = t or ""
             note = "读不了" if t is None else ("无文本层" if not t.strip() else "")
             vals = (r, "pdf", cur[r][0], cur[r][1], body, None, note, "")
-            con.execute(ins, vals + (("",) if has_task else ()))
+            con.execute(ins, vals)
         con.commit()
-
-    # 老库刚加上的「任务」列、规则变了被置回 NULL 的、降级期间被旧版冲成 NULL 的，
-    # 都在这儿补（新增／修改的上面已经算好了）。补算出错不连累这一趟：
-    # 正文、流水上面都已经落盘了，剩下的 NULL 下一趟接着补
-    if has_task:
-        try:
-            _fill_tasks(con, log)
-        except (sqlite3.Error, OSError) as e:
-            log("任务补算没做完，下一趟接着补：%s" % e)
-            try:
-                con.rollback()
-            except sqlite3.Error:
-                pass
 
     meta_set(con, "上次同步", now_iso)
     con.commit()
@@ -2521,61 +2347,10 @@ def skeleton_of(text):
     return "".join(out)
 
 
-# ── 任务：md 里没勾的待办，索引时抽一次（5.14）──────────────────
-#
-# 待办页按这一列列出「还没勾上的」，勾一下走现成的 POST /__task 写回原来那一行。
-# 所以一条任务必须同时满足两把尺子：
-#   · 阅读页会把它画成可点的勾选框——template.html 的 md2html：frontmatter 剥掉不画
-#     （3678–3685）、围栏里的不画（fenceOpen / fenceClose / fenceAt / tildeCloseMax，
-#     3525–3555）、整行合 LIRE（3482）而且正文合 /^\[([ xX])\]\s+(.*)$/（3780）；
-#   · /__task 收这一行——portal_server 的 task_toggle 用 TASK_RE 判。
-# 取两者的**交集**。两把尺子不一样的几处（M2 地图 §A1.4 实测）：
-#   · JS 的 \s 认全角空格、NBSP、U+FEFF……TASK_RE 只认空格和制表符：拿这些当分隔、
-#     当缩进的，页面画框、服务端不收 → 不收；
-#   · Python 的 \d 认全角数字（「１. [ ]」），JS 的 \d 不认：服务端收、页面不画 →
-#     抽取用 ASCII 的 [0-9]，**TASK_RE 本身一个字不改**（/__task 的行为不变）；
-#   · 行里夹着 \r、U+2028、U+2029：JS 的 `.` 跨不过去，LIRE 整行不中 → 不收；
-#   · 第 0 行开头的 BOM：阅读页 fetch().text() 已经把它吃掉了照样画框，/__task 按字节
-#     解码留着它、TASK_RE 不认 → 不收。判 frontmatter／围栏之前先去掉它（页面看到的
-#     就是没有 BOM 的那份；BOM 不是换行，行号不受影响）。
-# 再加三条：坏 UTF-8 的整篇不收（/__task 解码失败回 io；按文件严格解码判，文件里合法
-# 写着的 U+FFFD 不算，见 _utf8_ok）；`[ ]` 后面去掉首尾空白是空的不收（没有字可列）；
-# 正文真截在 MD_MAX_BYTES 个字上、最后那半行不收。
-#
-# 围栏和 frontmatter **逐条照渲染器**，不复用 PV_FENCE_RE / SK_FENCE / _FENCE_RE——
-# 那几套口径各不相同（M1 地图 §A3），哪套都对不上「页面画不画框」。渲染器只在块首
-# 判围栏，但表格、引用、列表、段落都吞不下围栏开头的那一行（段落显式 !fenceAt，
-# 其余靠行首字符天然互斥），列表行也不会被别的块吞掉，所以逐行扫、每行先试围栏，
-# 跟 md2html 一模一样。
-#
-# **行**：整份按 \n 切开的 0 基下标，frontmatter 那几行也算（＝ /__task 的「行」＝
-# 阅读页的 data-l0 + 块内第几个 li）。**文**：`[ ]` 后面的原文，去首尾空白，最多
-# TASK_TEXT_MAX 个字。**服务端不洗行内 Markdown**：页面拿阅读页同一个 inl() 渲染
-# 再取纯文字，跟阅读页逐字一样。/__task 的「期望」校验也用 task_text_of 取原文比，
-# 两边同一个函数。
-
-TASK_RULES = "1"                       # 抽取口径一变就加一：老库整本重抽一遍
+# ── 正文勾选：行格式和冲突校验共用口径 ──────────────────────
+# /__task 保留逐字节勾选；期望原文最多取 300 个字，跟阅读页 lineTaskText 一致。
 TASK_TEXT_MAX = 300
-
-# /__task 用的判据（template.html:3482 的 LIRE ＋ 3780 的勾选框正则，见上）。
-# 5.14 从 portal_server 搬过来（fulltext 不能反过来 import 它），那边留了别名
 TASK_RE = re.compile(r"^[ \t]*(?:[-*+]|\d+[.)])[ \t]+\[([ xX])\][ \t]")
-# 抽取用的：TASK_RE 的子集——只收 [ ]，序号只认 ASCII 数字（同 JS 的 \d）
-_TASK_OPEN = re.compile(r"[ \t]*(?:[-*+]|[0-9]+[.)])[ \t]+\[ \][ \t]")
-_TASK_BREAK = re.compile(r"[\r\u2028\u2029]")        # JS 的 `.` 跨不过去的几个字
-# JS 正则里的 \s（没有 u 标志）：空白 ＋ 行终止符。Python 的 \s 不认 U+FEFF、
-# 多认 \x1c–\x1f、\x85，照抄 JS 的正则必须用这一份
-_JS_WS = (r"[\t\n\x0b\x0c\r \u00a0\u1680\u2000-\u200a"
-          r"\u2028\u2029\u202f\u205f\u3000\ufeff]")
-# 渲染器的三条：fenceOpen /^\s*(`{3,}|~{3,})(.*)$/ · fenceClose /^\s*(`{3,}|~{3,})\s*$/ ·
-# tildeCloseMax 里那道 /^\s*(~{3,})\s*$/（JS 的 `.` 跨不过 \r、U+2028、U+2029，$ 没有 m 标志＝串尾）。
-# **不照抄成一条正则**：`(`{3,})(.*)\Z` 遇上「一长串反引号 ＋ 行尾一个孤立 \r」会逐个回退，
-# 八千个反引号 0.2 秒、一行一兆就把整趟同步卡死。改成先贪婪地吃掉行首空白和那一串记号
-# （空白和记号互不相干，没有回退），再单独看剩下的那截。结果跟 JS 那三条一模一样：
-# 整串记号后面那截要是不合格（夹着 \r、带了字），换成短一点的记号，后面那截只会更长、
-# 照样不合格；合格的时候 JS 的贪婪匹配拿到的也正是整串。
-_FENCE_RUN = re.compile(_JS_WS + r"*(`+|~+)")
-_JS_WS_TAIL = re.compile(_JS_WS + r"*\Z")
 
 
 def task_body_of(line):
@@ -2594,358 +2369,13 @@ def task_text_of(line):
     """一行待办的「原文」：`[ ]`（或 `[x]`）后面那一截，去掉行尾的 \\r、首尾空白，
     最多 TASK_TEXT_MAX 个字。不是 TASK_RE 认的待办行回 None。
 
-    抽取（tasks_of）和 /__task 的「期望」校验共用这一个函数——两边取法差一个字，
-    待办页每勾一下都是假冲突。/__task 那边的行是二进制读、按 \\n 切的，CRLF 文件
+    /__task 的「期望」校验用它。那边的行是二进制读、按 \\n 切的，CRLF 文件
     行尾带着 \\r，所以这里先去掉它。
     """
     s = task_body_of(line)
     if s is None:
         return None
     return s[:TASK_TEXT_MAX]
-
-
-def task_retitle_line(line, text):
-    """把这一行待办的字换成 text。text 须是非空的一行（调用方已用 todo_text 规整）。
-
-    前缀原样留着：缩进、列表记号、方括号里那一个字符、它后面那一个空白。
-    行尾的 \\r（CRLF 那一行）也留着。不是待办行、或 text 为空，回 None。
-    """
-    m = TASK_RE.match(line)
-    if not m or not text or "\n" in text or "\r" in text:
-        return None
-    tail = line[m.end():]
-    cr = "\r" if tail.endswith("\r") else ""
-    return line[:m.end()] + text + cr
-
-
-def _fence_open(line):
-    """template.html fenceOpen：(记号, 长度) 或 None。三个起；后面那截里有 \\r、
-    U+2028、U+2029 就不算（JS 的 (.*)$ 跨不过去）；反引号围栏的信息串里再有反引号
-    也不算（那是一行行内代码）。"""
-    m = _FENCE_RUN.match(line)
-    if not m or len(m.group(1)) < 3:
-        return None
-    rest = line[m.end():]
-    ch = m.group(1)[0]
-    if _TASK_BREAK.search(rest) or (ch == "`" and "`" in rest):
-        return None
-    return (ch, len(m.group(1)))
-
-
-def _fence_close(line, fo):
-    """template.html fenceClose：同一种记号、不短于开头、后面只有空白。"""
-    m = _FENCE_RUN.match(line)
-    return bool(m and m.group(1)[0] == fo[0] and len(m.group(1)) >= fo[1]
-                and _JS_WS_TAIL.match(line, m.end()))
-
-
-def _tilde_close_len(line):
-    """tildeCloseMax 里那道：整行只是 ~~~（三个起）加两边的空白，回它的长度，否则 0。"""
-    m = _FENCE_RUN.match(line)
-    if (not m or m.group(1)[0] != "~" or len(m.group(1)) < 3
-            or not _JS_WS_TAIL.match(line, m.end())):
-        return 0
-    return len(m.group(1))
-
-
-def tasks_of(text, cut=False, full=None):
-    """md 正文 → [[行, 文], …]：没勾的待办，按行号升序。规则见上面那一段。
-
-    **吃的是正文**（_extract_md 出来的：\\r\\n 已经换过**一遍**）。这里不能再换：
-    渲染器也只换一遍（`src.replace(/\\r\\n/g,'\\n')`），`\\r\\r\\n` 换完是 `\\r` ＋ 换行，
-    那一行带着 \\r、不画框；再换一遍就把那个 \\r 也吃了，行就对不上了。
-    拿磁盘原文直接调的，先自己 `.replace("\\r\\n", "\\n")` 一遍。
-
-    `cut`＝备注是「超长截断」：正文真读满了 MD_MAX_BYTES 个字、末尾又不是换行的话，
-    最后一行是半截，不收——半截的字拿去当「期望」，那一条永远对不上。**只看字数**：
-    备注是按文件字节数给的，4–12 MB 的中文笔记其实整份读进来了，文末那条照收。
-
-    `full`＝这份在盘上的路径。正文里有 U+FFFD 时拿它去盘上核是不是坏 UTF-8（_utf8_ok）；
-    不给就按老规矩：有 U+FFFD 就当坏的。只有既有 `[ ]` 又有 U+FFFD 的篇才会多读一次盘。
-    """
-    s = text if isinstance(text, str) else str(text or "")
-    # 快路：一条都不可能有的（绝大多数篇）。坏 UTF-8 整篇不收（/__task 严格解码，回 io）
-    if "[ ]" not in s or ("\ufffd" in s and not _utf8_ok(full)):
-        return []
-    cut = cut and len(s) >= MD_MAX_BYTES
-    bom = s.startswith("\ufeff")
-    if bom:
-        s = s[1:]
-    # frontmatter：template.html 3678–3685 原样。开头只看前三个字是不是 ---
-    # （---- 分隔线、---标题 也算），收尾＝后面第一行以 --- 开头的（没有行数上限），
-    # 剥到那一行的换行为止；收尾那一行后面没有换行（文件最后一行）就整块不剥
-    start = 0
-    if s.startswith("---"):
-        e = s.find("\n---", 3)
-        if e != -1:
-            nl = s.find("\n", e + 1)
-            if nl != -1:
-                start = s.count("\n", 0, nl + 1)
-    L = s.split("\n")
-    n = len(L)
-    stop = n - 1 if (cut and not s.endswith("\n")) else n
-    # tildeCloseMax：每一行往后（含）最长的那道 ~~~ 收尾有几个字，从后往前一趟算好。
-    # 渲染器是在剥完 frontmatter 的行上算的；后缀最大值只看「这一行及以后」，
-    # 在整份上算、按整份的下标取，结果一样
-    tilde = None
-    if "~~~" in s:
-        tilde = [0] * (n + 1)
-        for j in range(n - 1, -1, -1):
-            k = _tilde_close_len(L[j]) if "~~~" in L[j] else 0
-            tilde[j] = tilde[j + 1] if tilde[j + 1] >= k else k
-    fences = tilde is not None or "```" in s
-    out = []
-    i = start
-    while i < n:
-        ln = L[i]
-        if fences and ("```" in ln or "~~~" in ln):
-            fo = _fence_open(ln)
-            # fenceAt：~~~ 只有后面真找得到收尾（同种、不短于开头）才算围栏；
-            # 反引号围栏开了就算，收不上一直吃到文末
-            if fo and fo[0] == "~" and tilde[i + 1] < fo[1]:
-                fo = None
-            if fo:
-                tok = fo[0] * fo[1]
-                i += 1
-                while i < n and not (tok in L[i] and _fence_close(L[i], fo)):
-                    i += 1
-                i += 1                 # 吃掉收尾那道（没有收尾就已经到头了）
-                continue
-        if (i < stop and "[ ]" in ln and not (bom and i == 0)
-                and _TASK_OPEN.match(ln) and not _TASK_BREAK.search(ln)):
-            t = task_text_of(ln)
-            if t:
-                out.append([i, t])
-        i += 1
-    return out
-
-
-def task_json(tasks):
-    """「任务」列存的样子：没有就是 ''（＝算过、一条都没有），有就是紧凑的 JSON。"""
-    if not tasks:
-        return ""
-    return json.dumps(tasks, ensure_ascii=False, separators=(",", ":"))
-
-
-def task_cell(body, note="", full=None):
-    """_sync_once 的 INSERT 里现算的那一格（同 skeleton_of 的位置）。"""
-    return task_json(tasks_of(body, cut=(note == "超长截断"), full=full))
-
-
-_UTF8_CHUNK = 1 << 20                  # _utf8_ok 一次读这么多字节
-
-
-def _utf8_ok(full):
-    """这份文件整份能不能按 UTF-8 严格解码——/__task 就是这么读的，解不了回 io。
-    tasks_of 在正文里见到 U+FFFD 才来问：那个字可能是解码时替换出来的（坏 UTF-8），
-    也可能是文件里合法写着的 EF BF BD，后一种 /__task 读得了，不该整篇不收。
-    不知道是哪份文件（full 空）、读不了，都当解不了（老规矩）。
-
-    **分块增量解码**，内存跟文件大小无关：整份 read() 再 decode 的话，一份 200 MB 的 md
-    同步时会一下子吃掉四百多 MB（R2-report P3-2）。增量解码器跨块接得上多字节字，
-    final=True 把文件末尾半个字也算成坏的——判出来跟整份 decode("utf-8") 一样。"""
-    if not full:
-        return False
-    dec = codecs.getincrementaldecoder("utf-8")("strict")
-    try:
-        with open(full, "rb", opener=reg_opener) as f:
-            while True:
-                b = f.read(_UTF8_CHUNK)
-                if not b:
-                    break
-                dec.decode(b)
-        dec.decode(b"", final=True)
-    except (OSError, UnicodeDecodeError):
-        return False
-    return True
-
-
-# ── 新建待办：往一篇里插一行（5.15）────────────────────────────
-#
-# POST /__todo 往随手记里的「待办」那篇插一行 `- [ ] 文`（没有就建）。插在哪、插完对不对，
-# 全在下面这几个**不碰盘**的函数里算：portal_server 拿着那一篇的写锁调它们，测试直接调。
-#
-# **插在哪**（新建待办 brief §2）：
-#   · 有没勾的待办（tasks_of 抽得到的那些）：缩进最浅的那几条里最靠前的一条，插在它前面。
-#     新行照抄那一行的字面前缀——缩进、记号（- * + 或 3. 2) 原样）、空白、`[ ]`、后面那
-#     一个空白——再接上文；那一行以 \r 结尾（CRLF）就也带 \r。
-#   · 一条都没有：插在最后一个非空白行（L）后面。L 是列表行（含已勾的）就紧接着插；不是就
-#     先空一行（L 后面本来就有空行就借它）。换行跟着文件：文件里有 \r\n 就用 \r\n；文件末尾
-#     没换行的照旧不给补。整篇都是空白：任务放在第一行（首行带 BOM 就放第二行——带 BOM 的
-#     第 0 行 /__task 认不了），那一行本来就是空行就直接写进去，不另起一行。
-# **只插不改**：新原文＝旧原文在某一处原样塞进一段，别的字节（BOM、frontmatter、别的行、
-# 结尾有没有换行）一个不动。回执里的「位置」「插入」就是这一刀，测试按它逐字节核。
-# **自检**（写盘前，必须）：新正文的 tasks_of 必须**恰好**＝旧的那几条按插入点平移（行号
-# ≥ 起 的加 增行）再加上新的那一条；frontmatter 的范围前后一样；旧的每一行（正文里的样子）
-# 挪到新位置一字不差；整篇超过 MD_MAX_BYTES 个字的，新的那条还得落在索引读得到的那一截里。
-# 哪条不成立都不写（回 None，路由回 no_spot）：文末没收尾的 ``` 把追加的行吞掉、`---…---`
-# 收尾在文末没换行一追加就整块变成 frontmatter、最后一行以孤立 \r 收尾一接就变成 CRLF，
-# 都是这一道拦下的。
-
-TODO_TEXT_MAX = 1000                   # 一条待办最多这么多码位（页面输入框 maxlength 同）
-# 文的规整（brief §3）：换行类和制表符换成空格，其余 C0 控制字符、DEL、BOM 删掉。
-# 孤立的代理项（JSON 里 "\ud800" 这种）也删：它编不成 UTF-8，留着整次写盘就失败
-_TODO_SPACE = re.compile("\r\n|[\t\n\r\x85\u2028\u2029]")
-_TODO_DROP = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\ufeff\ud800-\udfff]")
-# 「列表行」（文末那一档用）：缩进 ＋ 记号 ＋ 一个空白。已勾的、空的列表项都算
-_LIST_LINE = re.compile(r"[ \t]*(?:[-*+]|[0-9]+[.)])[ \t]")
-
-
-def todo_text(raw):
-    """要记的那件事规整成一行。不是字符串、规整完是空的都回 ''（路由据此回 bad_type）。
-    **不转义 Markdown**：跟在笔记里手打的一样，`[ ]`、`#`、`>`、`|`、`<b>` 打头都照样能抽、能画。"""
-    if not isinstance(raw, str):
-        return ""
-    return _TODO_DROP.sub("", _TODO_SPACE.sub(" ", raw)).strip()
-
-
-def _indent_w(line):
-    """行首缩进的宽度：空格算 1，制表符补到下一个 4 的倍数。"""
-    w = 0
-    for ch in line:
-        if ch == " ":
-            w += 1
-        elif ch == "\t":
-            w = w // 4 * 4 + 4
-        else:
-            break
-    return w
-
-
-def _fm_lines(s):
-    """frontmatter 占了开头几行；没剥就是 0。判据跟 tasks_of 那一段逐字一样（先去一个 BOM，
-    开头三个字是 ---，收尾＝之后第一个 \\n---，收尾那一行后面没有换行就整块不剥）。
-    s＝正文（\\r\\n 已换过一遍）。"""
-    if s.startswith("\ufeff"):
-        s = s[1:]
-    if s.startswith("---"):
-        e = s.find("\n---", 3)
-        if e != -1:
-            nl = s.find("\n", e + 1)
-            if nl != -1:
-                return s.count("\n", 0, nl + 1)
-    return 0
-
-
-def _tasks_known_ok(s, cut=False):
-    """tasks_of，只是这份正文**已知是合法 UTF-8**（盘上严格解出来的，或者我们自己要写下去的），
-    文里的 U+FFFD 是真写着的那个字，不用去盘上核。先换成 U+FFFC 再抽：两个都不是空白、
-    不是记号、不是围栏字符，哪几行算任务、行号一点不变，只有文里那个字跟着换——自检两边
-    都这么换，比的结果不受影响。这样整个自检不读盘。"""
-    return tasks_of(s.replace("\ufffd", "\ufffc"), cut=cut)
-
-
-def _index_cut(text):
-    """索引读这份原文时看到的 (正文, cut)：跟 _extract_md 读、task_cell 算同一个口径——
-    只换 \\r\\n；超过 MD_MAX_BYTES 个字截掉；文件字节数超过 MD_MAX_BYTES 时备注「超长截断」。"""
-    body = text.replace("\r\n", "\n")
-    if len(body) < MD_MAX_BYTES:
-        return body, False
-    return body[:MD_MAX_BYTES], len(text.encode("utf-8")) > MD_MAX_BYTES
-
-
-def index_tasks(text, full=None):
-    """这份原文（磁盘上的整份 str）进了索引会抽出哪几条——/__tree 上这一篇的「任务」就是它
-    （同步跟上之后）。/__todo 回执的「任务」用它，跟树上同形同值。"""
-    body, cut = _index_cut(text)
-    return tasks_of(body, cut=cut, full=full)
-
-
-def todo_plan(old, text):
-    """在原文 old 里插一行待办 text。找不到安全的地方回 None。
-
-    old＝盘上整份原文（严格 UTF-8 解出来的 str，\\r\\n、BOM 原样留着）；text＝todo_text
-    规整过的、非空。回 dict：
-      新            插完的整份原文（＝ old[:位置] ＋ 插入 ＋ old[位置:]）
-      位置 / 插入   在第几个字前面插了哪一段
-      方式          "前插" | "文末"
-      起 / 增行     旧行号 ≥ 起 的整体往后挪 增行 行（页面据此平移同一篇的行号）
-      行            新任务行的行号（0 基，整份按 \\n 切；＝ /__task 的「行」）
-      行文          新任务行在文件里的样子（CRLF 那一行带尾 \\r，同 /__task 的回执）
-    """
-    lf = old.replace("\r\n", "\n")
-    cands = _tasks_known_ok(lf)
-    lines = old.split("\n")
-    starts = [0]
-    for ln in lines[:-1]:
-        starts.append(starts[-1] + len(ln) + 1)
-    if cands:
-        # 前插：缩进最浅的那几条里最靠前的一条
-        w = min(_indent_w(lines[i]) for i, _ in cands)
-        k = next(i for i, _ in cands if _indent_w(lines[i]) == w)
-        m = _TASK_OPEN.match(lines[k])
-        if not m:                                # 抽得到就一定对得上，防万一
-            return None
-        row = m.group(0) + text + ("\r" if lines[k].endswith("\r") else "")
-        how, pos, ins, start, add, at = "前插", starts[k], row + "\n", k, 1, k
-    else:
-        how = "文末"
-        eol = "\r\n" if "\r\n" in old else "\n"
-        item = "- [ ] " + text
-        ends = old.endswith("\n")
-        real = len(lines) - 1 if ends else len(lines)        # 末尾换行之后那个空串不算一行
-        bom = old.startswith("\ufeff")
-
-        def body(i):                             # 第 i 行去掉开头 BOM 之后的样子
-            return lines[i][1:] if (i == 0 and bom) else lines[i]
-
-        def put(r, rows):
-            """整行插在第 r 行前面；r == real 且文件末尾没换行：接在最后一行后面，不补换行。"""
-            if r < real or ends:
-                return starts[r], "".join(x + eol for x in rows)
-            return len(old), "".join(eol + x for x in rows)
-
-        j = next((i for i in range(real - 1, -1, -1) if body(i).strip()), -1)
-        if j >= 0:
-            if _LIST_LINE.match(body(j)):
-                rows, r = [item], j + 1           # 列表行：紧接着
-            elif j + 1 < real:
-                rows, r = [item], j + 2           # L 后面本来就有空行：借它
-            else:
-                rows, r = ["", item], j + 1       # 先空一行
-            pos, ins = put(r, rows)
-            start, add, at = r, len(rows), r + len(rows) - 1
-        else:
-            b = 1 if bom else 0                  # 全是空白：任务放第一行（带 BOM 就第二行）
-            if b < real and (lines[b] == "" or (lines[b] == "\r" and b + 1 < len(lines))):
-                pos, ins, start, add, at = starts[b], item, b, 0, b      # 本来就空着：直接写进去
-            else:
-                (pos, ins), start, add, at = put(b, [item]), b, 1, b
-    new = old[:pos] + ins + old[pos:]
-    new_lf = new.replace("\r\n", "\n")
-    row_txt = new.split("\n")[at]
-    mine = task_text_of(row_txt.replace("\ufffd", "\ufffc"))
-    if not mine:
-        return None
-    want = sorted([[i + add if i >= start else i, t] for i, t in cands] + [[at, mine]])
-    if _tasks_known_ok(new_lf) != want or _fm_lines(new_lf) != _fm_lines(lf):
-        return None
-    # 旧的每一行在正文里（\r\n 换过之后）挪到新位置还得一字不差。字节上永远是只插不改，
-    # 可文件最后一行要是以孤立的 \r 收尾，在它后面接一个换行，那个 \r 就成了 \r\n 的一半，
-    # 那一行在索引和渲染器眼里都变了样（随机文档 × 阅读页对拍抓到的：一行原来画不出框的
-    # `1.　[ ] x\r` 变成画得出、却勾不动的框）。这种就拒。「直接写进空行」那一档跳过那一行
-    old_ls, new_ls = lf.split("\n"), new_lf.split("\n")
-    for i, s in enumerate(old_ls):
-        if add == 0 and i == start:
-            continue
-        if new_ls[i + add if i >= start else i] != s:
-            return None
-    if len(new_lf) >= MD_MAX_BYTES:              # 超长的篇：新的那条得在索引读得到的那一截里
-        cut_body, cut = _index_cut(new)
-        if [at, mine] not in _tasks_known_ok(cut_body, cut=cut):
-            return None
-    return {"新": new, "位置": pos, "插入": ins, "方式": how,
-            "起": start, "增行": add, "行": at, "行文": row_txt}
-
-
-def todo_new_doc(name, text):
-    """新建的收件箱：`# 名` ＋ 空行 ＋ 那一条。自检同 todo_plan（那一条恰好在第 2 行被抽到）；
-    不成立回 None。"""
-    doc = "# %s\n\n- [ ] %s\n" % (name, text)
-    mine = task_text_of("- [ ] " + text)
-    if not mine or _tasks_known_ok(doc) != [[2, mine.replace("\ufffd", "\ufffc")]]:
-        return None
-    return doc
 
 
 def lines_of(text):
