@@ -2029,10 +2029,19 @@ body.focus-mode.peek .doc-toolbar{transform:none;opacity:1;pointer-events:auto;
   background:var(--card-face);border-radius:14px;box-shadow:var(--el-1);
   padding:14px 16px;margin:0 0 12px;align-items:center}
 #viewCfg .cfg-panel>.frow+.frow,#viewCfg #agentRows>.frow+.frow{margin-top:0}
-#viewCfg .cfg-card .frow{background:none;box-shadow:none;border-radius:0;padding:12px 0;margin:0;align-items:center}
+#viewCfg .cfg-card .frow{background:none;box-shadow:none;border-radius:0;padding:12px 0;margin:0;
+  align-items:flex-start;flex-wrap:wrap}
 #viewCfg .cfg-card .frow+.frow{margin-top:0;box-shadow:inset 0 1px 0 var(--rule-row)}
-#viewCfg .cfg-card .flab,#viewCfg .cfg-panel>.frow>.flab,#viewCfg #agentRows>.frow>.flab{
-  width:auto;flex:1;min-width:72px;font-weight:600;color:var(--t1);line-height:1.4}
+#viewCfg .cfg-card .flab{width:auto;flex:none;min-width:0;font-weight:600;color:var(--t1);line-height:1.4}
+#viewCfg .cfg-card .fctl{flex:1 1 100%;min-width:0;max-width:100%}
+#viewCfg .cfg-panel>.frow>.flab,#viewCfg #agentRows>.frow>.flab{
+  width:auto;flex:1 1 140px;min-width:0;font-weight:600;color:var(--t1);line-height:1.4}
+#viewCfg #agentRows>.frow{flex-wrap:wrap;align-items:flex-start}
+#viewCfg #agentRows>.frow>.fctl{flex:1 1 240px;min-width:0;max-width:100%}
+#viewCfg .seg{display:flex;flex-wrap:wrap;max-width:100%}
+#viewCfg .tcards{flex-wrap:wrap;max-width:100%}
+#viewCfg .tcard{width:auto;flex:1 1 108px;max-width:140px;min-width:0}
+#viewCfg .tcard .prev{width:100%;height:72px}
 #viewCfg .sec{background:var(--card-face);border-radius:14px;box-shadow:var(--el-1);
   padding:14px 16px;margin:0 0 12px}
 #viewCfg .sec+.sec{margin-top:0}
