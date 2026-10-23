@@ -1884,7 +1884,8 @@ body.focus-mode.peek .doc-toolbar{transform:none;opacity:1;pointer-events:auto;
 #viewCfg .avrow.drop{background:var(--accent-soft)}
 #viewCfg .av{width:72px;height:72px;border-radius:50%;flex:none;overflow:hidden;
   display:inline-flex;align-items:center;justify-content:center;
-  background:var(--accent-soft);color:var(--accent-ink);font:600 28px/1 var(--ui)}
+  background:var(--accent-soft);color:var(--accent-ink);font:600 28px/1 var(--ui);
+  cursor:pointer}
 #viewCfg .av img{width:100%;height:100%;object-fit:cover;display:block;-webkit-user-drag:none}
 #viewCfg .avacts{min-width:0}
 #viewCfg .avacts .btns{display:flex;align-items:center;gap:8px}
@@ -11891,13 +11892,14 @@ function panelProfile(){
   return `<section class="cfg-panel on" data-cfgpanel="profile">
     <div class="frow"><span class="flab">${esc(TR('头像'))}</span><div class="fctl">
       <div class="avrow" id="cfgAvRow">
-        <span class="av" id="cfgAv">${avatarHtml(32)}</span>
+        <span class="av" id="cfgAv" tabindex="0" role="button"
+          aria-label="${esc(TR('更换头像'))}">${avatarHtml(32)}</span>
         <span class="avacts">
           <span class="btns">
             <button type="button" class="btn" id="cfgAvPick">${esc(TR('选择图片…'))}</button>
             <button type="button" class="btnt" id="cfgAvDrop"${PROFILE.头像?'':' disabled'}>${esc(TR('移除'))}</button>
           </span>
-          <p class="hint">${esc(TR('也可以把图片拖进来，或者直接粘贴一张。'))}</p>
+          <p class="hint">${esc(TR('点一下头像可以更换。也可以把图片拖到头像上，或在头像上粘贴一张。'))}</p>
         </span>
         <input type="file" id="cfgAvFile" accept="image/*" hidden>
       </div>
@@ -12655,6 +12657,13 @@ function wireProfile(){
   const row=$('#cfgAvRow'), file=$('#cfgAvFile');
   const pick=$('#cfgAvPick'), rm=$('#cfgAvDrop');
   if(pick) pick.onclick=()=>{ if(file) file.click(); };
+  const av=$('#cfgAv');
+  if(av){
+    av.onclick=()=>{ if(file && !avBusy) file.click(); };
+    av.onkeydown=e=>{
+      if(e.key==='Enter' || e.key===' '){ e.preventDefault(); if(file && !avBusy) file.click(); }
+    };
+  }
   if(file) file.onchange=()=>{
     const f=file.files && file.files[0];
     file.value='';                // 同一张图再选一次也要触发 change
@@ -12705,6 +12714,12 @@ function putName(v){
 async function putAvatar(file){
   if(avBusy) return;
   if(file && !/^image\//.test(file.type||'')){ notify(TR('读不了这张图')); return; }
+  /* 已经有头像时先问一句。设定页开着时，一张截图贴上来就会静默换掉，
+     换上的又是居中裁成的方图，圆圈里看起来像界面碎掉了。 */
+  if(file && PROFILE.头像){
+    const ok=ask(TR('用这张图换掉头像？'), TR('现在的头像会被换掉。'), TR('换上'), TR('取消'));
+    if(!ok) return;
+  }
   avBusy=true; avSetBusy(true);
   try{
     const payload = file ? {头像:{数据: await avatarBase64(file)}} : {头像:null};
@@ -12717,10 +12732,19 @@ function avSetBusy(on){
   if(pick) pick.disabled=on;
   if(rm) rm.disabled=on || !PROFILE.头像;
 }
-/* 「个人」段开着时，⌘V 一张图就是换头像。挂在 document 上（那一段里没有可聚焦的
-   收图控件），所以先确认设置弹层开着、当前正是这一段，再动手。 */
+/* 只有焦点在头像这一块上时，⌘V 一张图才换头像。
+   以前是「个人」这段开着就收：剪贴板里留着一张截图时，在昵称框里粘贴、
+   或者随手 ⌘V，都会把那张图居中裁成头像。昵称框里的粘贴让它自己去。 */
+function avatarPasteHere(e){
+  if(!cfgOn() || ST.cfgTab!=='profile') return false;
+  const row=$('#cfgAvRow'); if(!row) return false;
+  const t=e && e.target;
+  if(t && t.closest && t.closest('input, textarea, [contenteditable="true"]')) return false;
+  const active=document.activeElement;
+  return !!((t && row.contains(t)) || (active && active!==document.body && row.contains(active)));
+}
 document.addEventListener('paste', e=>{
-  if(!cfgOn() || ST.cfgTab!=='profile' || !$('#cfgAvRow')) return;
+  if(!avatarPasteHere(e)) return;
   const fs=(e.clipboardData && e.clipboardData.files) || [];
   const f=[].slice.call(fs).filter(x=>/^image\//.test(x.type||''))[0];
   if(!f) return;
