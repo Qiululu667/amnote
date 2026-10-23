@@ -1755,14 +1755,16 @@ body.focus-mode.peek .doc-toolbar{transform:none;opacity:1;pointer-events:auto;
   -webkit-backdrop-filter:blur(5px);backdrop-filter:blur(5px);
   align-items:center;justify-content:center;padding:4vh 20px;animation:fadeIn .18s ease-out}
 #cfgWrap.on{display:flex}
-#viewCfg{width:min(720px,96vw);height:min(600px,92vh);display:flex;
+#viewCfg{width:min(920px,96vw);height:min(680px,92vh);display:flex;
   background:var(--pop);border:0;border-radius:var(--r-xl);
   box-shadow:var(--popbig);overflow:hidden;animation:arrive .22s var(--ease-std)}
 
 /* 左导航 */
-#viewCfg .cfg-rail{width:172px;flex:none;background:var(--side);
+#viewCfg .cfg-rail{width:200px;flex:none;background:var(--side);
   padding:16px 10px 12px;display:flex;flex-direction:column;gap:2px}
 #viewCfg .cfg-rail .rt{font-size:12px;font-weight:600;color:var(--t3);letter-spacing:.04em;padding:0 10px 12px}
+#viewCfg .cfg-grp{margin:12px 10px 4px;font-size:11px;color:var(--t4);letter-spacing:.04em}
+#viewCfg .cfg-grp:first-of-type{margin-top:2px}
 #viewCfg .cfg-navi{display:flex;align-items:center;gap:9px;width:100%;height:32px;padding:0 10px;
   border-radius:var(--r-sm);font-size:13px;color:var(--t1);text-align:left;
   transition:background-color var(--d-fast) ease}
@@ -1882,9 +1884,9 @@ body.focus-mode.peek .doc-toolbar{transform:none;opacity:1;pointer-events:auto;
 #viewCfg .avrow{display:flex;align-items:center;gap:16px;padding:12px;margin:-12px;
   border-radius:12px;transition:background-color var(--d-base) ease}
 #viewCfg .avrow.drop{background:var(--accent-soft)}
-#viewCfg .av{width:72px;height:72px;border-radius:50%;flex:none;overflow:hidden;
-  display:inline-flex;align-items:center;justify-content:center;
-  background:var(--accent-soft);color:var(--accent-ink);font:600 28px/1 var(--ui);
+#viewCfg .av{width:84px;height:84px;border-radius:50%;flex:none;overflow:hidden;
+  position:relative;display:inline-flex;align-items:center;justify-content:center;
+  background:var(--accent-soft);color:var(--accent-ink);font:600 32px/1 var(--ui);
   cursor:pointer}
 #viewCfg .av img{width:100%;height:100%;object-fit:cover;display:block;-webkit-user-drag:none}
 #viewCfg .avacts{min-width:0}
@@ -2008,22 +2010,64 @@ body.focus-mode.peek .doc-toolbar{transform:none;opacity:1;pointer-events:auto;
    64px 装不下 Access token，说明句一行也说不完。这三条只在 :lang(en) 下生效，
    简体／繁體两版的排版一个像素都不动。左标签放到 90px 之后控件区还剩 388px，
    主题那三张 120px 的卡（共 384px）仍排得下一行。 */
-:root:lang(en) #viewCfg .flab{width:90px}
+:root:lang(en) #viewCfg .flab,
+:root #viewCfg [data-cfgpanel="agent"] .flab,
+:root:lang(en) #viewCfg [data-cfgpanel="agent"] .flab{width:auto;flex:1;min-width:0}
 :root:lang(en) #viewCfg .kvrow b{width:110px}
 /* Agent 段的标签列要比别处宽：「Codex 与其他」按 58px 排不下，英文的
    「Command Line」「Codex & Others」按 90px 更排不下。写在上面那条 90px
    之后、再多挂一个 :root 顶上去——不然同样重的两条里后面那条赢。 */
-:root #viewCfg [data-cfgpanel="agent"] .flab{width:132px}
-:root:lang(en) #viewCfg [data-cfgpanel="agent"] .flab{width:150px}
+:root #viewCfg [data-cfgpanel="agent"] .flab{width:auto;flex:1}
+:root:lang(en) #viewCfg [data-cfgpanel="agent"] .flab{width:auto;flex:1}
 :root:lang(en) #viewCfg .lblrow .ih{white-space:normal;overflow:visible;
   text-overflow:clip;line-height:1.5}
 
+/* 5.17：一行一块。直接放在面板上的行是卡片；卡片里面的行用底部分隔。 */
+#viewCfg .cfg-card{background:var(--card-face);border-radius:14px;box-shadow:var(--el-1);
+  padding:2px 16px;margin:0 0 12px}
+#viewCfg .cfg-panel>.frow,#viewCfg #agentRows>.frow{
+  background:var(--card-face);border-radius:14px;box-shadow:var(--el-1);
+  padding:14px 16px;margin:0 0 12px;align-items:center}
+#viewCfg .cfg-panel>.frow+.frow,#viewCfg #agentRows>.frow+.frow{margin-top:0}
+#viewCfg .cfg-card .frow{background:none;box-shadow:none;border-radius:0;padding:12px 0;margin:0;align-items:center}
+#viewCfg .cfg-card .frow+.frow{margin-top:0;box-shadow:inset 0 1px 0 var(--rule-row)}
+#viewCfg .cfg-card .flab,#viewCfg .cfg-panel>.frow>.flab,#viewCfg #agentRows>.frow>.flab{
+  width:auto;flex:1;min-width:72px;font-weight:600;color:var(--t1);line-height:1.4}
+#viewCfg .sec{background:var(--card-face);border-radius:14px;box-shadow:var(--el-1);
+  padding:14px 16px;margin:0 0 12px}
+#viewCfg .sec+.sec{margin-top:0}
+#viewCfg .fcards{display:flex;flex-wrap:wrap;gap:6px}
+#viewCfg .fcard,#viewCfg .fcard.wide{grid-column:auto;width:auto;height:30px;padding:0 12px;
+  display:inline-flex;align-items:center;background:var(--field);box-shadow:none}
+#viewCfg .fcard .sm{display:none}
+#viewCfg .fcard .nm{margin:0;font-size:12.5px}
+#viewCfg .fcard.on{background:var(--accent-soft);box-shadow:none}
+#viewCfg .fcard.on .nm{color:var(--accent-ink)}
+#viewCfg .cfg-specimen{margin:0 0 10px;font-size:15px;line-height:1.7;color:var(--t1)}
+#viewCfg .preview{margin:0 0 14px;padding:10px 14px;border-radius:10px;
+  background:var(--accent-soft);color:var(--accent-ink);font-size:12.5px}
+#viewCfg .who{align-items:flex-start}
+#viewCfg .who .flab{width:auto;flex:none;display:block;font-weight:600;color:var(--t1);line-height:1.4;margin:0 0 6px}
+#viewCfg .who .tin{max-width:280px;width:100%}
+#viewCfg .who .btns{display:flex;gap:8px;margin-top:8px}
+#viewCfg .av:hover::after,#viewCfg .av:focus-visible::after{
+  content:attr(data-change);position:absolute;inset:0;border-radius:50%;
+  background:rgba(39,43,49,.45);color:#fff;font-size:12px;font-weight:500;
+  display:flex;align-items:center;justify-content:center}
+#viewCfg .agfoot[hidden]{display:none}
+#viewCfg .agpath{display:inline-block;margin-top:8px}
+
 /* ═══ 新用户引导 ═══════════════════════════
-   壳里才出现：整窗 --win 底，中间一张 600px 卡片，背后什么都不留。
-   浏览器模式下这一层永远不挂。 */
-#onbWrap{position:fixed;inset:0;z-index:150;display:none;background:var(--win);
-  align-items:center;justify-content:center;padding:20px;animation:fadeIn .2s ease-out}
+   壳里才出现：浅底上一条顶栏、中间一张卡片。浏览器模式下这一层永远不挂。 */
+#onbWrap{position:fixed;inset:0;z-index:150;display:none;background:var(--canvas);
+  flex-direction:column;align-items:stretch;justify-content:flex-start;padding:0;animation:fadeIn .2s ease-out}
 #onbWrap.on{display:flex}
+#onbWrap .onb-bar{height:42px;flex:none;display:flex;align-items:center;gap:8px;padding:0 16px;
+  background:linear-gradient(var(--chrome-hi),var(--chrome));font-size:13px}
+#onbWrap .onb-bar b{font-weight:600}
+#onbWrap .onb-bar span{color:var(--t3);font-size:12px}
+body.onb.shell #onbWrap .onb-bar{padding-left:88px}
+#onbWrap .onb-stage{flex:1;min-height:0;display:flex;align-items:center;justify-content:center;padding:28px 20px 40px}
 body.onb #chrome,body.onb #app,body.onb #banners{display:none!important}
 /* 壳里留一条标签条高度的空拖拽带给红绿灯 */
 #onbDrag{position:fixed;left:0;right:0;top:0;height:42px;z-index:151;display:none;
@@ -2039,20 +2083,22 @@ body.onb.shell #onbDrag{display:block}
 #onbWrap .onb-sub{margin:11px 0 0;font-size:13px;color:var(--t2);line-height:1.8}
 #onbWrap .onb-foot{margin:22px 0 0;text-align:center;font-size:12px;color:var(--t3)}
 #onbWrap .onb-fine{margin:18px 0 0;text-align:center;font-size:11px;color:var(--t4)}
-#onbWrap .choices{display:flex;gap:12px;margin-top:26px;justify-content:center}
-#onbWrap .choice{width:270px;height:176px;flex:none;text-align:left;padding:18px 18px 16px;
-  display:flex;flex-direction:column;border-radius:var(--r-lg);background:var(--card-face);
-  box-shadow:var(--el-1),var(--hi);
+#onbWrap .choices{display:flex;flex-direction:column;gap:10px;margin-top:22px}
+#onbWrap .choice{width:100%;height:auto;flex:none;text-align:left;padding:14px 16px;
+  display:flex;flex-direction:row;align-items:flex-start;gap:14px;border-radius:var(--r-lg);
+  background:var(--canvas);box-shadow:none;
   transition:transform var(--d-slow) var(--ease-out),box-shadow var(--d-slow) var(--ease-out)}
 #onbWrap .choice:hover{transform:translateY(-2px);box-shadow:var(--el-3)}
 #onbWrap .choice:active{transform:translateY(0) scale(.99);transition-duration:80ms}
-#onbWrap .choice .ci{width:32px;height:32px;border-radius:9px;flex:none;margin-bottom:12px;
+#onbWrap .choice .ct{flex:1;min-width:0}
+#onbWrap .choice .go{margin-left:auto;align-self:center;color:var(--accent);font-size:18px;line-height:1}
+#onbWrap .choice .ci{width:32px;height:32px;border-radius:9px;flex:none;margin:0;
   background:var(--accent-soft);color:var(--accent);
   display:flex;align-items:center;justify-content:center}
 #onbWrap .choice .ci svg{width:18px;height:18px}
 #onbWrap .choice h2{margin:0;font-size:14px;font-weight:600;line-height:1.4}
 #onbWrap .choice p{margin:6px 0 0;font-size:12px;color:var(--t2);line-height:1.7}
-#onbWrap .choice .path{margin-top:auto;display:flex;align-items:baseline;gap:8px;font-size:11px;color:var(--t3)}
+#onbWrap .choice .path{margin-top:4px;display:flex;align-items:baseline;gap:8px;font-size:11px;color:var(--t3)}
 #onbWrap .choice .path .p{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 #onbWrap .choice.wait{opacity:.72;pointer-events:none}
 /* 整理中：不定进度条 */
@@ -2072,7 +2118,7 @@ body.onb.shell #onbDrag{display:block}
 #onbWrap .okmark svg{width:48px;height:48px;stroke-width:1.5;fill:none;stroke:currentColor}
 #onbWrap .stats{display:flex;gap:10px;margin-top:26px}
 #onbWrap .stat{flex:1;min-width:0;text-align:center;padding:14px 8px 13px;border-radius:12px;
-  background:var(--card-face);box-shadow:var(--el-1)}
+  background:var(--canvas)}
 #onbWrap .stat b{display:block;font-size:21px;font-weight:600;letter-spacing:.01em;line-height:1.2}
 #onbWrap .stat span{display:block;margin-top:5px;font-size:11px;color:var(--t3)}
 #onbWrap .skipnote{margin:16px 0 0;text-align:center;font-size:12px;color:var(--t3);line-height:1.7}
@@ -2503,10 +2549,14 @@ body.solo #chrome{display:none!important}
   <div id="viewCfg" role="dialog" aria-modal="true" aria-label="设置">
     <nav class="cfg-rail" id="cfgRail" aria-label="设置分类">
       <div class="rt">设置</div>
+      <div class="cfg-grp">日常</div>
       <button type="button" class="cfg-navi" data-tab="profile"><i data-ic="user"></i>个人</button>
       <button type="button" class="cfg-navi" data-tab="reading"><i data-ic="text-size"></i>阅读与外观</button>
+      <div class="cfg-grp">笔记本</div>
       <button type="button" class="cfg-navi" data-tab="library"><i data-ic="folder"></i>笔记库</button>
+      <div class="cfg-grp">助手</div>
       <button type="button" class="cfg-navi" data-tab="agent"><i data-ic="sparkle"></i>Agent</button>
+      <div class="cfg-grp">其他</div>
       <button type="button" class="cfg-navi" data-tab="advanced"><i data-ic="sliders"></i>高级</button>
       <button type="button" class="cfg-navi" data-tab="about"><i data-ic="info"></i>关于</button>
     </nav>
@@ -2994,10 +3044,26 @@ function syncGreetSwitch(){
   const on=PROFILE.问候!==false;
   gr.classList.toggle('on', on);
   gr.setAttribute('aria-checked', on?'true':'false');
+  const line=$('#cfgGreetLine'); if(line) line.textContent=greetLineText();
 }
-function greetTitle(){
+function greetFor(name){
   const h=new Date().getHours();
-  return TR(GREETINGS[(h>=5&&h<12) ? 0 : ((h>=12&&h<18) ? 1 : 2)], {name:profileName()});
+  return TR(GREETINGS[(h>=5&&h<12) ? 0 : ((h>=12&&h<18) ? 1 : 2)], {name:name});
+}
+function greetTitle(){ return greetFor(profileName()); }
+/* 设定里那一行，让人看见问候开关会把开始页第一句换成什么。正在打昵称时用输入框里的字。 */
+function greetLineText(){
+  const field=$('#cfgName');
+  let name=profileName();
+  if(field && document.activeElement===field){
+    const v=String(field.value||'').trim();
+    name=v || String(PROFILE.默认名字||'').trim();
+  }
+  const sw=$('#cfgGreet');
+  const greet=sw ? sw.classList.contains('on') : PROFILE.问候!==false;
+  const on=greet && !!name;
+  const line=on ? greetFor(name) : TR('今天，想记下什么？');
+  return TR('开始页第一句会是「{line}」', {line:line});
 }
 /* 存一笔（任意子集）。存成了就把 PROFILE 换成响应，芯片和开始页跟着刷新。
    排成一队发：昵称是边打边存的，两发并行时先送出去的那一发后回来，PROFILE
@@ -3368,6 +3434,11 @@ function syncPrefControls(){
   const smp=$('#cfgFsSample'); if(smp) smp.style.fontSize=PREF.fs+'px';
   $$('#cfgBody [data-tc]').forEach(b=>b.classList.toggle('on', b.dataset.tc===PREF.theme));
   $$('#cfgBody [data-fc]').forEach(b=>b.classList.toggle('on', b.dataset.fc===PREF.font));
+  const specimen=$('#cfgSpecimen');
+  if(specimen){
+    specimen.className='cfg-specimen '+(PREF.font||'f-sans');
+    specimen.style.fontWeight = PREF.font==='f-hk' ? String(PREF.fw) : '';
+  }
   $$('#cfgBody .seg[data-k] button').forEach(b=>{
     const k=b.parentElement.dataset.k;
     b.classList.toggle('on', String(PREF[k])===String(b.dataset.v));
@@ -11890,27 +11961,23 @@ const baseName = p => String(p||'').replace(/\/+$/,'').split('/').pop() || '/';
 function panelProfile(){
   const nm=(PROFILE.名字||'');
   return `<section class="cfg-panel on" data-cfgpanel="profile">
-    <div class="frow"><span class="flab">${esc(TR('头像'))}</span><div class="fctl">
-      <div class="avrow" id="cfgAvRow">
-        <span class="av" id="cfgAv" tabindex="0" role="button"
-          aria-label="${esc(TR('更换头像'))}">${avatarHtml(32)}</span>
-        <span class="avacts">
-          <span class="btns">
-            <button type="button" class="btn" id="cfgAvPick">${esc(TR('选择图片…'))}</button>
-            <button type="button" class="btnt" id="cfgAvDrop"${PROFILE.头像?'':' disabled'}>${esc(TR('移除'))}</button>
-          </span>
-          <p class="hint">${esc(TR('点一下头像可以更换。也可以把图片拖到头像上，或在头像上粘贴一张。'))}</p>
+    <div class="frow who" id="cfgAvRow">
+      <span class="av" id="cfgAv" tabindex="0" role="button"
+        aria-label="${esc(TR('更换头像'))}" data-change="${esc(TR('更换'))}">${avatarHtml(32)}</span>
+      <div class="fctl">
+        <span class="flab">${esc(TR('昵称'))}</span>
+        <input class="tin" id="cfgName" spellcheck="false" maxlength="40"
+          value="${esc(nm)}" placeholder="${esc(PROFILE.默认名字||'')}"
+          aria-label="${esc(TR('昵称'))}">
+        <p class="hint">${esc(TR('留空就用这台 Mac 的账户名'))}</p>
+        <p class="hint">${esc(TR('点一下头像可以更换。也可以把图片拖到头像上，或在头像上粘贴一张。'))}</p>
+        <span class="btns">
+          <button type="button" class="btn" id="cfgAvPick">${esc(TR('选择图片…'))}</button>
+          <button type="button" class="btnt" id="cfgAvDrop"${PROFILE.头像?'':' disabled'}>${esc(TR('移除'))}</button>
         </span>
-        <input type="file" id="cfgAvFile" accept="image/*" hidden>
       </div>
-    </div></div>
-
-    <div class="frow"><span class="flab">${esc(TR('昵称'))}</span><div class="fctl">
-      <input class="tin" id="cfgName" spellcheck="false" maxlength="40"
-        value="${esc(nm)}" placeholder="${esc(PROFILE.默认名字||'')}"
-        aria-label="${esc(TR('昵称'))}">
-      <p class="hint">${esc(TR('留空就用这台 Mac 的账户名'))}</p>
-    </div></div>
+      <input type="file" id="cfgAvFile" accept="image/*" hidden>
+    </div>
 
     <div class="frow"><span class="flab">${esc(TR('问候'))}</span><div class="fctl"><div class="swrow">
       <span class="txt">${esc(TR('开始页向我问好'))}</span>
@@ -11918,9 +11985,8 @@ function panelProfile(){
         aria-label="${esc(TR('开始页向我问好'))}"></button>
     </div></div></div>
 
-    <div class="frow"><span class="flab"></span><div class="fctl">
-      <p class="hint">${esc(TR('个人资料只保存在这台 Mac 上，不会上传，换笔记库也不用重设。'))}</p>
-    </div></div>
+    <p class="preview" id="cfgGreetLine"></p>
+    <p class="hint">${esc(TR('个人资料只保存在这台 Mac 上，不会上传，换笔记库也不用重设。'))}</p>
   </section>`;
 }
 /* 存完只回填控件，不重画整段——昵称输入框可能正被打着字。 */
@@ -11934,6 +12000,7 @@ function syncProfilePanel(){
     if(document.activeElement!==nm) nm.value=PROFILE.名字||'';
   }
   syncGreetSwitch();
+  const line=$('#cfgGreetLine'); if(line) line.textContent=greetLineText();
 }
 
 function panelReading(){
@@ -11956,16 +12023,22 @@ function panelReading(){
   const langs=[['auto',esc(TR('跟随系统'))],['zh-Hans','简体中文'],
                ['zh-HK','繁體中文（香港）'],['en','English']];
   return `<section class="cfg-panel on" data-cfgpanel="reading">
+    <div class="cfg-card">
     <div class="frow"><span class="flab">${esc(TR('语言'))}</span><div class="fctl">
       ${seg('lang', langs)}
       <p class="hint">${esc(TR('切换后会重新载入页面'))}</p></div></div>
+    </div>
 
+    <div class="cfg-card">
     <div class="frow"><span class="flab">${esc(TR('主题'))}</span><div class="fctl"><div class="tcards">
       ${tcard('auto',esc(TR('跟随系统')), mini('dk')+mini('lt half'))}
       ${tcard('light',esc(TR('浅色')), mini('lt'))}
       ${tcard('dark',esc(TR('深色')), mini('dk'))}
     </div></div></div>
+    </div>
 
+    <div class="cfg-card">
+    <p class="cfg-specimen ${esc(PREF.font)}" id="cfgSpecimen">${esc(TR(SPECIMEN_CJK))}</p>
     <div class="frow"><span class="flab">${esc(TR('阅读字体'))}</span><div class="fctl"><div class="fcards">
       ${fcard('f-sans',esc(TR('系统黑体')))}${fcard('f-serif',esc(TR('宋体')))}${fcard('f-mono',esc(TR('等宽')))}
       ${fcard('f-hk',esc(TR('苹方-港')),true)}${fcard('f-ming',esc(TR('新细明体')),true)}
@@ -11977,7 +12050,9 @@ function panelReading(){
       ${seg('fw', [[100,esc(TR('极细'))],[200,esc(TR('纤细'))],[300,esc(TR('细'))],
                    [400,esc(TR('标准'))],[500,esc(TR('中黑'))],[600,esc(TR('中粗'))]],
             x=>` style="font-weight:${x[0]}"`)}</div></div>
+    </div>
 
+    <div class="cfg-card">
     <div class="frow"><span class="flab">${esc(TR('字号'))}</span><div class="fctl">
       <div class="srow">
         <input type="range" id="cfgFs" min="15" max="21" step="1" value="${PREF.fs}" aria-label="${esc(TR('正文字号'))}">
@@ -11990,7 +12065,9 @@ function panelReading(){
 
     <div class="frow"><span class="flab">${esc(TR('栏宽'))}</span><div class="fctl">
       ${seg('w',[[620,esc(TR('窄'))+' 620'],[690,esc(TR('标准##栏宽'))+' 690'],[820,esc(TR('宽'))+' 820']])}</div></div>
+    </div>
 
+    <div class="cfg-card">
     <div class="frow"><span class="flab">${esc(TR('大纲'))}</span><div class="fctl"><div class="swrow">
       <span class="txt">${esc(TR('打开文档时默认显示大纲'))}</span>
       <button type="button" class="sw" id="cfgToc" role="switch" aria-checked="false"
@@ -12002,9 +12079,9 @@ function panelReading(){
       <button type="button" class="sw" id="cfgChips" role="switch" aria-checked="false"
         aria-label="${esc(TR('开始页显示文件夹入口'))}"></button>
     </div></div></div>
+    </div>
 
-    <div class="frow"><span class="flab"></span><div class="fctl">
-      <button type="button" class="link" id="rstPref">${esc(TR('恢复默认'))}</button></div></div>
+    <button type="button" class="link" id="rstPref">${esc(TR('恢复默认'))}</button>
   </section>`;
 }
 
@@ -12192,22 +12269,22 @@ function agentRowsHtml(){
         `<button type="button" data-v="${esc(n.名字)}" class="${n.名字===agentNb()?'on':''}"`
         + ` aria-pressed="${n.名字===agentNb()?'true':'false'}">${nbDot(n.名字,{sm:true})}${esc(n.名字)}</button>`
       ).join('') + `</span></div></div>` : '';
-  return agRow(TR('命令行工具'),
+  return agRow('cli', TR('命令行工具'),
       agDo('cli', TR('安装'), cli.已链接, TR('已安装')) + agCopy('cli', TR('拷贝路径'), 1),
       cli.已链接 ? agInstalledAt(cli.链接路径||'')
                  : `<p class="hint">${esc(TR('未安装'))}</p>`)
-    + agRow(TR('Claude Code'),
+    + agRow('skill', TR('Claude Code'),
       (skillStale(sk) ? agDo('skill', TR('更新 Skill'), false, '')
                       : agDo('skill', TR('安装 Skill'), sk.已安装, TR('已安装')))
         + agCopy('mcp', TR('拷贝 MCP 命令'), 1),
       agPath(sk.路径||'')
         + (skillStale(sk) ? `<p class="hint">${esc(TR('装着的是旧版，更新一下才认这一轮的新写法。'))}</p>` : ''))
     + pick
-    + agRow(TR('Codex 与其他'),
+    + agRow('codex', TR('Codex 与其他'),
       agCopy('codex', TR('拷贝 MCP 配置'))
         + agDo('agents_md', TR('在库根生成 AGENTS.md'), am.已存在, TR('已存在'), 1),
       agPath(am.路径||''))
-    + agRow(TR('库地图'),
+    + agRow('map', TR('库地图'),
       agCopy('map', TR('拷贝库地图')) + agDo('map_export', TR('导出到库根'), false, '', 1),
       agPath(mp.路径||''));
 }
@@ -12218,8 +12295,10 @@ function skillStale(sk){
   const cur=+((sk||{}).版本)||0, latest=+((sk||{}).最新)||0;
   return !!(sk && sk.已安装 && cur && latest && cur<latest);
 }
-const agRow = (label, btns, foot) => `<div class="frow"><span class="flab">${esc(label)}</span>`
-  + `<div class="fctl"><span class="btns">${btns}</span>${foot}</div></div>`;
+const agRow = (id, label, btns, foot) => `<div class="frow"><span class="flab">${esc(label)}</span>`
+  + `<div class="fctl"><span class="btns">${btns}</span>`
+  + `<button type="button" class="link agpath" data-agpath="${id}">${esc(TR('查看路径'))}</button>`
+  + `<div class="agfoot" hidden>${foot}</div></div></div>`;
 const agPath = pth => `<p class="hint pth">${esc(pth)}</p>`;
 /* 「已安装到 <路径>」：等宽只给路径那一段，前面那三个字跟别处一样。
    先拿一个占位符走完翻译、整条 esc()，最后把占位符换成那一段 <span>——
@@ -12249,6 +12328,12 @@ function wireAgentRows(){
   const box=$('#agentRows'); if(!box) return;
   box.querySelectorAll('[data-ag]').forEach(b=>b.onclick=()=>agentDo(b.dataset.ag));
   box.querySelectorAll('[data-agc]').forEach(b=>b.onclick=()=>agentCopy(b.dataset.agc));
+  box.querySelectorAll('[data-agpath]').forEach(b=>b.onclick=()=>{
+    const foot=b.parentElement && b.parentElement.querySelector('.agfoot');
+    if(!foot) return;
+    foot.hidden=!foot.hidden;
+    b.textContent=TR(foot.hidden ? K('查看路径') : K('收起路径'));
+  });
   box.querySelectorAll('.seg.nbseg button').forEach(b=>b.onclick=()=>{
     if(b.dataset.v===agentNb()) return;
     AGENT_NB=b.dataset.v; agentMap=''; syncAgentRows(); fetchAgentMap(true);
@@ -12686,7 +12771,8 @@ function wireProfile(){
   }
   const nm=$('#cfgName');
   if(nm){
-    nm.oninput=()=>{ clearTimeout(nameT); nameT=setTimeout(()=>putName(nm.value), 500); };
+    nm.oninput=()=>{ clearTimeout(nameT); nameT=setTimeout(()=>putName(nm.value), 500);
+      const line=$('#cfgGreetLine'); if(line) line.textContent=greetLineText(); };
     nm.onblur=()=>{ clearTimeout(nameT); putName(nm.value); };
     nm.onkeydown=e=>{ if(e.key==='Enter'){ e.preventDefault(); nm.blur(); } };
   }
@@ -12695,6 +12781,7 @@ function wireProfile(){
     const on=!(PROFILE.问候!==false);
     gr.classList.toggle('on', on);
     gr.setAttribute('aria-checked', on?'true':'false');
+    const line=$('#cfgGreetLine'); if(line) line.textContent=greetLineText();
     // 先翻面是为了按下去当场有反应；没存成就照 PROFILE 翻回去，别留一个假状态
     saveProfile({问候:on}).then(r=>{ if(!r) syncPrefControls(); });
   };
@@ -13355,17 +13442,23 @@ function onbHtml(step){
   if(step==='welcome') return onbCard(
     onbHead(onbAppIco,esc(TR('欢迎使用 AM·Note')),esc(TR('把一个文件夹变成你的笔记本。文件留在原地，不上传，不改格式。')))
     + `<div class="choices">
-        <button type="button" class="choice" data-onb="create">
-          <span class="ci">${icon('new-note',18)}</span>
-          <h2>${esc(TR('新建一个笔记库'))}</h2>
-          <p>${esc(TR('在「文稿」里创建 AM·Note 文件夹，附一篇示例笔记。'))}</p>
-          <span class="path"><span class="p">~/Documents/AM·Note</span></span>
-        </button>
         <button type="button" class="choice" data-onb="choose">
           <span class="ci">${icon('folder',18)}</span>
-          <h2>${esc(TR('使用已有文件夹'))}</h2>
-          <p>${esc(TR('选择一个已经放着 Markdown / 网页的文件夹。'))}</p>
-          <span class="path"><span class="p">${esc(TR('支持子文件夹，原样保留'))}</span></span>
+          <span class="ct">
+            <h2>${esc(TR('使用已有文件夹'))}</h2>
+            <p>${esc(TR('选择一个已经放着 Markdown / 网页的文件夹。'))}</p>
+            <span class="path"><span class="p">${esc(TR('支持子文件夹，原样保留'))}</span></span>
+          </span>
+          <span class="go" aria-hidden="true">›</span>
+        </button>
+        <button type="button" class="choice" data-onb="create">
+          <span class="ci">${icon('new-note',18)}</span>
+          <span class="ct">
+            <h2>${esc(TR('新建一个笔记库'))}</h2>
+            <p>${esc(TR('在「文稿」里创建 AM·Note 文件夹，附一篇示例笔记。'))}</p>
+            <span class="path"><span class="p">~/Documents/AM·Note</span></span>
+          </span>
+          <span class="go" aria-hidden="true">›</span>
         </button>
       </div>
       <p class="onb-foot">${esc(TR('以后随时可以在 设置 › 笔记库 里更换。'))}</p>`);
@@ -13438,7 +13531,8 @@ function onbShow(step){
   document.body.classList.add('onb');
   const w=$('#onbWrap');
   w.classList.add('on');
-  w.innerHTML=onbHtml(step);
+  w.innerHTML=`<div class="onb-bar"><b>AM·Note</b><span>${esc(TR('还没有笔记本'))}</span></div>`
+    + `<div class="onb-stage">${onbHtml(step)}</div>`;
   w.querySelectorAll('[data-onb]').forEach(b=>b.onclick=()=>onbClick(b));
 }
 function onbHide(){
