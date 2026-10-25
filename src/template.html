@@ -329,6 +329,21 @@
   --nb-slate:#a3adbb;  --nb-slate-soft:#333944;
 }
 
+/* Theme colors are independent from light/dark appearance. */
+:root{--brand-filter:none}
+:root[data-accent="green"]{--accent:#3e765b;--accent-ink:#35664f;--accent-soft:#edf5ef;
+  --chrome:#deece3;--chrome-hi:#eaf4ee;--chrome-glow:rgba(150,195,166,.34);
+  --chrome-search:#f0f7f2;--chrome-hover:#d3e5d9;--hl:rgba(62,118,91,.16);--brand-filter:hue-rotate(230deg)}
+:root[data-accent="blue"]{--accent:#496f9a;--accent-ink:#3e628a;--accent-soft:#edf3fa;
+  --chrome:#dfeaf5;--chrome-hi:#edf4fb;--chrome-glow:rgba(157,192,224,.34);
+  --chrome-search:#f1f6fc;--chrome-hover:#d5e3f2;--hl:rgba(73,111,154,.16);--brand-filter:hue-rotate(285deg)}
+:root[data-accent="green"][data-theme="dark"]{--accent:#a5d3b9;--accent-ink:#a5d3b9;--accent-soft:#2c4035;--chrome:#24342d;--chrome-hi:#2e4136;--chrome-glow:rgba(165,211,185,.16);--chrome-search:#304238;--chrome-hover:#3a4d41;--hl:rgba(165,211,185,.20)}
+@media(prefers-color-scheme:dark){:root[data-accent="green"]:not([data-theme="light"]){--accent:#a5d3b9;--accent-ink:#a5d3b9;--accent-soft:#2c4035;--chrome:#24342d;--chrome-hi:#2e4136;--chrome-glow:rgba(165,211,185,.16);--chrome-search:#304238;--chrome-hover:#3a4d41;--hl:rgba(165,211,185,.20)}}
+:root[data-accent="blue"][data-theme="dark"]{--accent:#abc9ec;--accent-ink:#abc9ec;--accent-soft:#2c3c51;--chrome:#263243;--chrome-hi:#303e52;--chrome-glow:rgba(171,201,236,.16);--chrome-search:#314057;--chrome-hover:#3a4960;--hl:rgba(171,201,236,.20)}
+@media(prefers-color-scheme:dark){:root[data-accent="blue"]:not([data-theme="light"]){--accent:#abc9ec;--accent-ink:#abc9ec;--accent-soft:#2c3c51;--chrome:#263243;--chrome-hi:#303e52;--chrome-glow:rgba(171,201,236,.16);--chrome-search:#314057;--chrome-hover:#3a4960;--hl:rgba(171,201,236,.20)}}
+/* Explicit brand hooks never recolor user content or avatars. */
+.amn-brand-icon{filter:var(--brand-filter)}
+
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation:none!important;
     transition-duration:.001ms!important;scroll-behavior:auto!important}
@@ -1971,7 +1986,8 @@ body.focus-mode.peek .doc-toolbar{transform:none;opacity:1;pointer-events:auto;
 
 /* 只读信息行 */
 #viewCfg .kvrow{display:flex;align-items:center;gap:10px;min-height:24px;font-size:12px}
-#viewCfg .kvgrid{display:grid;grid-template-columns:1fr 1fr;column-gap:16px}
+#viewCfg .kvgrid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:16px}
+#viewCfg .kvrow{min-width:0}
 #viewCfg .kvgrid .wide{grid-column:1/3}
 #viewCfg .kvrow b{width:64px;flex:none;font-weight:400;color:var(--t3)}
 #viewCfg .kvrow>span{color:var(--t2);min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -2065,6 +2081,87 @@ body.focus-mode.peek .doc-toolbar{transform:none;opacity:1;pointer-events:auto;
   display:flex;align-items:center;justify-content:center}
 #viewCfg .agfoot[hidden]{display:none}
 #viewCfg .agpath{display:inline-block;margin-top:8px}
+
+/* Settings share a stable frame, calm grouped surfaces and clear selection. */
+#viewCfg{width:min(1000px,96vw);height:min(760px,92vh)}
+#viewCfg .cfg-rail{width:192px;padding:24px 12px 18px}
+#viewCfg .cfg-navi{height:auto;min-height:40px;padding:10px 12px;line-height:1.45}
+#viewCfg .cfg-navi.on{background:var(--accent-soft);color:var(--accent-ink);box-shadow:none;font-weight:600}
+#viewCfg .cfg-navi.on svg{color:var(--accent-ink)}
+#viewCfg .cfg-head{height:auto;min-height:88px;padding:22px 24px 18px;align-items:flex-start}
+#viewCfg .cfg-heading{flex:1;min-width:0}
+#viewCfg .cfg-head h2{font-size:20px;line-height:1.4;letter-spacing:-.02em}
+#viewCfg .cfg-subtitle{margin:6px 0 0;font-size:12px;line-height:1.6;color:var(--t2)}
+#cfgBody{padding:4px 24px 24px;scroll-padding:16px}
+#viewCfg .cfg-card,#viewCfg .sec,#viewCfg .cfg-panel>.frow,#viewCfg #agentRows>.frow{
+ box-shadow:none;border:1px solid var(--rule-row);background:var(--card-face);border-radius:14px;margin-bottom:16px}
+#viewCfg .cfg-card{padding:4px 18px}
+#viewCfg .cfg-card .frow{padding:16px 0;gap:10px}
+#viewCfg .cfg-panel>.frow{padding:18px;flex-wrap:wrap}
+#viewCfg .cfg-panel>.frow>.fctl{flex:1 1 240px}
+#viewCfg .sec{padding:18px}
+#viewCfg .sect{font-size:14px;margin-bottom:14px}
+#viewCfg .hint{color:var(--t2);font-size:12px}
+#viewCfg .cfg-panel>p.hint{padding:0 4px}
+#viewCfg .cfg-grp{color:var(--t2);margin-top:20px}
+#viewCfg .btn{min-height:32px;height:auto;padding:7px 12px;white-space:normal;text-align:center;line-height:1.4}
+#viewCfg .seg button{min-height:32px;height:auto;white-space:normal;line-height:1.5;padding:6px 12px}
+#viewCfg .tin{min-height:36px;max-width:100%}
+#viewCfg .avacts .btns,#viewCfg .inline-field,#viewCfg .statusrow,#viewCfg .about .acts,#viewCfg .about .links{flex-wrap:wrap}
+#viewCfg .vault{box-shadow:none;background:var(--canvas);flex-wrap:wrap}
+#viewCfg .vault .meta{flex:1 1 150px}
+#viewCfg .vault .vacts{flex-direction:row;flex-wrap:wrap}
+#viewCfg .chip .x{opacity:.65}
+#viewCfg .chip .x:focus{opacity:1}
+#viewCfg .about{padding:40px 16px}
+#viewCfg .about .ico{width:84px;height:84px;box-shadow:none;border-radius:0;overflow:visible}
+#viewCfg .about .ico img{width:84px;height:84px}
+#viewCfg .dirtybar{height:auto;min-height:64px;padding:12px 24px;flex-wrap:wrap}
+#viewCfg .dirtybar .msg{flex:1 1 180px}
+#viewCfg .cfg-card .tcards{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+#viewCfg .tcard{max-width:none;width:100%;min-width:0}
+#viewCfg .tcard .nm{font-size:12px}
+#viewCfg .theme-colors{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}
+#viewCfg .theme-color{border:1px solid var(--rule-row);border-radius:12px;padding:10px;background:var(--win);text-align:left;min-width:0}
+#viewCfg .theme-color.on{border-color:var(--accent);box-shadow:0 0 0 1px var(--accent)}
+#viewCfg .theme-color:hover{background:var(--hover)}
+#viewCfg .theme-preview{display:flex;align-items:center;gap:12px;position:relative;padding:24px 10px 12px;border-radius:7px;background:#fff;overflow:hidden}
+#viewCfg .theme-preview::before{content:"";position:absolute;top:0;left:0;right:0;height:14px;background:var(--preview-chrome)}
+#viewCfg .theme-preview img{width:44px;height:44px;object-fit:contain;filter:var(--preview-filter)}
+#viewCfg .theme-lines{flex:1;min-width:0}
+#viewCfg .theme-lines i{display:block;height:4px;border-radius:2px;background:#e4e8ed;margin:6px 0}
+#viewCfg .theme-lines i:first-child{background:var(--preview-chrome);width:72%}
+#viewCfg .theme-lines i:last-child{width:60%}
+#viewCfg .theme-label{display:flex;align-items:center;justify-content:space-between;gap:4px;color:var(--t2);margin-top:10px;font-size:12px;line-height:1.4}
+#viewCfg .theme-label svg{width:14px;height:14px;visibility:hidden;flex:none}
+#viewCfg .theme-color.on .theme-label{color:var(--accent-ink);font-weight:600}
+#viewCfg .theme-color.on .theme-label svg{visibility:visible}
+#viewCfg .theme-color[data-ac="purple"]{--preview-chrome:#e6daf0;--preview-filter:none}
+#viewCfg .theme-color[data-ac="green"]{--preview-chrome:#deece3;--preview-filter:hue-rotate(230deg)}
+#viewCfg .theme-color[data-ac="blue"]{--preview-chrome:#dfeaf5;--preview-filter:hue-rotate(285deg)}
+#viewCfg .cfg-specimen{padding:12px 0 2px;margin:0;font-size:16px;color:var(--t1)}
+#viewCfg button:focus-visible{outline:2px solid var(--accent);outline-offset:3px}
+#viewCfg .cfg-head .iba{flex:none}
+@media(max-width:700px){
+ #cfgWrap{padding:10px}
+ #viewCfg{width:100%;height:calc(100vh - 20px);max-height:none;flex-direction:column;border-radius:14px}
+ #viewCfg .cfg-rail{width:100%;flex-direction:row;overflow-x:auto;padding:10px;gap:6px;min-height:58px}
+ #viewCfg .cfg-grp,#viewCfg .cfg-rail .rt{display:none}
+ #viewCfg .cfg-navi{width:auto;flex:none;padding:8px 10px;min-height:36px;font-size:12px;gap:6px}
+ #viewCfg .cfg-navi svg{width:14px;height:14px}
+ #viewCfg .cfg-head{padding:16px;min-height:80px}
+ #cfgBody{padding:4px 16px 18px}
+ #viewCfg .theme-colors{gap:8px}
+ #viewCfg .theme-color{padding:7px}
+ #viewCfg .theme-preview{padding:22px 4px 8px;justify-content:center}
+ #viewCfg .theme-preview img{width:40px;height:40px}
+ #viewCfg .theme-lines{display:none}
+ #viewCfg .theme-label{font-size:11px}
+ #viewCfg .dirtybar{padding:12px 16px}
+ #viewCfg .kvgrid{grid-template-columns:minmax(0,1fr)}
+ #viewCfg .kvgrid .wide{grid-column:auto}
+ #viewCfg .av{width:68px;height:68px}
+}
 
 /* ═══ 新用户引导 ═══════════════════════════
    壳里才出现：浅底上一条顶栏、中间一张卡片。浏览器模式下这一层永远不挂。 */
@@ -2453,7 +2550,7 @@ body.solo #chrome{display:none!important}
   <div id="tabstrip">
     <div class="navgrp">
       <button type="button" class="navb" id="navHome" title="AM·Note · 回到开始页" aria-label="回到开始页">
-        <img src="/icon-192.png" width="22" height="22" alt="">
+        <img class="amn-brand-icon" src="/icon-192.png" width="22" height="22" alt="">
       </button>
     </div>
     <div id="tabcluster">
@@ -2571,7 +2668,7 @@ body.solo #chrome{display:none!important}
     </nav>
     <div class="cfg-pane">
       <div class="cfg-head">
-        <h2 id="cfgTitle">阅读与外观</h2>
+        <div class="cfg-heading"><h2 id="cfgTitle">阅读与外观</h2><p class="cfg-subtitle" id="cfgSubtitle"></p></div>
         <button class="iba" id="cfgClose" title="关闭 Esc" aria-label="关闭"><i data-ic="close" data-sz="14"></i></button>
       </div>
       <div id="cfgBody"></div>
@@ -3363,11 +3460,23 @@ function flash(t){ notify(t); }
 /* ── 阅读版式 ─────────────────────────────
    默认 17 / 1.8 / 690。每一代默认值变了就加一条 prefsGen：只把「值还停在上一代
    默认」的人迁过来，自己调过的一律不动。 */
-const DEF_PREF = {font:'f-sans', fw:400, fs:17, lh:180, w:690, theme:'auto', lang:'auto'};
+const DEF_PREF = {font:'f-sans', fw:400, fs:17, lh:180, w:690, theme:'auto', accent:'purple', lang:'auto'};
 const RESETTABLE = ['font','fw','fs','lh','w'];
 const PREF = Object.assign({}, DEF_PREF,
   (()=>{ try{ return JSON.parse(localStorage.getItem('tp-pref')||'{}') }catch(e){ return {} } })());
-const savePref = () => { try{ localStorage.setItem('tp-pref', JSON.stringify(PREF)); }catch(e){} };
+let savedPrefSnapshot=Object.assign({},PREF);
+const savePref = () => {
+  try{
+    let latest=JSON.parse(localStorage.getItem('tp-pref')||'{}');
+    if(!latest || typeof latest!=='object' || Array.isArray(latest)) latest={};
+    // Merge only locally changed fields so another window's new preference survives.
+    for(const key of Object.keys(PREF)){
+      if(!(key in latest) || PREF[key]!==savedPrefSnapshot[key]) latest[key]=PREF[key];
+    }
+    localStorage.setItem('tp-pref',JSON.stringify(latest));
+    savedPrefSnapshot=Object.assign({},PREF);
+  }catch(e){}
+};
 (function migratePrefs(){
   if(!PREF.prefsGen){
     if(+PREF.w === 740) PREF.w = 680;
@@ -3392,6 +3501,8 @@ const savePref = () => { try{ localStorage.setItem('tp-pref', JSON.stringify(PRE
   }
   // 界面语言：只认这四个值，别的（老档案、手改坏的）一律回「跟随系统」
   if(['auto','zh-Hans','zh-HK','en'].indexOf(PREF.lang)<0) PREF.lang='auto';
+  if(['purple','green','blue'].indexOf(PREF.accent)<0) PREF.accent='purple';
+  if(['auto','light','dark'].indexOf(PREF.theme)<0) PREF.theme='auto';
   // 阅读字体与字重同理：值直接当 class 名和 font-weight 用，脏值必须挡在这里。
   // 这两项都是新加的，老档案里本来就没有，所以不用为它们加 prefsGen。
   if(['f-sans','f-serif','f-mono','f-hk','f-ming'].indexOf(PREF.font)<0) PREF.font=DEF_PREF.font;
@@ -3426,7 +3537,8 @@ function applyPref(){
   else document.documentElement.setAttribute('data-theme', PREF.theme);
   // 全屏内容视图把网页铺进原生标题栏后，两层必须用同一套明暗外观。
   // 不同步的话，系统深色＋网页浅色时会变成白色标题和白色按钮落在白底上。
-  if(SHELL) post({type:'theme', value:PREF.theme});
+  document.documentElement.setAttribute('data-accent', PREF.accent);
+  if(SHELL) post({type:'theme', value:PREF.theme, accent:PREF.accent});
   syncPrefControls();
 }
 /* 版式与外观的控件住在设置页「阅读与外观」那一段里，页没开就没有这些节点。
@@ -3441,7 +3553,10 @@ function syncPrefControls(){
   fs.style.setProperty('--pct', (((PREF.fs-15)/6)*100).toFixed(1)+'%');
   $('#cfgFsV').textContent=PREF.fs;
   const smp=$('#cfgFsSample'); if(smp) smp.style.fontSize=PREF.fs+'px';
-  $$('#cfgBody [data-tc]').forEach(b=>b.classList.toggle('on', b.dataset.tc===PREF.theme));
+  $$('#cfgBody [data-tc],#cfgBody [data-ac]').forEach(b=>{
+    const on=b.hasAttribute('data-ac') ? b.dataset.ac===PREF.accent : b.dataset.tc===PREF.theme;
+    b.classList.toggle('on',on); b.setAttribute('aria-pressed',String(on));
+  });
   $$('#cfgBody [data-fc]').forEach(b=>b.classList.toggle('on', b.dataset.fc===PREF.font));
   const specimen=$('#cfgSpecimen');
   if(specimen){
@@ -3450,7 +3565,8 @@ function syncPrefControls(){
   }
   $$('#cfgBody .seg[data-k] button').forEach(b=>{
     const k=b.parentElement.dataset.k;
-    b.classList.toggle('on', String(PREF[k])===String(b.dataset.v));
+    const on=String(PREF[k])===String(b.dataset.v);
+    b.classList.toggle('on',on); b.setAttribute('aria-pressed',String(on));
   });
   // 字重只对苹方-港有意义（别的字体没有六个真字面），整行跟着字体走。
   const fwr=$('#cfgFwRow'); if(fwr) fwr.hidden = PREF.font!=='f-hk';
@@ -3487,7 +3603,26 @@ function syncPopControls(){
     b.setAttribute('aria-pressed', on?'true':'false');
   });
 }
-function setPref(k, v){ PREF[k]=v; savePref(); applyPref(); }
+function setPref(k, v){
+  if(k==='accent' && !['purple','green','blue'].includes(v)) return;
+  if(k==='theme' && !['auto','light','dark'].includes(v)) return;
+  PREF[k]=v; savePref(); applyPref();
+}
+/* Preferences sync without reloading editors or rewriting another window's state. */
+addEventListener('storage', e=>{
+  if(e.key!=='tp-pref' || !e.newValue) return;
+  let next; try{ next=JSON.parse(e.newValue); }catch(err){ return; }
+  if(!next || typeof next!=='object' || Array.isArray(next)) return;
+  if(['purple','green','blue'].includes(next.accent)) PREF.accent=next.accent;
+  if(['auto','light','dark'].includes(next.theme)) PREF.theme=next.theme;
+  if(['f-sans','f-serif','f-mono','f-hk','f-ming'].includes(next.font)) PREF.font=next.font;
+  if([100,200,300,400,500,600].includes(+next.fw)) PREF.fw=+next.fw;
+  for(const [key,lo,hi] of [['fs',15,21],['lh',140,240],['w',480,1200]]){
+    if(Number.isFinite(+next[key]) && +next[key]>=lo && +next[key]<=hi) PREF[key]=+next[key];
+  }
+  savedPrefSnapshot=Object.assign({},PREF);
+  applyPref();
+});
 /* 本机／Office 里有没有新细明体，问服务端一次就够了（整段会话缓存住）。
    问不到（老服务、断网）＝当作「不知道」，不报没装——宁可不说，也别说错。
    设置页第一次画的时候才发这一发，画面不等它。 */
@@ -5211,7 +5346,7 @@ function resumeHtml(i){
     </span>
     <span class="paper-art" aria-hidden="true">
       <span class="paper-front"><b></b><i></i><i></i><i></i><i></i><i></i></span>
-      <img class="paper-mark" src="/icon-192.png" width="30" height="30" alt="">
+      <img class="paper-mark amn-brand-icon" src="/icon-192.png" width="30" height="30" alt="">
     </span>
   </button>`;
 }
@@ -11894,22 +12029,47 @@ const CFG_TABS={profile:TR('个人'), reading:TR('阅读与外观'), library:TR(
 const REPO='https://github.com/Qiululu667/amnote';
 const LINKS=[[TR('GitHub 项目'),REPO],[TR('使用说明'),REPO+'#readme'],[TR('反馈问题'),REPO+'/issues']];
 
-function openCfg(){ closeUserPop(); $('#cfgWrap').classList.add('on'); loadCfg(); }
-function closeCfg(){ $('#cfgWrap').classList.remove('on'); }
+let cfgReturnFocus=null;
+let cfgLoadVersion=0;
+function openCfg(){
+  if(cfgOn()) return;
+  cfgReturnFocus=document.activeElement;
+  closeUserPop(); $('#cfgWrap').classList.add('on');
+  $('#cfgBody').innerHTML='<p class="hint" role="status">'+esc(TR('正在载入设置…'))+'</p>';
+  $('#cfgClose').focus(); loadCfg();
+}
+function closeCfg(){
+  // Commit an unfinished chip before checking dirtiness or clearing its form.
+  const focused=document.activeElement;
+  if(focused && $('#viewCfg').contains(focused) && typeof focused.blur==='function') focused.blur();
+  if(cfgDirty() && !ask(TR('放弃未保存的更改？'),TR('笔记库与高级设置的更改尚未保存。'),TR('放弃'),TR('取消'),true)){
+    if(focused && focused.isConnected) focused.focus();
+    return;
+  }
+  cfgLoadVersion++;
+  CFG=null; CFG_FORM=null; CFG_BASE='';
+  $('#viewCfg').classList.remove('dirty');
+  $('#cfgWrap').classList.remove('on');
+  if(cfgReturnFocus && cfgReturnFocus.isConnected) cfgReturnFocus.focus();
+}
 const cfgOn = () => $('#cfgWrap').classList.contains('on');
 
 /* 现在改的是哪一本的配置（每本各存各的 .amnote/config.json）。空＝主笔记本。 */
 let CFG_NB='';
 let nbPalOpen='';             // 哪一行的八色小色盘开着（id）
 async function loadCfg(){
+  const requestVersion=++cfgLoadVersion;
+  let loaded=null;
   const nb=(NB.multi && CFG_NB && NB.byName(CFG_NB)) ? CFG_NB : '';
   CFG_NB = nb || (NB.multi ? ((NB.list[0]||{}).名字||'') : '');
   try{
     const r=await fetch('/__config?lang='+LANG+(nb?'&nb='+encodeURIComponent(nb):''),
                         {cache:'no-store'}); if(!r.ok) throw 0;
-    CFG=await r.json();
-    if(CFG && CFG.笔记本) CFG_NB=CFG.笔记本;
-  }catch(e){ CFG=null; }
+    loaded=await r.json();
+  }catch(e){}
+  if(requestVersion!==cfgLoadVersion || !cfgOn()) return;
+  CFG=loaded;
+  if(CFG && CFG.笔记本) CFG_NB=CFG.笔记本;
   const c=(CFG&&CFG.配置)||{};
   CFG_FORM={
     跳过目录关键词: (c.跳过目录关键词||[]).slice(),
@@ -12039,11 +12199,22 @@ function panelReading(){
     </div>
 
     <div class="cfg-card">
-    <div class="frow"><span class="flab">${esc(TR('主题'))}</span><div class="fctl"><div class="tcards">
+    <div class="frow"><span class="flab">${esc(TR('明暗外观'))}</span><div class="fctl"><div class="tcards">
       ${tcard('auto',esc(TR('跟随系统')), mini('dk')+mini('lt half'))}
       ${tcard('light',esc(TR('浅色')), mini('lt'))}
       ${tcard('dark',esc(TR('深色')), mini('dk'))}
     </div></div></div>
+    <div class="frow"><span class="flab">${esc(TR('主题色'))}</span><div class="fctl">
+      <div class="theme-colors" role="group" aria-label="${esc(TR('主题色'))}">
+        ${[['purple',TR('雾紫')],['green',TR('苔绿')],['blue',TR('晴蓝')]].map(([value,label])=>`
+          <button type="button" class="theme-color" data-ac="${value}" aria-pressed="false">
+            <span class="theme-preview" aria-hidden="true"><img src="/icon-192.png" alt="" width="44" height="44">
+              <span class="theme-lines"><i></i><i></i><i></i></span></span>
+            <span class="theme-label">${esc(label)}${icon('check',14)}</span>
+          </button>`).join('')}
+      </div>
+      <p class="hint">${esc(TR('界面与应用图标同步换色，正文保持原来的颜色。'))}</p>
+    </div></div>
     </div>
 
     <div class="cfg-card">
@@ -12090,7 +12261,7 @@ function panelReading(){
     </div></div></div>
     </div>
 
-    <button type="button" class="link" id="rstPref">${esc(TR('恢复默认'))}</button>
+    <button type="button" class="link" id="rstPref">${esc(TR('恢复默认排版'))}</button>
   </section>`;
 }
 
@@ -12591,7 +12762,7 @@ function panelAbout(){
     .join('<i>·</i>');
   return `<section class="cfg-panel on" data-cfgpanel="about">
     <div class="about">
-      <div class="ico"><img src="/icon-192.png" width="64" height="64" alt="AM·Note"></div>
+      <div class="ico"><img class="amn-brand-icon" src="/icon-192.png" width="64" height="64" alt="AM·Note"></div>
       <h3>AM·Note</h3>
       <p class="ver num">${esc(ver)}</p>
       <p class="desc">${esc(TR('把一个文件夹变成你的笔记本。'))}</p>
@@ -12612,6 +12783,11 @@ function renderCfg(){
     b.setAttribute('aria-current', on?'page':'false');
   });
   $('#cfgTitle').textContent=CFG_TABS[tab];
+  const subtitles={profile:TR('只属于你的称呼与问候，保存在这台 Mac 上。'),
+    reading:TR('颜色与排版，调整后即时生效。'),library:TR('文件留在原地，在这里管理笔记本与整理范围。'),
+    agent:TR('让你常用的助手找到并使用笔记。'),advanced:TR('管理整理规则与服务连接，修改后请保存。'),
+    about:TR('本地记录，自由阅读。')};
+  $('#cfgSubtitle').textContent=subtitles[tab];
   const body=$('#cfgBody');
   body.innerHTML = tab==='profile' ? panelProfile()
     : tab==='reading' ? panelReading()
@@ -12633,6 +12809,7 @@ function wireCfg(tab){
   if(tab==='agent'){ wireAgent(); return; }
   if(tab==='reading'){
     $$('#cfgBody [data-tc]').forEach(b=>b.onclick=()=>setPref('theme', b.dataset.tc));
+    $$('#cfgBody [data-ac]').forEach(b=>b.onclick=()=>setPref('accent', b.dataset.ac));
     $$('#cfgBody [data-fc]').forEach(b=>b.onclick=()=>setPref('font', b.dataset.fc));
     const fs=$('#cfgFs'); if(fs) fs.oninput=e=>setPref('fs', +e.target.value);
     $$('#cfgBody .seg[data-k] button').forEach(b=>b.onclick=()=>{
@@ -13102,6 +13279,23 @@ $('#navNotes').onclick=()=>goHome(true);
 $('#navRecent').onclick=()=>goHome(false);
 $('#navCfg').onclick=openCfg;
 $('#cfgClose').onclick=closeCfg;
+$('#cfgWrap').addEventListener('keydown',e=>{
+  if(e.key==='Tab'){
+    const nodes=[...$('#viewCfg').querySelectorAll('button:not([disabled]),input:not([disabled]),[tabindex="0"],a[href]')]
+      .filter(el=>el.getClientRects().length);
+    if(!nodes.length) return;
+    const first=nodes[0],last=nodes[nodes.length-1];
+    if(e.shiftKey && (document.activeElement===first || !$('#viewCfg').contains(document.activeElement))){e.preventDefault();last.focus();}
+    else if(!e.shiftKey && document.activeElement===last){e.preventDefault();first.focus();}
+  }
+  const nav=e.target.closest('.cfg-navi');
+  if(nav && ['ArrowDown','ArrowUp','ArrowRight','ArrowLeft','Home','End'].includes(e.key)){
+    e.preventDefault(); const items=$$('#cfgRail .cfg-navi');let index=items.indexOf(nav);
+    index=e.key==='Home'?0:e.key==='End'?items.length-1:(index+(['ArrowDown','ArrowRight'].includes(e.key)?1:-1)+items.length)%items.length;
+    items[index].focus();items[index].click();
+  }
+  if(e.key==='Escape'){e.preventDefault();e.stopPropagation();closeCfg();}
+});
 $('#cfgWrap').onclick=e=>{ if(e.target.id==='cfgWrap') closeCfg(); };
 $$('#cfgRail .cfg-navi').forEach(b=>b.onclick=()=>{
   if(ST.cfgTab===b.dataset.tab) return;
@@ -13437,7 +13631,7 @@ function onbCard(inner){ return `<div class="onb-card">${inner}</div>`; }
 function onbHead(icoHtml, h1, sub){
   return `<div class="onb-head">${icoHtml}<h1>${h1}</h1><p class="onb-sub">${sub}</p></div>`;
 }
-const onbAppIco = `<div class="onb-ico"><img src="/icon-192.png" width="72" height="72" alt="AM·Note"></div>`;
+const onbAppIco = `<div class="onb-ico"><img class="amn-brand-icon" src="/icon-192.png" width="72" height="72" alt="AM·Note"></div>`;
 
 /* 「已找到 3 篇」。数字要单独包一层（扫描过程里只换这个 <b> 里的字），可是单复数
    得按真数字挑（英文 1 篇是 note、2 篇是 notes），所以先拿数字翻译，再把译文里

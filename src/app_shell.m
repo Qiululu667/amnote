@@ -108,6 +108,7 @@
 #import <signal.h>
 #import <stdlib.h>
 #import <unistd.h>
+#import <math.h>
 
 // 界面词典（en / zh-HK）与语言解析。所有面向用户的字串都过 L()，
 // 键就是简体源串本身；简体查不到词典、原样回落。见 app_shell_i18n.h 顶上的规矩。
@@ -719,6 +720,91 @@ static NSImage *menubarCloudIcon(void) {
 
 /// 门户最近一次告诉壳的主题。全屏会重建标题栏，必须拿这个值再刷一遍底色。
 static NSString *gAppliedTheme = @"auto";
+static NSString *gAppliedAccent = @"purple";
+static NSString *const kAppearanceThemeKey = @"AMNAppearanceTheme";
+static NSString *const kAppearanceAccentKey = @"AMNAppearanceAccent";
+
+static BOOL validAppearanceTheme(id value) {
+    return [value isKindOfClass:NSString.class] &&
+        [@[@"auto", @"light", @"dark"] containsObject:value];
+}
+
+static BOOL validAppearanceAccent(id value) {
+    return [value isKindOfClass:NSString.class] &&
+        [@[@"purple", @"green", @"blue"] containsObject:value];
+}
+
+/// Apply the CSS hue-rotate matrix to the original icon in sRGB, preserving alpha.
+/// This is a runtime Dock image only: the bundle icon and menu-bar template stay intact.
+static NSImage *iconByRotatingHue(NSImage *source, double degrees) {
+    if (!source) return nil;
+    if (degrees == 0) return source;
+    const NSInteger side = 512;
+    NSBitmapImageRep *rep = [[NSBitmapImageRep alloc]
+        initWithBitmapDataPlanes:NULL pixelsWide:side pixelsHigh:side
+        bitsPerSample:8 samplesPerPixel:4 hasAlpha:YES isPlanar:NO
+        colorSpaceName:NSDeviceRGBColorSpace
+        bitmapFormat:0 bytesPerRow:side * 4 bitsPerPixel:32];
+    if (!rep) return source;
+    rep = [rep bitmapImageRepByRetaggingWithColorSpace:NSColorSpace.sRGBColorSpace];
+    NSGraphicsContext *ctx = [NSGraphicsContext graphicsContextWithBitmapImageRep:rep];
+    if (!ctx) return source;
+    [NSGraphicsContext saveGraphicsState];
+    NSGraphicsContext.currentContext = ctx;
+    [source drawInRect:NSMakeRect(0, 0, side, side) fromRect:NSZeroRect
+            operation:NSCompositingOperationCopy fraction:1.0];
+    [NSGraphicsContext restoreGraphicsState];
+    double c = cos(degrees * M_PI / 180.0), t = sin(degrees * M_PI / 180.0);
+    const double matrix[3][3] = {
+        { .213 + .787*c - .213*t, .715 - .715*c - .715*t, .072 - .072*c + .928*t },
+        { .213 - .213*c + .143*t, .715 + .285*c + .140*t, .072 - .072*c - .283*t },
+        { .213 - .213*c - .787*t, .715 - .715*c + .715*t, .072 + .928*c + .072*t }
+    };
+    unsigned char *data = rep.bitmapData;
+    for (NSInteger y = 0; y < side; y++) {
+        for (NSInteger x = 0; x < side; x++) {
+            unsigned char *pixel = data + y * rep.bytesPerRow + x * 4;
+            double r = pixel[0], g = pixel[1], b = pixel[2];
+            for (NSInteger channel = 0; channel < 3; channel++) {
+                double value = matrix[channel][0]*r + matrix[channel][1]*g + matrix[channel][2]*b;
+                // AppKit draws premultiplied RGBA. The linear matrix commutes with
+                // premultiplication; clamp to alpha to keep transparent edges clean.
+                pixel[channel] = (unsigned char)lround(fmax(0.0, fmin((double)pixel[3], value)));
+            }
+        }
+    }
+    NSImage *image = [[NSImage alloc] initWithSize:NSMakeSize(side, side)];
+    [image addRepresentation:rep];
+    return image;
+}
+
+static void applyDockAccent(NSString *accent) {
+    static NSMutableDictionary<NSString *, NSImage *> *icons;
+    static NSString *lastAccent;
+    if ([lastAccent isEqualToString:accent]) return;
+    if (!icons) {
+        icons = [NSMutableDictionary dictionary];
+        NSString *path = [NSBundle.mainBundle pathForResource:@"icon-512" ofType:@"png"];
+        NSImage *original = path ? [[NSImage alloc] initWithContentsOfFile:path] : nil;
+        if (!original) {
+            // The AppKit application-icon object is mutable when the Dock icon changes.
+            // Snapshot its pixels so the purple fallback cannot turn into the last tint.
+            NSData *snapshot = NSApp.applicationIconImage.TIFFRepresentation;
+            if (snapshot) original = [[NSImage alloc] initWithData:snapshot];
+        }
+        if (original) icons[@"purple"] = original;
+    }
+    NSImage *image = icons[accent];
+    if (!image) {
+        image = iconByRotatingHue(icons[@"purple"], [accent isEqualToString:@"green"] ? 230.0 : 285.0);
+        if (image) icons[accent] = image;
+    }
+    if (image) {
+        NSApp.applicationIconImage = image;
+        lastAccent = [accent copy];
+    }
+}
+
 
 static BOOL themeIsDark(NSString *theme, NSWindow *window) {
     NSString *match = [window.effectiveAppearance bestMatchFromAppearancesWithNames:
@@ -739,7 +825,16 @@ static NSColor *surfaceColorForTheme(NSString *theme, NSWindow *window) {
 /// 网页还没铺上来或者露出 1px 缝的时候兜底，必须跟 --chrome 同色。
 /// 5.13：浅 #eef0f4 → #e6daf0，深 #1e2127 → #2a2734。
 static NSColor *chromeColorForTheme(NSString *theme, NSWindow *window) {
-    return themeIsDark(theme, window)
+    BOOL dark = themeIsDark(theme, window);
+    if ([gAppliedAccent isEqualToString:@"green"])
+        return dark
+            ? [NSColor colorWithSRGBRed:36.0/255.0 green:52.0/255.0 blue:45.0/255.0 alpha:1.0]
+            : [NSColor colorWithSRGBRed:222.0/255.0 green:236.0/255.0 blue:227.0/255.0 alpha:1.0];
+    if ([gAppliedAccent isEqualToString:@"blue"])
+        return dark
+            ? [NSColor colorWithSRGBRed:38.0/255.0 green:50.0/255.0 blue:67.0/255.0 alpha:1.0]
+            : [NSColor colorWithSRGBRed:223.0/255.0 green:234.0/255.0 blue:245.0/255.0 alpha:1.0];
+    return dark
         ? [NSColor colorWithSRGBRed:42.0/255.0 green:39.0/255.0 blue:52.0/255.0 alpha:1.0]    // #2a2734
         : [NSColor colorWithSRGBRed:230.0/255.0 green:218.0/255.0 blue:240.0/255.0 alpha:1.0]; // #e6daf0
 }
@@ -1322,6 +1417,16 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
         amnDumpLaunchArgs();
         exit(0);
     }
+    // Only the production process remembers its startup chrome/Dock tint.
+    // The web preference remains authoritative once the page is ready.
+    if (!isolatedRun()) {
+        NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+        id theme = [defaults objectForKey:kAppearanceThemeKey];
+        id accent = [defaults objectForKey:kAppearanceAccentKey];
+        if (validAppearanceTheme(theme)) gAppliedTheme = [theme copy];
+        if (validAppearanceAccent(accent)) gAppliedAccent = [accent copy];
+    }
+    applyDockAccent(gAppliedAccent);
     [self installUserInputMonitor];
 
     // `-AMNOpenAtLaunch <库内相对路径>`：启动完直接把这一份打开。给验收用的——
@@ -2306,6 +2411,29 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
     NSString *type = [m[@"type"] isKindOfClass:NSString.class] ? m[@"type"] : nil;
     if (!type.length) return;
 
+    // Appearance is app-wide, including messages from independent document windows.
+    // This remains below the main-frame guard and accepts only known enum values.
+    if ([type isEqualToString:@"theme"]) {
+        id theme = m[@"value"];
+        id accent = m[@"accent"] ?: @"purple";
+        if (!validAppearanceTheme(theme) || !validAppearanceAccent(accent)) return;
+        gAppliedTheme = [theme copy];
+        gAppliedAccent = [accent copy];
+        if (!isolatedRun()) {
+            NSUserDefaults *defaults = NSUserDefaults.standardUserDefaults;
+            [defaults setObject:gAppliedTheme forKey:kAppearanceThemeKey];
+            [defaults setObject:gAppliedAccent forKey:kAppearanceAccentKey];
+        }
+        applyDockAccent(gAppliedAccent);
+        applyThemeToWindow(_win, gAppliedTheme);
+        applySeamlessChrome(_win);
+        for (NSWindow *window in _soloWins) {
+            applyThemeToWindow(window, gAppliedTheme);
+            applySeamlessChrome(window);
+        }
+        return;
+    }
+
     // 粘贴图文：主窗和独立窗都要回给发件的那块 webview，所以排在分岔之前。
     if ([type isEqualToString:@"clipPeek"]) {
         [self clipPeek:m from:message.webView];
@@ -2324,12 +2452,6 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
         _pageReady = YES;
         [self flushPending];
         [self refreshState];
-        return;
-    }
-    if ([type isEqualToString:@"theme"]) {
-        NSString *theme = [m[@"value"] isKindOfClass:NSString.class] ? m[@"value"] : @"auto";
-        applyThemeToWindow(_win, theme);
-        applySeamlessChrome(_win);
         return;
     }
     if ([type isEqualToString:@"doc"]) {
@@ -4151,12 +4273,6 @@ static BOOL isBenignNavError(NSError *e) {
     NSString *type = [m[@"type"] isKindOfClass:NSString.class] ? m[@"type"] : nil;
     NSWindow *win = web.window;
     if (!type.length || !win) return;
-    if ([type isEqualToString:@"theme"]) {
-        NSString *theme = [m[@"value"] isKindOfClass:NSString.class] ? m[@"value"] : @"auto";
-        applyThemeToWindow(win, theme);
-        applySeamlessChrome(win);
-        return;
-    }
     if ([type isEqualToString:@"doc"]) {
         NSString *title = [m[@"title"] isKindOfClass:NSString.class] ? m[@"title"] : nil;
         NSString *path  = [m[@"path"]  isKindOfClass:NSString.class] ? m[@"path"]  : nil;

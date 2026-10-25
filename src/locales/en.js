@@ -608,5 +608,21 @@ window.AMN_I18N["en"] = {
   "这是旧版尚未写进笔记的内容。请拷贝到笔记里，原内容不会被自动清理。": "These drafts were not saved to notes in the previous version. Copy them into a note; the original contents will not be cleared automatically.",
   "旧草稿暂存失败，关闭窗口前请先拷贝": "Draft backup failed. Copy drafts before closing.",
   "查看草稿": "View drafts",
-  "暂存失败，关闭窗口后可能无法找回。请现在拷贝到笔记里。": "The backup failed. These drafts may be lost when this window closes. Copy them into a note now."
+  "暂存失败，关闭窗口后可能无法找回。请现在拷贝到笔记里。": "The backup failed. These drafts may be lost when this window closes. Copy them into a note now.",
+  "明暗外观": "Appearance mode",
+  "主题色": "Theme color",
+  "雾紫": "Mist purple",
+  "苔绿": "Sage green",
+  "晴蓝": "Sky blue",
+  "界面与应用图标同步换色，正文保持原来的颜色。": "The interface and app icon change together. Your content keeps its original colors.",
+  "恢复默认排版": "Reset typography",
+  "正在载入设置…": "Loading settings…",
+  "放弃未保存的更改？": "Discard unsaved changes?",
+  "笔记库与高级设置的更改尚未保存。": "Changes to Library and Advanced settings have not been saved.",
+  "只属于你的称呼与问候，保存在这台 Mac 上。": "Your name and greeting, saved on this Mac.",
+  "颜色与排版，调整后即时生效。": "Colors and typography update as you change them.",
+  "文件留在原地，在这里管理笔记本与整理范围。": "Manage notebooks and indexing here. Your files stay where they are.",
+  "让你常用的助手找到并使用笔记。": "Help your favorite assistants find and use your notes.",
+  "管理整理规则与服务连接，修改后请保存。": "Manage indexing rules and connections. Save to apply your changes.",
+  "本地记录，自由阅读。": "Local notes. Room to think."
 };
