@@ -734,6 +734,75 @@ static BOOL validAppearanceAccent(id value) {
         [@[@"purple", @"green", @"blue"] containsObject:value];
 }
 
+/// 关掉时，系统会把包里的图标收到 1024 画布中 824 宽的圆角方块上，Dock 里才跟别的 App 一样大。
+/// 打开后要换三种主题色，走的是 applicationIconImage，系统不再收这一下，图标就会大一圈。
+/// 先把不透明的身宽收到 512 画布上的 412（即 824/1024）。紫、绿、蓝都从这张图变色，大小一致。
+/// 访达里的包图标和菜单栏小云不动。
+static NSImage *iconFittedForDock(NSImage *source) {
+    if (!source) return nil;
+    const NSInteger side = 512;
+    const NSInteger target = 412;
+    NSBitmapImageRep *rep = [[NSBitmapImageRep alloc]
+        initWithBitmapDataPlanes:NULL pixelsWide:side pixelsHigh:side
+        bitsPerSample:8 samplesPerPixel:4 hasAlpha:YES isPlanar:NO
+        colorSpaceName:NSDeviceRGBColorSpace
+        bitmapFormat:0 bytesPerRow:side * 4 bitsPerPixel:32];
+    if (!rep) return source;
+    rep = [rep bitmapImageRepByRetaggingWithColorSpace:NSColorSpace.sRGBColorSpace];
+    NSGraphicsContext *ctx = [NSGraphicsContext graphicsContextWithBitmapImageRep:rep];
+    if (!ctx) return source;
+    [NSGraphicsContext saveGraphicsState];
+    NSGraphicsContext.currentContext = ctx;
+    ctx.imageInterpolation = NSImageInterpolationHigh;
+    [[NSColor clearColor] set];
+    NSRectFill(NSMakeRect(0, 0, side, side));
+    [source drawInRect:NSMakeRect(0, 0, side, side) fromRect:NSZeroRect
+             operation:NSCompositingOperationSourceOver fraction:1.0];
+    [NSGraphicsContext restoreGraphicsState];
+
+    unsigned char *data = rep.bitmapData;
+    if (!data) return source;
+    NSInteger minX = side, maxX = -1;
+    for (NSInteger y = 0; y < side; y++) {
+        unsigned char *row = data + y * rep.bytesPerRow;
+        for (NSInteger x = 0; x < side; x++) {
+            if (row[x * 4 + 3] > 128) {
+                if (x < minX) minX = x;
+                if (x > maxX) maxX = x;
+            }
+        }
+    }
+    if (maxX < minX) return source;
+    NSInteger body = maxX - minX + 1;
+    // 已经落在系统那一档（或更小）就别再缩，免得把系统图标又缩一圈。
+    if (body <= target) return source;
+    double scale = (double)target / (double)body;
+    double drawn = (double)side * scale;
+    double origin = ((double)side - drawn) / 2.0;
+
+    NSBitmapImageRep *fitted = [[NSBitmapImageRep alloc]
+        initWithBitmapDataPlanes:NULL pixelsWide:side pixelsHigh:side
+        bitsPerSample:8 samplesPerPixel:4 hasAlpha:YES isPlanar:NO
+        colorSpaceName:NSDeviceRGBColorSpace
+        bitmapFormat:0 bytesPerRow:side * 4 bitsPerPixel:32];
+    if (!fitted) return source;
+    fitted = [fitted bitmapImageRepByRetaggingWithColorSpace:NSColorSpace.sRGBColorSpace];
+    ctx = [NSGraphicsContext graphicsContextWithBitmapImageRep:fitted];
+    if (!ctx) return source;
+    [NSGraphicsContext saveGraphicsState];
+    NSGraphicsContext.currentContext = ctx;
+    ctx.imageInterpolation = NSImageInterpolationHigh;
+    [[NSColor clearColor] set];
+    NSRectFill(NSMakeRect(0, 0, side, side));
+    [source drawInRect:NSMakeRect(origin, origin, drawn, drawn) fromRect:NSZeroRect
+             operation:NSCompositingOperationSourceOver fraction:1.0];
+    [NSGraphicsContext restoreGraphicsState];
+
+    NSImage *image = [[NSImage alloc] initWithSize:NSMakeSize(side, side)];
+    [image addRepresentation:fitted];
+    return image;
+}
+
 /// Apply the CSS hue-rotate matrix to the original icon in sRGB, preserving alpha.
 /// This is a runtime Dock image only: the bundle icon and menu-bar template stay intact.
 static NSImage *iconByRotatingHue(NSImage *source, double degrees) {
@@ -792,7 +861,7 @@ static void applyDockAccent(NSString *accent) {
             NSData *snapshot = NSApp.applicationIconImage.TIFFRepresentation;
             if (snapshot) original = [[NSImage alloc] initWithData:snapshot];
         }
-        if (original) icons[@"purple"] = original;
+        if (original) icons[@"purple"] = iconFittedForDock(original);
     }
     NSImage *image = icons[accent];
     if (!image) {
