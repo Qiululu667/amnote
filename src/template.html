@@ -3087,7 +3087,7 @@ async function reloadForNb(opt){
   if(opt.writeST) saveSTNow();
   if(!(await saveAllForReload())){
     nbHold={writeST:!!opt.writeST, quiet:true};
-    if(!opt.quiet) notify(TR('先把这一份存好，笔记本的改动才跟得上'));
+    if(!opt.quiet) blockedNotice(K('先把这一份存好，笔记本的改动才跟得上'), K('「{title}」还没存好，切过去处理一下，笔记本的改动才跟得上。'));
     return false;
   }
   nbHold=null;
@@ -3650,7 +3650,7 @@ async function setLang(v){
   if((SHELL_LANG_PREF || PREF.lang || 'auto')===v) return;
   // 先全存住再写偏好：存不下就停在原地，偏好也不能改——写了它下次打开就换了语言，
   // 而这一份还没落盘的字，用户以为「我按了取消」。
-  if(!(await saveAllForReload())){ notify(TR('先把这一份存好，再换语言')); return; }
+  if(!(await saveAllForReload())){ blockedNotice(K('先把这一份存好，再换语言'), K('「{title}」还没存好，切过去处理一下再换语言。')); return; }
   PREF.lang=v; savePref();
   if(SHELL){
     /* 壳收到之后自己重建菜单再 reload。但 AppKit 自带的那几项（服务、字体、
@@ -3665,13 +3665,24 @@ async function setLang(v){
    壳换语言前会对每块 webview 调一次：主窗自己在 setLang 里走过这一遭，独立窗
    （⌥⌘O）没有别的落盘时机，只有 pagehide 那条 keepalive，而 keepalive 的请求体
    有 64KiB 上限，长笔记根本发不出去，重载就等于把字扔了。 */
+let reloadBlocker=null;                        // 上一次 saveAllForReload 拦下来的第一篇（审查 P2-1）
 async function saveAllForReload(){
   let ok=true;
+  reloadBlocker=null;
   for(const tb of TABS.slice()){
-    try{ if(tb.editing && !(await saveBeforeLeave(tb))) ok=false; }
-    catch(e){ ok=false; }
+    try{ if(tb.editing && !(await saveBeforeLeave(tb))){ ok=false; if(!reloadBlocker) reloadBlocker=tb; } }
+    catch(e){ ok=false; if(!reloadBlocker) reloadBlocker=tb; }
   }
   return ok;
+}
+/* 换语言、笔记本翻面被拦下：拦下的是后台那篇时点名说是哪一篇、带「切过去」，别用一句不点名的话
+   把 saveBeforeLeave 刚说的点名那句盖掉（审查 P2-1）；拦下的是眼前这篇，照旧说 plain 那句 */
+function blockedNotice(plain, named){
+  const tb=reloadBlocker;
+  if(tb && TABS.indexOf(tb)>=0 && tb.id!==curTab)
+    notify(TR(named,{title:tb.title||TR('无标题')}),
+           {ms:8000, action:{label:TR('切过去'), fn:()=>{ if(TABS.indexOf(tb)>=0) showTab(tb.id); }}});
+  else notify(TR(plain));
 }
 function toggleTheme(){
   const dark = PREF.theme==='dark' || (PREF.theme==='auto' && matchMedia('(prefers-color-scheme:dark)').matches);
@@ -5797,7 +5808,8 @@ function layoutTabs(){
   void more.offsetWidth;
   const cur=tabs.find(el=>el.dataset.id===curTab);
   const idx=cur?tabs.indexOf(cur):0;
-  const hideOrder=[...tabs.slice(idx+1).reverse(), ...tabs.slice(0, idx)];
+  /* 有冲突的标签跟当前标签一样留在条上，不收进「其余 N 份」：它标签上那颗黄点是这篇撞冲突唯一常驻的提示（审查 P1-1） */
+  const hideOrder=[...tabs.slice(idx+1).reverse(), ...tabs.slice(0, idx)].filter(el=>!el.classList.contains('conflict'));
   let n=0;
   more.querySelector('.n').textContent='1';
   for(const el of hideOrder){
@@ -5898,14 +5910,18 @@ function cycleTab(dir){
   showTab(TABS[j].id);
 }
 function syncTabDirty(){
+  let moved=false;
   $$('#tabbar .tab').forEach(el=>{
     const t=TABS.find(x=>x.id===el.dataset.id);
     el.classList.toggle('dirty', !!(t && dirty(t)));
     const cf=inConflict(t);
+    if(el.classList.contains('conflict')!==cf) moved=true;
     el.classList.toggle('conflict', cf);
     const dot=el.querySelector('.ddot');
     if(dot) dot.title = cf ? TR('有冲突') : TR('未保存');
   });
+  if(moved) requestAnimationFrame(layoutTabs);  // 有冲突的标签不收进「其余」（审查 P1-1），冲突一亮一灭重排一次
+  syncNative();                                 // 后台那篇脏了、存好了，壳的脏标也跟着（审查 P0-1）
 }
 
 function showTab(id){
@@ -5965,7 +5981,8 @@ async function closeTab(id, opt){
   if(t.editing && dirty(t)){
     if(!(await saveBeforeLeave(t)) && t.editing){   // 存住了 saveBeforeLeave 自己会收编辑态；等的这一会儿被别处收了的，没什么可丢
       // 文件现在是什么样子照实说：别处改过（撞过冲突、改用过对方的）就不报「我上次存的时间」（C4）
-      const why=t.extSeen ? TR('这份改动还没存进去，关掉就丢了；文件是别处改过的那一版。')
+      const why=t.extGone ? TR('这份改动还没存进去，关掉就丢了；原来的文件已经不在了（被删掉或改了名）。')
+              : t.extSeen ? TR('这份改动还没存进去，关掉就丢了；文件是别处改过的那一版。')
               : t.savedAt ? TR('这份改动还没存进去，关掉就丢了；文件还是 {time} 存下的样子。',{time:t.savedAt})
                           : TR('这份改动还没存进去，关掉就丢了。');
       if(!ask(TR('要关掉「{title}」吗？',{title:t.title||''}), why, TR('不保存并关闭'), TR('取消'), true)) return false;
@@ -10113,7 +10130,7 @@ function syncBar(){
 let lastNat='';
 function syncNative(){
   const t=active();
-  const d=!!dirty(t);
+  const d=TABS.some(dirty);                     // 窗口关闭钮上的脏点、关窗那道拦：哪个标签没存都算（审查 P0-1）
   const sig=(t?t.path:'')+'|'+d;
   if(sig===lastNat) return;
   lastNat=sig;
@@ -10135,7 +10152,7 @@ async function startEdit(opt){
     const r=await (await fetch('/__raw?path='+encodeURIComponent(t.path)+'&lang='+LANG,
                                {cache:'no-store'})).json();
     if(!r.ok){ tell(TR('进不了编辑'), r.错误||TR('读不到源码')); return; }
-    t.raw=r.正文; t.rawAt=r.改于; t.eol=eolOf(r.正文, r.字节); t.extSeen=false;
+    t.raw=r.正文; t.rawAt=r.改于; t.eol=eolOf(r.正文, r.字节); t.extSeen=false; t.extGone=false;
     /* V 轮（契约 §10.2-4，复审 U-5）：手上这一份是现读的正主了，在途的那趟重载（loadMd）作废——不然它晚到的
        旧正文会在退出编辑之后把阅读页画回旧样子。代号推一格，loading 一并放下（那一趟回来认不出自己，不会去放）。 */
     t.loadSeq=(t.loadSeq|0)+1; t.loading=false;
@@ -10210,7 +10227,8 @@ function cancelEdit(){
   const t=active(); if(!t||!t.editing) return;
   // 这一趟存过（自动保存）：文件是那一刻的样子，不是打开时的（I 轮措辞，有存不进的块时更要说清）。
   // 撞过冲突、改用过对方的：文件是别处改过的那一版，既不是我存的、也不是打开时的（C4）
-  const back=t.extSeen ? TR('没存进去的改动会丢掉，文件是别处改过的那一版。')
+  const back=t.extGone ? TR('没存进去的改动会丢掉；原来的文件已经不在了（被删掉或改了名）。')
+           : t.extSeen ? TR('没存进去的改动会丢掉，文件是别处改过的那一版。')
            : t.savedAt ? TR('没存进去的改动会丢掉，文件还是 {time} 存下的样子。',{time:t.savedAt})
                        : TR('改过的内容会回到打开时的样子。');
   if(dirty(t) && !ask(TR('要放弃这次修改吗？'), back, TR('放弃修改'), TR('取消'), true)) return;
@@ -10400,14 +10418,15 @@ async function saveEdit(force, opt){
     /* 「保留我的」写不上去，而且再试也不会好（D4）：文件不在了（删了、改了名）、读不了（被写坏了），
        或者在原位置新建也没成。不进自动重试，交给 keepMine 当场说清楚怎么办；字一直在编辑区里 */
     if(opt.keep && (opt.create || r.代码==='gone' || r.代码==='io')){
-      t.keepFail={code:r.代码||'', msg:r.错误||''};
+      t.keepFail={code:r.代码||'', msg:r.错误||'', create:!!opt.create};
+      if(!opt.create && r.代码==='gone') t.extGone=true;   // 原来的文件不在了（删了、改了名）：之后的提示照这个说（审查 P3-1）
       paintTab(t);
       return false;
     }
     saveFailed(t, r.错误||TR('写失败'));
     return false;
   }
-  t.raw=body; t.conflict=null; t.extSeen=false; saveOk(t);   // 盘上就是这一版了
+  t.raw=body; t.conflict=null; t.extSeen=false; t.extGone=false; saveOk(t);   // 盘上就是这一版了
   t.loadSeq=(t.loadSeq|0)+1; t.loading=false;          // V 轮：存好了，在途的旧重载一律作废（同 startEdit）
   // 存的这一会儿又动过（停笔计时又挂上了）、块源码框里还有没落的字：还不算存完，壳退出照样拦
   t.touched=!!(t.autoT || t.again) || srcBlkPending(t);
@@ -10444,7 +10463,9 @@ function showStuck(t){
   setTimeout(()=>el.classList.remove('stuckflash'), 1800);
   const n=els.length;
   // 文件是什么样子照实说：撞过冲突（比如点了「保留我的」才走到这里）就是别处改过的那一版（C4）
-  const msg = t.extSeen
+  const msg = t.extGone
+    ? TR('有 {n} 处存不进，这篇的改动先没存；原来的文件已经不在了（被删掉或改了名）。',{n})
+    : t.extSeen
     ? TR('有 {n} 处存不进，这篇的改动先没存，文件是别处改过的那一版。',{n})
     : t.savedAt
     ? TR('有 {n} 处存不进，这篇的改动先没存，文件还是 {time} 存下的样子。',{n, time:t.savedAt})
@@ -10552,6 +10573,13 @@ function showConflict(t, why){
   if(why) t.conflictWhy=why;                           // 空着来的（点胶囊、退出被拦）沿用上一次的原话
   paintTab(t);                                         // 后台那篇的胶囊也当场换成「有冲突」，别停在「正在保存…」
   syncConflict();
+  /* 后台那篇撞了冲突：横幅不挂在眼前这篇上，提示条点名说一句，带「切过去」（审查 P0-1）。
+     同一趟冲突只说一次——按「基于」认：之后再撞（切走、页面藏起来又存一次）基于没变，不再弹 */
+  if(t.id!==curTab && t.conflictTold!==t.rawAt){
+    t.conflictTold=t.rawAt;
+    notify(TR('「{title}」在外部被改过了，你在那篇的改动还没存。',{title:t.title||TR('无标题')}),
+           {ms:8000, action:{label:TR('切过去'), fn:()=>{ if(TABS.indexOf(t)>=0) showTab(t.id); }}});
+  }
 }
 /* 后台那篇撞了冲突、又要走（换语言、关它）：说清是哪一篇 */
 function conflictAway(t){
@@ -10616,7 +10644,7 @@ $('#keepMine').onclick=async()=>{
     /* 撞冲突以后对方又把文件删了、改了名（D4）：盖不上去了。问一句，在原位置按这一版新建；不建就原样留着，字一个不丢 */
     if(!ok && t.editing && t.keepFail && t.keepFail.code==='gone'){
       t.keepFail=null;
-      if(!ask(TR('原来的文件不在了'), TR('可能被删掉了，或者改了名。要在原来的位置按你这一版重新建一份吗？'),
+      if(!ask(TR('「{title}」原来的文件不在了',{title:t.title||TR('无标题')}), TR('可能被删掉了，或者改了名。要在原来的位置按你这一版重新建一份吗？'),
               TR('重新建一份'), TR('取消'), false)){
         notify(TR('没存，你的字还在编辑区里。'));
         return;
@@ -10629,7 +10657,7 @@ $('#keepMine').onclick=async()=>{
       const f=t.keepFail; t.keepFail=null;
       tell(TR('「保留我的」没存进去'), (f.msg ? f.msg+'\n\n' : '')
         + TR('你的字还在编辑区里，先别关这个标签：全选拷贝（⌘A、⌘C），贴到别的笔记里就不会丢。')
-        + (f.code==='io' ? '\n'+TR('也可以先在访达里把这份文件挪走，再点「保留我的」，会在原来的位置按你这一版重新建一份。') : ''));
+        + (f.code==='io' && !f.create ? '\n'+TR('也可以先在访达里把这份文件挪走，再点「保留我的」，会在原来的位置按你这一版重新建一份。') : ''));
     }
   }finally{
     if(t.resolving===tk) t.resolving=null;
@@ -10650,6 +10678,7 @@ $('#takeTheirs').onclick=async()=>{
     if(!r.ok){
       /* 对方那一版读不到（D4：撞冲突以后又被删了、改了名、写坏了）：改用不了，字还在编辑区里；
          横幅挂回去（finally），要留下自己的就点「保留我的」 */
+      if(r.代码==='gone') t.extGone=true;               // 原来的文件不在了（审查 P3-1）
       flash(r.代码==='gone' ? TR('对方那一版不在了（文件被删掉或改了名），你的字还在。要留下就点「保留我的」。')
                             : (r.错误||TR('读不到源码')));
       return;
@@ -10681,7 +10710,7 @@ $('#takeTheirs').onclick=async()=>{
     t.raw=r.正文; t.rawAt=r.改于; t.work=r.正文; t.touched=false; t.conflict=null;
     t.eol=eolOf(r.正文, r.字节);                        // 对方那一版的换行照它自己的认（D3）
     /* 文件现在是对方那一版：胶囊不再写「已保存 我上次存的时间」，放弃、关标签的提示也不再拿这个时间说事（C4） */
-    t.savedAt=null; t.extSeen=true;
+    t.savedAt=null; t.extSeen=true; t.extGone=false;
     ta.value=t.work;
     t.loadSeq=(t.loadSeq|0)+1; t.loading=false;        // V 轮：改用对方的＝现读的正主，在途的旧重载作废
     saveOk(t); t.redraw=null; t.pendingBad=null; t.stuckEls=null;   // 之前没存上的那几次、等着重画的块、存不进的块都作废
@@ -13642,7 +13671,9 @@ window.AMN = {
       canBack:canBack(t),
       canForward:canForward(t),
       bookmarks:false,               /* 书签栏 5.4 起下线，这一位恒假 */
-      dirty:!!dirty(t), editing:!!(t&&t.editing),
+      /* 任何一个标签有没存的改动都算（审查 P0-1）：壳关主窗口、⌘Q、装更新前都只看这一位，以前只看眼前这篇，
+         后台那篇撞了冲突、字还没存，壳照样直接关。副作用：只有后台脏时菜单「存储」也亮着，按了只存眼前这篇（没在编辑就什么都不做） */
+      dirty:TABS.some(dirty), editing:!!(t&&t.editing),
       canEdit:hasDocNow(t) && !t.ext && kindOfTab(t)==='md' && canEditPath(t.path),
       /* 第 14 个键（v23）。编辑态一律为假：⌘⌫ 在编辑器里是「删到行首」，
          菜单项灰掉这一下按键才会放行给正文。 */
