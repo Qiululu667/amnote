@@ -624,5 +624,23 @@ window.AMN_I18N["en"] = {
   "文件留在原地，在这里管理笔记本与整理范围。": "Manage notebooks and indexing here. Your files stay where they are.",
   "让你常用的助手找到并使用笔记。": "Help your favorite assistants find and use your notes.",
   "管理整理规则与服务连接，修改后请保存。": "Manage indexing rules and connections. Save to apply your changes.",
-  "本地记录，自由阅读。": "Local notes. Room to think."
+  "本地记录，自由阅读。": "Local notes. Room to think.",
+  "有冲突": "Conflict",
+  "还在处理冲突，稍等一下再走。": "Still sorting out the conflict — wait a moment, then try again.",
+  "这份改动还没存进去，关掉就丢了；文件是别处改过的那一版。": "These changes haven't been saved — closing loses them. The file has the version changed elsewhere.",
+  "没存进去的改动会丢掉，文件是别处改过的那一版。": "Changes that weren't saved will be lost. The file keeps the version changed elsewhere.",
+  "有 {n} 处存不进，这篇的改动先没存，文件是别处改过的那一版。": {
+    "one": "{n} block can't be saved, so this note's changes aren't saved yet. The file has the version changed elsewhere.",
+    "other": "{n} blocks can't be saved, so this note's changes aren't saved yet. The file has the version changed elsewhere."
+  },
+  "「{title}」：{why}": "“{title}”: {why}",
+  "「{title}」在外部被改过了，切过去挑一个再走。": "“{title}” changed outside AM·Note — switch to it and pick a version first.",
+  "原来的文件不在了": "The original file is gone",
+  "可能被删掉了，或者改了名。要在原来的位置按你这一版重新建一份吗？": "It may have been deleted or renamed. Create it again in the same place with your version?",
+  "重新建一份": "Create Again",
+  "没存，你的字还在编辑区里。": "Not saved. Your text is still in the editor.",
+  "「保留我的」没存进去": "“Keep Mine” couldn't save",
+  "你的字还在编辑区里，先别关这个标签：全选拷贝（⌘A、⌘C），贴到别的笔记里就不会丢。": "Your text is still in the editor — don't close this tab yet. Select all and copy it (⌘A, ⌘C), then paste it into another note so nothing is lost.",
+  "也可以先在访达里把这份文件挪走，再点「保留我的」，会在原来的位置按你这一版重新建一份。": "Or move this file away in Finder first, then click “Keep Mine” to create it again in the same place with your version.",
+  "对方那一版不在了（文件被删掉或改了名），你的字还在。要留下就点「保留我的」。": "The other version is gone (the file was deleted or renamed). Your text is still here — click “Keep Mine” to keep it."
 };

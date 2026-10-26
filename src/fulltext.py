@@ -122,7 +122,8 @@ class Vault(object):
 
     __slots__ = ("vid", "name", "root", "real_root", "color", "added",
                  "config_path", "db_path", "journal", "backup_dir",
-                 "readonly", "online", "sync_lock", "state", "rules_cache")
+                 "readonly", "online", "sync_lock", "state", "rules_cache",
+                 "unread")
 
     def __init__(self, vid, root, name="", color="", added="",
                  readonly=False, online=True):
@@ -134,7 +135,9 @@ class Vault(object):
         # 一把锁、一份同步状态、一份规则缓存**各本一份**：共用的话 A 本在扫
         # B 本就只能排队，而 /__status 的进度也会互相串。
         self.sync_lock = threading.Lock()
-        self.state = {"运行中": False, "待重跑": False}
+        # 「出错」：上一趟同步抛了什么（空串＝没出错）。index_status 据此报「异常」，
+        # 不再在建库失败、索引还空着的时候报「就绪」（B1）
+        self.state = {"运行中": False, "待重跑": False, "出错": ""}
         self.rules_cache = {"mtime": None, "值": None}
         self.point_at(root, name=name)
 
@@ -163,6 +166,8 @@ class Vault(object):
         self.journal = os.path.join(amdir, "changes.jsonl")
         self.backup_dir = os.path.join(amdir, "backups")
         self.rules_cache = {"mtime": None, "值": None}
+        # 「读不了」那几份的重试账（B2，见 _unread_book）。换了位置＝换了一份索引，从库里重读
+        self.unread = None
         self.name = name or os.path.basename(self.root.rstrip(os.sep)) or self.root
         return self
 
@@ -1083,8 +1088,9 @@ function run(argv){
 """ % PDF_TEXT_CHARS
 
 
-def pdf_texts(fulls):
-    """一批 pdf → {绝对路径: 文本}。文本为 None＝打不开，''＝没有文本层（扫描件）。"""
+def pdf_texts(fulls, slow=None):
+    """一批 pdf → {绝对路径: 文本}。文本为 None＝打不开，''＝没有文本层（扫描件）。
+    给了 `slow`（一个 set）就把超时（PDF_TIMEOUT）那几批的路径放进去，调用方据此不再自动重试它们（B2）。"""
     out = {}
     for i in range(0, len(fulls), PDF_BATCH):
         chunk = fulls[i:i + PDF_BATCH]
@@ -1093,6 +1099,10 @@ def pdf_texts(fulls):
                 ["osascript", "-l", "JavaScript", "-e", _PDF_JS] + chunk,
                 capture_output=True, timeout=PDF_TIMEOUT)
             got = json.loads(r.stdout.decode("utf-8", "replace") or "{}")
+        except subprocess.TimeoutExpired:
+            got = {}
+            if slow is not None:
+                slow.update(chunk)
         except Exception:
             got = {}
         for p in chunk:
@@ -1258,6 +1268,29 @@ def _add_skeleton_col(con):
         con.commit()
 
 
+DB_BUSY_WAIT = 30.0                                  # 跟 sqlite3.connect(timeout=30) 同一个口径
+
+
+def _wal_on(con, budget=DB_BUSY_WAIT):
+    """`PRAGMA journal_mode=WAL`，撞上别的连接的锁就等一会儿再试，最多等 `budget` 秒（B1）。
+
+    全新的库第一次切 WAL 要整库的排他锁，而 sqlite 在这一句上撞锁**不走 busy_timeout**，当场回
+    「database is locked」（实测 3.45 / 3.54 都是几毫秒就抛）。开机时建索引那一趟和页面问 /__status
+    的那几条连接同时走到这一句，输的那条直接失败：建索引那一趟就此作废，索引一直是空的。
+    所以这里自己按连接超时的口径重试；不是「锁住了」的错照原样抛。库已经是 WAL 的，这一句不要锁，一次就过。"""
+    end = time.monotonic() + budget
+    pause = 0.005
+    while True:
+        try:
+            con.execute("PRAGMA journal_mode=WAL")
+            return
+        except sqlite3.OperationalError as e:
+            if "locked" not in str(e) or time.monotonic() + pause > end:
+                raise
+        time.sleep(pause)
+        pause = min(pause * 2, 0.2)
+
+
 def connect():
     """开索引库。configure(readonly=True) 之后是**纯读**：URI 的 mode=ro，
     不改 journal_mode（那一句会写主库文件的头）、不建表。库不在就直接抛，
@@ -1265,8 +1298,12 @@ def connect():
     if V().readonly:
         return _connect_ro()
     _guard_db_journal(True)                           # -journal 是非普通文件：删掉再开，不卡（P2-1）
-    con = sqlite3.connect(V().db_path, timeout=30)
-    con.execute("PRAGMA journal_mode=WAL")
+    con = sqlite3.connect(V().db_path, timeout=DB_BUSY_WAIT)
+    try:
+        _wal_on(con)
+    except BaseException:
+        con.close()
+        raise
     con.execute("PRAGMA synchronous=NORMAL")
     con.execute("PRAGMA mmap_size=536870912")
     con.executescript("""
@@ -1715,6 +1752,43 @@ def journal_read(after_seq=0, limit=500):
     return out[-limit:]
 
 
+# ── 「读不了」的那几份：之后同步时再试（B2）──────────────────
+#
+# sync 只按 (mtime, 大小) 判改动。某一趟恰好读不了的那份（文件共享的远端占着它那一下、open 回 EAGAIN；
+# 一时没权限……）在索引里记「读不了」，之后只要它不再被改，就一直搜不到。所以给这几份记一本账，之后的
+# 同步里再抽一次，抽成了就从账上划掉。只重抽正文，不记流水、不留档——文件本身没变。
+# 一直读不了的要退避，不能让每一趟同步都去碰它：失败后的下一趟就再试，再失败等 15 秒、30 秒……
+# 最多一小时试一次。pdf 是整批交给 osascript 的：超时（PDF_TIMEOUT）的那一批这个进程里不再自动重试
+# （重试一次就可能再卡三分钟）；上次进程留下的 pdf「读不了」也不重试——pdf 不走 O_NONBLOCK 那条路，
+# 不会因为「被占着」记成读不了，留下的多半是坏文件或超时。
+UNREAD_NOTES = ("读不了", "打不开这份 xlsx")
+UNREAD_FIRST, UNREAD_MAX = 15.0, 3600.0
+
+
+def _unread_book(v, con):
+    """这一本的重试账 {路径: [连续失败次数, 最早什么时候再试]}。这个进程里头一趟从索引读出上次留下的。"""
+    if v.unread is None:
+        v.unread = {r: [0, 0.0] for r, in con.execute(
+            "SELECT 路径 FROM 文档 WHERE 类型!='pdf' AND "
+            "(备注 LIKE '读不了%' OR 备注 LIKE '打不开这份 xlsx%')")}
+    return v.unread
+
+
+def _unread_mark(book, rel, note, now, gave_up=False):
+    """抽完一份记一笔：没读成就记失败次数、排下一次；读成了就划掉。"""
+    if not (note and note.startswith(UNREAD_NOTES)):
+        book.pop(rel, None)
+        return
+    n = (book.get(rel) or [0, 0.0])[0] + 1
+    if gave_up:
+        at = float("inf")
+    elif n <= 1:
+        at = 0.0                                   # 头一回：下一趟同步就再试
+    else:
+        at = now + min(UNREAD_FIRST * 2 ** (n - 2), UNREAD_MAX)
+    book[rel] = [n, at]
+
+
 # ── 同步：抽正文＋记流水＋留档，一趟做完 ─────────────────────
 
 def sync(log=None):
@@ -1732,6 +1806,12 @@ def sync(log=None):
     v.state["运行中"] = True
     try:
         r = _sync_once(log or (lambda *a: None))
+        v.state["出错"] = ""
+    except Exception as e:
+        # 记下来再原样往上抛：index_status 据此报「异常」，不让一份没建成的空索引顶着「就绪」（B1）
+        v.state["出错"] = "%s: %s" % (type(e).__name__, e)
+        v.unread = None                          # 这一趟没落盘：重试账下一趟从库里重读，别跟库对不上
+        raise
     finally:
         v.state["运行中"] = False
         v.sync_lock.release()
@@ -1765,6 +1845,15 @@ def _sync_once(log):
     changed = [r for r in cur if r in old
                and (cur[r][0], cur[r][1]) != (old[r][0], old[r][1])]
     removed = [r for r in old if r not in cur]
+
+    # 上次读不了、文件又没动过的那几份：到点了就再抽一次（B2，见 _unread_book）
+    book = _unread_book(v, con)
+    for r in removed:
+        book.pop(r, None)
+    t_now = time.time()
+    moved = set(added) | set(changed)
+    retry = sorted(r for r, (_, at) in book.items()
+                   if at <= t_now and r in cur and r in old and r not in moved)
 
     # 门户／外部**只判一次，判完存下来**。take_portal_write 查中即消费，
     # 而下面留档和记流水会各问一遍同一份文件；每问一次就消费一次的话，
@@ -1846,8 +1935,10 @@ def _sync_once(log):
         meta_set(con, "基线时间", now_iso)
         meta_set(con, "流水号", seq)
 
-    # 抽正文。pdf 攒一批交给 osascript，其余就地抽
-    todo = added + changed
+    # 抽正文。pdf 攒一批交给 osascript，其余就地抽。retry 只重抽，上面的流水和留档都不算它们
+    if retry:
+        log(f"再抽 {len(retry)} 份上次读不了的")
+    todo = added + changed + retry
     pdf_todo = []
     # 旧库可能仍有「任务」列，不再读写；只更新搜索和卡片使用的这八列。
     ins = ("INSERT OR REPLACE INTO 文档(路径,类型,mtime,大小,正文,原文,备注,骨架) "
@@ -1870,6 +1961,7 @@ def _sync_once(log):
         vals = (r, kind, cur[r][0], cur[r][1], body, raw, note,
                 skeleton_of(body) if kind == "md" else "")
         con.execute(ins, vals)
+        _unread_mark(book, r, note, t_now)
         if kind == "md":
             con.execute("DELETE FROM 链接 WHERE 源=?", (r,))
             con.executemany("INSERT INTO 链接(源,类型,目标,文本) VALUES(?,?,?,?)",
@@ -1881,13 +1973,15 @@ def _sync_once(log):
 
     if pdf_todo:
         log(f"抽 {len(pdf_todo)} 份 pdf 的文本层")
-        got = pdf_texts([_full(r) for r in pdf_todo])
+        slow = set()
+        got = pdf_texts([_full(r) for r in pdf_todo], slow=slow)
         for r in pdf_todo:
             t = got.get(_full(r))
             body = t or ""
             note = "读不了" if t is None else ("无文本层" if not t.strip() else "")
             vals = (r, "pdf", cur[r][0], cur[r][1], body, None, note, "")
             con.execute(ins, vals)
+            _unread_mark(book, r, note, t_now, gave_up=_full(r) in slow)
         con.commit()
 
     meta_set(con, "上次同步", now_iso)
@@ -2350,7 +2444,14 @@ def skeleton_of(text):
 # ── 正文勾选：行格式和冲突校验共用口径 ──────────────────────
 # /__task 保留逐字节勾选；期望原文最多取 300 个字，跟阅读页 lineTaskText 一致。
 TASK_TEXT_MAX = 300
-TASK_RE = re.compile(r"^[ \t]*(?:[-*+]|\d+[.)])[ \t]+\[([ xX])\][ \t]")
+# 页面画得出的框都要勾得上（C2），所以三段空白跟阅读页逐字同一套：
+#   · 行首缩进、列表记号后面那段：阅读页 LIRE 用的是 JS 的 \s，这里照抄那一串（去掉 \n——行是按 \n 切的）；
+#   · 方框后面那一个：空格、Tab、不换行空格 U+00A0、全角空格 U+3000 四种，阅读页 listHtml、
+#     TASK_LINE_RE 同一套。原来只认空格和 Tab，用全角空格隔开的那种行页面画得出框、一点就说「别处改过」。
+TASK_LEAD_WS = "\t\x0b\x0c\r \u00a0\u1680\u2000-\u200a\u2028\u2029\u202f\u205f\u3000\ufeff"
+TASK_GAP_WS = " \t\u00a0\u3000"
+TASK_RE = re.compile("^[%s]*(?:[-*+]|\\d+[.)])[%s]+\\[([ xX])\\][%s]"
+                     % (TASK_LEAD_WS, TASK_LEAD_WS, TASK_GAP_WS))
 
 
 def task_body_of(line):
@@ -2826,12 +2927,16 @@ def index_status(con=None):
         if not os.path.exists(V().db_path):
             return {"状态": "未建库", "收录": 0, "上次同步": ""}
         con = connect()
-    st = {"状态": "同步中" if V().state["运行中"] else "就绪",
+    # 「异常」＝上一趟同步失败了、之后还没成功过一趟（B1）。正在跑的照旧报「同步中」
+    st = {"状态": ("同步中" if V().state["运行中"]
+                   else "异常" if V().state.get("出错") else "就绪"),
           "收录": con.execute("SELECT COUNT(*) FROM 文档").fetchone()[0],
           "无文本层": con.execute(
               "SELECT COUNT(*) FROM 文档 WHERE 备注='无文本层'").fetchone()[0],
           "上次同步": meta_get(con, "上次同步"),
           "流水号": int(meta_get(con, "流水号", "0") or 0)}
+    if st["状态"] == "异常":
+        st["错误"] = V().state.get("出错")
     if own:
         con.close()
     return st

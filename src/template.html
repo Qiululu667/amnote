@@ -1144,6 +1144,8 @@ kbd{
 .tab .tx svg{width:11px;height:11px;stroke-width:1.6}
 .tab .ddot{width:6px;height:6px;border-radius:50%;flex:none;background:var(--t4);display:none}
 .tab.dirty:not(.on):not(:hover) .ddot{display:block}
+/* 后台标签撞了冲突：同一颗点，换成冲突横幅那道色（横幅只在这篇是当前标签时挂出来） */
+.tab.conflict:not(.on):not(:hover) .ddot{display:block;background:var(--folder)}
 .tabmore{flex:none;height:26px;min-width:34px;padding:0 8px;border-radius:7px;
   display:none;align-items:center;justify-content:center;gap:3px;
   color:var(--t2);font-size:11px;font-weight:560}
@@ -3698,8 +3700,11 @@ function joinLines(arr){
 /* 削掉首尾空白，但全角空格（U+3000）不削——段落的段首缩进「　　」是正文（CommonMark 同口径） */
 function trimKeepWide(s){ return String(s==null?'':s).replace(/^[^\S\u3000]+|[^\S\u3000]+$/g, ''); }
 
-/* 列表项 ─ 缩进、有序无序、序号、正文 */
-const LIRE = /^(\s*)([-*+]|(\d+)[.)])\s+(.*)$/;
+/* 列表项 ─ 缩进、有序无序、序号、正文
+   D1：原来写成 \s+(.*)$，记号后面几万个空格、再跟一个 \r 或 U+2028，\s+ 和 (.*) 抢同一段空白、逐个回退，
+   要几秒。正文那一组改成「要么空、要么从一个非空白字起头」：\s+ 回退时它当场就失败，耗时变线性。
+   四个分组、对任何输入的匹配结果都跟原来逐字相同（\s+ 本来就会吃到最后一个空白为止）。 */
+const LIRE = /^(\s*)([-*+]|(\d+)[.)])\s+((?:\S.*)?)$/;
 
 /* 这些字符写在正文里会被渲染器认成标记。存盘时如果屏幕上就是这几个字
    （不是工具栏加出来的加粗／斜体），把它换成数字实体再写回，渲染时换回来。
@@ -3742,8 +3747,10 @@ function isStructLine(line){
    反引号（那是一行行内代码，不是围栏）。收尾那道：同一种字符、不短于开头、后面只有空白。
    以前见 ``` 开头的行就开、见 ``` 开头的行就收：代码里写 markdown 教程（一行 ```、
    一行 ```python）代码块在那儿就断了，后半截掉出来当正文（R 报告 P0-2）；~~~ 围栏也不认。 */
+/* D1：记号串原来是 `{3,} 后面直接跟 (.*)$，几万个反引号 / 波浪线后面跟一个 \r，两段抢同一串记号、逐个回退要几秒。
+   记号串后面加一道「下一个字不是同一种记号」：串只能取到最长，回退时当场失败，耗时变线性；匹配结果和原来逐字相同。 */
 function fenceOpen(line){
-  const m = /^\s*(`{3,}|~{3,})(.*)$/.exec(String(line||''));
+  const m = /^\s*(`{3,}(?!`)|~{3,}(?!~))(.*)$/.exec(String(line||''));
   if(!m || (m[1][0]==='`' && m[2].includes('`'))) return null;
   return {ch:m[1][0], n:m[1].length, lang:m[2].trim().split(/\s+/)[0]||''};
 }
@@ -3997,7 +4004,10 @@ function md2html(src, base, off0){
    这种写法库里没有，真碰上也只是显示成一种，不会掉内容。 */
 function listHtml(rows, inl, base){
   const li = r => {
-    const m = r.txt.match(/^\[([ xX])\]\s+(.*)$/);
+    /* C2：方框后面那一个空白只认空格、Tab、不换行空格、全角空格四种，跟服务端 TASK_RE、TASK_LINE_RE 同一套——
+       画得出框的行 /__task 都认，点得动。别的空白（\v、U+2003 之类）跟在方框后面的，照原样当正文字，不画框。
+       框后的字从第一个非空白字起（同原来的 \s+ 一样吃掉后面那串空白）。 */
+    const m = r.txt.match(/^\[([ xX])\][ \t\u00a0\u3000]\s*((?:\S.*)?)$/);
     // 空项塞一个 <br>：contenteditable 里空 <li> 放不进光标。
     // 写回时 inlMd 会丢掉块末 <br>，normHtml 比较也忽略，不进锁块基线。
     return m
@@ -5420,8 +5430,10 @@ function paintPins(t, box){
   </div>`; });
 }
 
-/* 正文勾选：与服务端 task_text_of 使用相同的空白和长度规则。 */
-const TASK_LINE_RE=/^[ \t]*(?:[-*+]|\p{Nd}+[.)])[ \t]+\[([ xX])\][ \t]/u;
+/* 正文勾选：与服务端 task_text_of 使用相同的空白和长度规则。
+   C2：跟服务端 TASK_RE 逐字同一套——缩进和记号后面那段认 LIRE 的 \s（去掉 \n），方框后面那一个认
+   空格、Tab、U+00A0、U+3000 四种。阅读页画得出的框（LIRE ＋ listHtml）这里都认得，点下去不会被当成冲突。 */
+const TASK_LINE_RE=/^[^\S\n]*(?:[-*+]|\p{Nd}+[.)])[^\S\n]+\[([ xX])\][ \t\u00a0\u3000]/u;
 const pyWs=c=>(c>=0x09 && c<=0x0d) || (c>=0x1c && c<=0x20) || c===0x85 || c===0xa0 || c===0x1680
   || (c>=0x2000 && c<=0x200a) || c===0x2028 || c===0x2029 || c===0x202f || c===0x205f || c===0x3000;
 function lineTaskText(line){
@@ -5713,10 +5725,11 @@ function drawTabs(){
       : `<span class="tt plain">${esc(lab.text)}</span>`;
     const tip=esc(t.title||'')+(t.path?' — '+esc(t.path):'');
     const nb=nbOfTab(t);
-    return `<div class="tab${t.id===curTab?' on':''}${dirty(t)?' dirty':''}${nb?' '+NB.cls(nb):''}" data-id="${t.id}" title="${tip}" role="tab" aria-selected="${t.id===curTab?'true':'false'}">
+    const cf=inConflict(t);
+    return `<div class="tab${t.id===curTab?' on':''}${dirty(t)?' dirty':''}${cf?' conflict':''}${nb?' '+NB.cls(nb):''}" data-id="${t.id}" title="${tip}" role="tab" aria-selected="${t.id===curTab?'true':'false'}">
        <span class="fav" aria-hidden="true">${icon(tabIcon(t),14)}</span>
        ${nb?`<i class="nd sm" aria-hidden="true"></i>`:''}
-       ${tt}<i class="ddot" title="${esc(TR('未保存'))}"></i>
+       ${tt}<i class="ddot" title="${esc(cf ? TR('有冲突') : TR('未保存'))}"></i>
        <button type="button" class="tx" data-close="${t.id}" title="${esc(TR('关掉'))}">${icon('close',11)}</button>
      </div>`;
   }).join('')
@@ -5888,6 +5901,10 @@ function syncTabDirty(){
   $$('#tabbar .tab').forEach(el=>{
     const t=TABS.find(x=>x.id===el.dataset.id);
     el.classList.toggle('dirty', !!(t && dirty(t)));
+    const cf=inConflict(t);
+    el.classList.toggle('conflict', cf);
+    const dot=el.querySelector('.ddot');
+    if(dot) dot.title = cf ? TR('有冲突') : TR('未保存');
   });
 }
 
@@ -5904,6 +5921,7 @@ function showTab(id){
   const md=paneOf(t) && paneOf(t).querySelector('.md');
   if(md) md.id='doc';
   drawTabs(); buildToc(); syncRel(); syncProg(); syncBar(); syncChrome();
+  syncConflict();                    // 冲突横幅只跟眼前这篇：切过来才挂出它自己的，切走就收（A1）
   pushState();
 }
 
@@ -5945,8 +5963,10 @@ async function reopenClosed(){
 async function closeTab(id, opt){
   const t=TABS.find(x=>x.id===id); if(!t) return true;
   if(t.editing && dirty(t)){
-    if(!(await saveBeforeLeave(t))){                // 存住了 saveBeforeLeave 自己会收编辑态
-      const why=t.savedAt ? TR('这份改动还没存进去，关掉就丢了；文件还是 {time} 存下的样子。',{time:t.savedAt})
+    if(!(await saveBeforeLeave(t)) && t.editing){   // 存住了 saveBeforeLeave 自己会收编辑态；等的这一会儿被别处收了的，没什么可丢
+      // 文件现在是什么样子照实说：别处改过（撞过冲突、改用过对方的）就不报「我上次存的时间」（C4）
+      const why=t.extSeen ? TR('这份改动还没存进去，关掉就丢了；文件是别处改过的那一版。')
+              : t.savedAt ? TR('这份改动还没存进去，关掉就丢了；文件还是 {time} 存下的样子。',{time:t.savedAt})
                           : TR('这份改动还没存进去，关掉就丢了。');
       if(!ask(TR('要关掉「{title}」吗？',{title:t.title||''}), why, TR('不保存并关闭'), TR('取消'), true)) return false;
       clearTimeout(t.autoT); t.autoT=null;
@@ -5955,7 +5975,9 @@ async function closeTab(id, opt){
   }
   // 落盘那一等里标签条可能已经变了，序号现算
   const i=TABS.indexOf(t); if(i<0) return true;
-  if(t.editing){ clearTimeout(t.autoT); t.autoT=null; }   // 干净的编辑态：没什么要存，收掉定时器就行
+  /* 干净的编辑态：没什么要存，收掉定时器就行。还挂着冲突（改回了原样、不脏）的也一样：冲突跟着标签一起了结，
+     不然横幅还绑着这个关掉的标签（O-12）。重试计时也收掉，别对着关掉的标签再发 */
+  if(t.editing){ clearTimeout(t.autoT); t.autoT=null; clearTimeout(t.retryT); t.retryT=null; t.conflict=null; }
   if(!(opt && opt.forget)) rememberClosed(t);
   const p=paneOf(t); if(p) p.remove();
   if(t.blobs) t.blobs.forEach(u=>{ try{ URL.revokeObjectURL(u); }catch(e){} });
@@ -5965,6 +5987,7 @@ async function closeTab(id, opt){
   const pre=t.id+'\n';
   for(const k of [...HIST_FOLD.keys()]) if(k.startsWith(pre)) HIST_FOLD.delete(k);
   TABS.splice(i,1);
+  syncConflict();                            // 横幅绑着它的话一起收；接着 showTab 会按新的当前标签再挂
   if(!TABS.length){
     curTab=null;
     if(SOLO){ drawTabs(); leaveReader(); return true; }
@@ -6238,12 +6261,7 @@ function paintSaveState(t){
 }
 function savePillClick(t){
   if(!t || !t.editing) return;
-  if(t.conflict){
-    // conflictTab 空着的时候（手动 ⌘S 那条路不写它）横幅上两颗按钮是死的，先挂回去
-    if(conflictTab!==t) showConflict(t, '');
-    else bnr('conflict', true);
-    return;
-  }
+  if(t.conflict){ showConflict(t, ''); return; }     // 横幅只挂眼前这篇的冲突，按钮管的就是它（A1）
   if(t.saveErr){ retrySave(t); return; }
   if(t.pendingBad && t.pendingBad.length) showStuck(t);
 }
@@ -6399,16 +6417,19 @@ function tblAddCol(t, cell){
    「完成」、同标签跳转、前进后退、回开始页四条出口都走这里，报的话一模一样。 */
 async function saveBeforeLeave(t){
   if(!t || !t.editing || t.trashing) return false;   // 同 autoKick
+  /* 横幅上刚点了「保留我的」「改用对方的」，结果还没回来：用户已经挑过了，等它落地再往下判（C5）。
+     以前这一会儿关标签、点完成，会被下面那条冲突拦住，误报「先挑一个再走」。最多等 6 秒，同下面等自动保存 */
+  for(let i=0;i<120 && t.resolving;i++) await new Promise(r=>setTimeout(r, 50));
+  if(!t.editing) return false;                           // 这中间被别处收了编辑态
+  if(t.resolving){ notify(TR('还在处理冲突，稍等一下再走。')); return false; }
   const p=paneOf(t);
   // toggleSrc 认的是当前标签；t 不是当前标签就别回排版，saveEdit 自己会读源码框里的字
   if(p && p.classList.contains('src') && t.id===curTab) toggleSrc();   // 先回排版，再按正文那条路存
-  /* 被冲突拦下：横幅已经绑着这一篇就只亮出来，服务端那句带时间的原话留着；没绑着而它是眼前这篇，改绑过来（showConflict 挂
-     conflictTab），不然两颗按钮点了只是收起。后台标签（saveAllForReload 挨个过、关后台标签）不绑：横幅不写篇名，绑过去的话
-     在眼前点「改用对方的」丢的是后台那篇的改动——跟 5.15.1 一样只亮横幅；切到那篇点胶囊就会绑上 */
+  /* 被冲突拦下：横幅只挂眼前这篇的（syncConflict）；后台那篇（saveAllForReload 挨个过、关后台标签）不挂横幅，
+     标签上有冲突点，提示里点名是哪一篇，切过去才挑（A1） */
   if(t.conflict){
-    if(conflictTab!==t && t.id===curTab) showConflict(t, '');
-    else bnr('conflict', true);
-    notify(TR('这份在外部被改过了，先挑一个再走。')); return false;
+    syncConflict();
+    notify(t.id===curTab ? TR('这份在外部被改过了，先挑一个再走。') : conflictAway(t)); return false;
   }
   if(t.finishing) return false;
   t.finishing=true;
@@ -6423,7 +6444,7 @@ async function saveBeforeLeave(t){
   if(t.pendingBad && t.pendingBad.length){
     syncBar(); notify(TR('有 {n} 处存不进 · 点上面看看',{n:t.pendingBad.length})); return false;
   }
-  if(t.conflict){ syncBar(); notify(TR('有冲突，先处理一下')); return false; }
+  if(t.conflict){ syncBar(); notify(t.id===curTab ? TR('有冲突，先处理一下') : conflictAway(t)); return false; }
   if(!ok){ syncBar(); notify(TR('没存进去，改动还在')); return false; }
   /* 块源码框里打了字、还没收起（⌘W、⌘Q 这类按键不会让框失焦）：别的都存好了，框里的字没落，
      不走——关标签那条会问一句「不保存并关闭」（J 轮，R 终审 P2-1）。以前照样收编辑态，框里的字就没了。 */
@@ -7087,7 +7108,7 @@ async function sendTask(t, ln, want, back, gen, expect){
      翻回去就行——用户眼前已经是重载之后那份的真实状态。5.15：正在重载也一样（loadMd 也会动代号）。 */
   if((t.taskGen|0)!==gen || t.loading){ back(); return; }
   const seq=t.loadSeq|0;
-  /* 5.15：点的那一行算不出原文（不是 /__task 认的待办行——全角空格 / NBSP 分隔之类，或者页面手上那份
+  /* 5.15：点的那一行算不出原文（不是 /__task 认的待办行——C2 之后画得出的框都认得，剩下的是页面手上那份
      跟眼前的框对不上）：不发，当冲突处理，重载这一篇。 */
   const r = expect==null ? {ok:false, 代码:'conflict'} : await postTask(t.path, ln, want, t.rawAt, expect);
   if(!paneOf(t)) return;
@@ -10114,7 +10135,7 @@ async function startEdit(opt){
     const r=await (await fetch('/__raw?path='+encodeURIComponent(t.path)+'&lang='+LANG,
                                {cache:'no-store'})).json();
     if(!r.ok){ tell(TR('进不了编辑'), r.错误||TR('读不到源码')); return; }
-    t.raw=r.正文; t.rawAt=r.改于;
+    t.raw=r.正文; t.rawAt=r.改于; t.eol=eolOf(r.正文, r.字节); t.extSeen=false;
     /* V 轮（契约 §10.2-4，复审 U-5）：手上这一份是现读的正主了，在途的那趟重载（loadMd）作废——不然它晚到的
        旧正文会在退出编辑之后把阅读页画回旧样子。代号推一格，loading 一并放下（那一趟回来认不出自己，不会去放）。 */
     t.loadSeq=(t.loadSeq|0)+1; t.loading=false;
@@ -10180,15 +10201,17 @@ function endEdit(t){
   t.editing=false; t.work=undefined; t.reg=null; t.touched=false;
   t.pendingBad=null; t.stuckEls=null; t.saveErr=null; t.retryN=0; t.redraw=null; t.composeWait=0; t.again=false;
   // 冲突跟着编辑态一起了结：放弃修改以后还挂着的话，下次进编辑一进来就说有冲突、「完成」被拦（10-04 修）
-  t.conflict=null; if(conflictTab===t) conflictTab=null;
-  bnr('conflict', false);
+  t.conflict=null;
+  syncConflict();
   syncBar();
 }
 
 function cancelEdit(){
   const t=active(); if(!t||!t.editing) return;
-  // 这一趟存过（自动保存）：文件是那一刻的样子，不是打开时的（I 轮措辞，有存不进的块时更要说清）
-  const back=t.savedAt ? TR('没存进去的改动会丢掉，文件还是 {time} 存下的样子。',{time:t.savedAt})
+  // 这一趟存过（自动保存）：文件是那一刻的样子，不是打开时的（I 轮措辞，有存不进的块时更要说清）。
+  // 撞过冲突、改用过对方的：文件是别处改过的那一版，既不是我存的、也不是打开时的（C4）
+  const back=t.extSeen ? TR('没存进去的改动会丢掉，文件是别处改过的那一版。')
+           : t.savedAt ? TR('没存进去的改动会丢掉，文件还是 {time} 存下的样子。',{time:t.savedAt})
                        : TR('改过的内容会回到打开时的样子。');
   if(dirty(t) && !ask(TR('要放弃这次修改吗？'), back, TR('放弃修改'), TR('取消'), true)) return;
   endEdit(t); paintWork(t); buildToc(); syncProg();
@@ -10270,6 +10293,17 @@ addEventListener('beforeunload', e=>{
   if(TABS.some(dirty)){ e.preventDefault(); e.returnValue=''; }
 });
 
+/* 这份文件整份是不是 CRLF 换行（D3）。/__raw 按文本模式读，正文里的 \r\n、孤立的 \r 都成了 \n，
+   单看正文认不出来；同一条回执里的「字节」是盘上的真实大小：每个换行都是 \r\n 时，
+   字节数正好＝正文的 UTF-8 字节数＋换行个数。差一点（混合换行、孤立 \r、读完又被改了）都不算，照旧按 \n 写。 */
+function eolOf(text, bytes){
+  if(typeof text!=='string' || typeof bytes!=='number') return '\n';
+  const n=(text.match(/\n/g)||[]).length;
+  if(!n) return '\n';
+  let len=0;
+  try{ len=new TextEncoder().encode(text).length; }catch(e){ return '\n'; }
+  return len+n===bytes ? '\r\n' : '\n';
+}
 const hhmm = () => { const d=new Date(), z=n=>String(n).padStart(2,'0');
   return z(d.getHours())+':'+z(d.getMinutes()); };
 
@@ -10321,15 +10355,21 @@ async function saveEdit(force, opt){
   if(body===t.raw && !opt.keep){
     t.touched=srcBlkPending(t); saveOk(t);          // 块源码框里还有没落的字：没存完（J 轮）
     queueRedraw(t, redraw);
-    if(t.id===curTab){ syncStatusLine(); syncNative(); }
+    paintTab(t);
     if(refused) srcBlkRefuse(t, refused);
     return true;
   }
 
   t.saving=true; if(t.id===curTab) syncStatusLine();
-  const payload={路径:t.path, 正文:body, 基于:t.rawAt, 强制:!!force};
+  /* 整份是 CRLF 的文件（进编辑时按 /__raw 的「字节」认出来，见 eolOf）照 CRLF 写回（D3）：编辑器里一律是 \n，
+     发出去那一刻才换。没改的段落本来就是 CRLF，换回去正好是原字节；混合换行、孤立 \r 的照旧按 \n 写 */
+  const text=t.eol==='\r\n' ? body.replace(/\r?\n/g, '\r\n') : body;
+  /* opt.create：「保留我的」时原文件不在了（删了、改了名），在原位置按这一版新建（D4）。新建只建不盖，
+     同名的又冒出来就拒；不带「基于」，也不改名 */
+  const payload=opt.create ? {路径:t.path, 正文:text, 新建:true}
+                           : {路径:t.path, 正文:text, 基于:t.rawAt, 强制:!!force};
   // 卸页那条路上响应可能到不了，不改名——下次正常保存再跟标题对齐。
-  if(!opt.unload){
+  if(!opt.unload && !opt.create){
     const dest=suggestRename(t.path, firstHeading(body));
     if(dest) payload.新路径=dest;
   }
@@ -10343,7 +10383,7 @@ async function saveEdit(force, opt){
 
   if(!r.ok){
     if(r.需确认){
-      t.conflict=body;
+      t.conflict=body; t.extSeen=true;                 // 盘上已经是别处改过的那一版（C4 的提示照这个说）
       if(auto){ showConflict(t, r.错误||''); return false; }
       if(ask(TR('这份在外部被改过了，仍然保存吗？'),
              (r.错误||'')+'\n'+TR('外部那一版会被你这一版覆盖，覆盖前会先留档。'),
@@ -10354,16 +10394,24 @@ async function saveEdit(force, opt){
       // 手动这条路上按了「取消」＝不存了，冲突就此揭过，别让 pill 和「完成」一直卡着
       t.conflict=null;
       if(t.id===curTab) syncStatusLine();
+      syncTabDirty();
+      return false;
+    }
+    /* 「保留我的」写不上去，而且再试也不会好（D4）：文件不在了（删了、改了名）、读不了（被写坏了），
+       或者在原位置新建也没成。不进自动重试，交给 keepMine 当场说清楚怎么办；字一直在编辑区里 */
+    if(opt.keep && (opt.create || r.代码==='gone' || r.代码==='io')){
+      t.keepFail={code:r.代码||'', msg:r.错误||''};
+      paintTab(t);
       return false;
     }
     saveFailed(t, r.错误||TR('写失败'));
     return false;
   }
-  t.raw=body; t.conflict=null; saveOk(t);
+  t.raw=body; t.conflict=null; t.extSeen=false; saveOk(t);   // 盘上就是这一版了
   t.loadSeq=(t.loadSeq|0)+1; t.loading=false;          // V 轮：存好了，在途的旧重载一律作废（同 startEdit）
   // 存的这一会儿又动过（停笔计时又挂上了）、块源码框里还有没落的字：还不算存完，壳退出照样拦
   t.touched=!!(t.autoT || t.again) || srcBlkPending(t);
-  bnr('conflict', false);
+  syncConflict();
   t.savedAt=hhmm(); t.lastArchive=r.留档||'';
   if(r.路径 && r.路径!==t.path) applyRenamedPath(t, r.路径);
   else if(t.id===curTab) syncTabTitle(t);
@@ -10375,10 +10423,15 @@ async function saveEdit(force, opt){
   if(r.改于) t.rawAt=r.改于; else await refreshRawAt(t);
   drawDocMeta(t);
   queueRedraw(t, redraw);
-  if(t.id===curTab){ syncStatusLine(); syncNative(); }
+  paintTab(t);                                         // 后台标签的胶囊别停在「正在保存…」，标签上的脏点当场收（A1 ④、C4）
   if(t.again){ t.again=false; autoKick(t); }
   if(refused) srcBlkRefuse(t, refused);
   return true;
+}
+/* 一篇的胶囊、标签脏点照实刷：当前标签连同状态行和壳的脏标一起，后台标签只刷它自己窗格里的胶囊 */
+function paintTab(t){
+  if(t.id===curTab){ syncStatusLine(); syncNative(); } else paintSaveState(t);
+  syncTabDirty();
 }
 /* 「有 N 处存不进 · 点看」：滚到第一块、闪一下；提示条说清楚两件事——这篇的改动先没存、文件还是上次
    存下的样子（I 轮：有 stuck 就整篇不写），给「改源码」入口（框里是这一块尽力写出来的 md，收起就照它重画、照常存）。 */
@@ -10390,7 +10443,10 @@ function showStuck(t){
   el.classList.add('stuckflash');
   setTimeout(()=>el.classList.remove('stuckflash'), 1800);
   const n=els.length;
-  const msg = t.savedAt
+  // 文件是什么样子照实说：撞过冲突（比如点了「保留我的」才走到这里）就是别处改过的那一版（C4）
+  const msg = t.extSeen
+    ? TR('有 {n} 处存不进，这篇的改动先没存，文件是别处改过的那一版。',{n})
+    : t.savedAt
     ? TR('有 {n} 处存不进，这篇的改动先没存，文件还是 {time} 存下的样子。',{n, time:t.savedAt})
     : TR('有 {n} 处存不进，这篇的改动先没存，文件还是打开时的样子。',{n});
   notify(msg, {ms:8000, action: el.tagName==='TEXTAREA' ? null
@@ -10410,6 +10466,7 @@ function saveFailed(t, why){
     if(t.editing && t.saveErr && !t.saving) saveEdit(false, {tab:t, auto:true});
   }, Math.min(60000, 3000*Math.pow(2, t.retryN-1)));
   if(t.id===curTab){ syncStatusLine(); if(first) flash(t.saveErr); }
+  else paintSaveState(t);                     // 后台标签的胶囊也别停在「正在保存…」
 }
 function saveOk(t){ t.saveErr=null; t.retryN=0; clearTimeout(t.retryT); t.retryT=null; }
 
@@ -10476,29 +10533,127 @@ async function refreshRawAt(t){
   if(at) t.rawAt=at;
 }
 
-/* 冲突横幅：保留我的（强制覆盖，服务端覆盖前先留档）／ 改用对方的（丢掉这次改动） */
+/* 冲突横幅：保留我的（强制覆盖，服务端覆盖前先留档）／ 改用对方的（丢掉这次改动）
+   横幅只挂眼前这一篇的冲突（A1）：后台标签撞了冲突，不在别的标签上挂，那个标签上亮冲突点，切过去才挂出来；
+   两篇以上同时冲突各记各的（t.conflict / t.conflictWhy），横幅写的永远是眼前这篇的篇名和服务端原话，
+   两颗按钮管的也只是它——不会再在 B 上点一下、丢掉的却是 A 的改动。点了按钮、结果回来之前（t.resolving）不挂。 */
 let conflictTab=null;
-function showConflict(t, why){
-  conflictTab=t;
-  $('#conflictT').textContent = why || TR('这份在外部被改过了');
-  bnr('conflict', true);
-  if(t.id===curTab) syncStatusLine();
+function inConflict(t){ return !!(t && t.editing && t.conflict); }
+function syncConflict(){
+  const t=active();
+  const on=inConflict(t) && !t.resolving;
+  conflictTab=on ? t : null;
+  if(on) $('#conflictT').textContent=TR('「{title}」：{why}',
+    {title:t.title||TR('无标题'), why:t.conflictWhy||TR('这份在外部被改过了')});
+  bnr('conflict', on);
+  syncTabDirty();
 }
-$('#keepMine').onclick=()=>{
-  const t=conflictTab; bnr('conflict', false); conflictTab=null;
+function showConflict(t, why){
+  if(why) t.conflictWhy=why;                           // 空着来的（点胶囊、退出被拦）沿用上一次的原话
+  paintTab(t);                                         // 后台那篇的胶囊也当场换成「有冲突」，别停在「正在保存…」
+  syncConflict();
+}
+/* 后台那篇撞了冲突、又要走（换语言、关它）：说清是哪一篇 */
+function conflictAway(t){
+  return TR('「{title}」在外部被改过了，切过去挑一个再走。',{title:t.title||TR('无标题')});
+}
+/* 页面上开着、要接键盘的浮层。判据都是现成的：AMN.escape 里那几样，加上右键菜单、斜杠菜单、开机引导（D5）。
+   「改用对方的」换完字要不要把焦点挪回正文，先看这一眼——开着就别把焦点挪到它后面 */
+function overlayOn(){
+  return cfgOn() || quickOn() || qlOn || typeOn() || tabPickOn() || userPopOn()
+      || $('#ctx').classList.contains('on') || slashOn() || !!onbStep;
+}
+/* 富文本：光标在正文第几块、块里第几个字（A2）。不在某一块里（在别处、在源码框、在块源码框）就是 null */
+function docSpot(t){
+  const p=paneOf(t); if(!p || p.classList.contains('src')) return null;
+  const md=p.querySelector('.md'), s=getSelection();
+  if(!s || !s.rangeCount) return null;
+  const r=s.getRangeAt(0);
+  let n=r.startContainer;
+  if(!n || n===md || !md.contains(n)) return null;
+  while(n.parentNode && n.parentNode!==md) n=n.parentNode;
+  const kids=[...md.children].filter(el=>el.nodeType===1 && !el.dataset.chrome && el.tagName!=='TEXTAREA');
+  const i=kids.indexOf(n); if(i<0) return null;
+  let off=0;
+  try{ const pre=r.cloneRange(); pre.selectNodeContents(n); pre.setEnd(r.startContainer, r.startOffset); off=pre.toString().length; }
+  catch(e){}
+  return {i, off};
+}
+/* 富文本「改用对方的」整篇重画之后，把光标放回原来那一块（按块序号；锁住的就挪到最近一块能改的）、原来那个字数处（A2）。
+   以前交给 ensureCaret：重画把选区挤到了正文根上（.md 自己、偏移 0），它照样判「在正文里」不动，
+   壳里接着打的字就落成文首新的一段并被存盘；Chromium 里焦点在按钮上，打字哪儿都不进。
+   focus 为假：焦点本来就在正文里（开着右键菜单、斜杠菜单这类浮层），只把选区放回去，不动焦点。 */
+function putCaret(t, spot, focus){
+  const p=paneOf(t); if(!p) return;
+  const md=p.querySelector('.md');
+  const kids=[...md.children].filter(el=>el.nodeType===1 && !el.dataset.chrome && el.tagName!=='TEXTAREA');
+  const free=el=>el && !el.hasAttribute('data-lock');
+  let el=null, at='end';
+  if(spot && kids.length){
+    const i=Math.min(spot.i, kids.length-1);
+    if(free(kids[i])){ el=kids[i]; at=spot.i<=i ? spot.off : 'end'; }
+    else for(let d=1; d<kids.length && !el; d++){
+      if(free(kids[i+d])){ el=kids[i+d]; at='start'; }
+      else if(free(kids[i-d])){ el=kids[i-d]; at='end'; }
+    }
+  }
+  /* 没记下位置：同 ensureCaret 的口径，放到第一块能改的块末尾——但不经 caretInDoc 那道判断（选区挂在正文根上它也判「在」）。
+     一块能改的都没有才交给 ensureCaret（在文末补一段） */
+  if(!el){ el=kids.find(free)||null; at='end'; }
+  if(!el){ if(focus) ensureCaret(t); return; }
+  if(focus) md.focus();
+  if(typeof at==='number') caretAtOffset(el, at); else caretEnd(el, at==='start');
+}
+$('#keepMine').onclick=async()=>{
+  const t=conflictTab;
   if(!t || !t.editing) return;
+  const tk={}; t.resolving=tk; t.keepFail=null;
+  syncConflict();                                      // 挑过了，横幅当场收；结果回来之前不再挂
   // 以用户最后点的为准：当场推一格代号，在途的「改用对方的」回来就作废——强制写的回执比 /__raw 还晚回来也一样
   t.loadSeq=(t.loadSeq|0)+1; t.loading=false;
-  saveEdit(true, {tab:t, keep:true});
+  try{
+    let ok=await saveEdit(true, {tab:t, keep:true});
+    /* 撞冲突以后对方又把文件删了、改了名（D4）：盖不上去了。问一句，在原位置按这一版新建；不建就原样留着，字一个不丢 */
+    if(!ok && t.editing && t.keepFail && t.keepFail.code==='gone'){
+      t.keepFail=null;
+      if(!ask(TR('原来的文件不在了'), TR('可能被删掉了，或者改了名。要在原来的位置按你这一版重新建一份吗？'),
+              TR('重新建一份'), TR('取消'), false)){
+        notify(TR('没存，你的字还在编辑区里。'));
+        return;
+      }
+      if(!t.editing || !paneOf(t)) return;
+      ok=await saveEdit(true, {tab:t, keep:true, create:true});
+    }
+    /* 还是没存上（文件读不了、新建也没成）：说清楚字在哪、怎么拿走 */
+    if(!ok && t.editing && t.keepFail){
+      const f=t.keepFail; t.keepFail=null;
+      tell(TR('「保留我的」没存进去'), (f.msg ? f.msg+'\n\n' : '')
+        + TR('你的字还在编辑区里，先别关这个标签：全选拷贝（⌘A、⌘C），贴到别的笔记里就不会丢。')
+        + (f.code==='io' ? '\n'+TR('也可以先在访达里把这份文件挪走，再点「保留我的」，会在原来的位置按你这一版重新建一份。') : ''));
+    }
+  }finally{
+    if(t.resolving===tk) t.resolving=null;
+    t.keepFail=null;
+    syncConflict();                                    // 没了结（写失败、没新建）：冲突还在，横幅挂回去
+  }
 };
 $('#takeTheirs').onclick=async()=>{
-  const t=conflictTab; bnr('conflict', false); conflictTab=null;
+  const t=conflictTab;
   if(!t) return;
+  const tk={}; t.resolving=tk;
+  syncConflict();                                      // 挑过了，横幅当场收；结果回来之前不再挂（C5：这一会儿关标签不再误报）
   const path=t.path, seq=t.loadSeq|0;                  // 点的这一刻：哪一篇、哪一趟
+  const spot0=docSpot(t);                              // 点的这一刻光标在正文哪儿（富文本，A2）
   try{
     const r=await (await fetch('/__raw?path='+encodeURIComponent(t.path)+'&lang='+LANG,
                                {cache:'no-store'})).json();
-    if(!r.ok){ flash(r.错误||TR('读不到源码')); return; }
+    if(!r.ok){
+      /* 对方那一版读不到（D4：撞冲突以后又被删了、改了名、写坏了）：改用不了，字还在编辑区里；
+         横幅挂回去（finally），要留下自己的就点「保留我的」 */
+      flash(r.代码==='gone' ? TR('对方那一版不在了（文件被删掉或改了名），你的字还在。要留下就点「保留我的」。')
+                            : (r.错误||TR('读不到源码')));
+      return;
+    }
     /* 等回来这一会儿什么都可能发生，先核一遍：标签关了就算了（以前 prepEdit 抛错、报成「服务没应答」）；
        换了篇、回了开始页、重进过编辑、存成过一次（保留我的、⌘S 仍然保存，都推 loadSeq）：这份对方的不作数，
        什么都别动——这一条排在最前，那时横幅可能已经是别的冲突；
@@ -10506,9 +10661,16 @@ $('#takeTheirs').onclick=async()=>{
        已经不在编辑态（途中 Esc 放弃了）只按阅读态重载——以前照样 prepEdit，把阅读页做成了 contenteditable。 */
     const p=paneOf(t); if(!p) return;
     if(t.path!==path || kindOfTab(t)!=='md' || (t.loadSeq|0)!==seq) return;
-    if(conflictTab===t){ conflictTab=null; bnr('conflict', false); }
     if(!t.editing){ t.conflict=null; loadMd(t); return; }
     clearTimeout(t.autoT); t.autoT=null; t.again=false;     // 点之前挂着的停笔计时作废：源码模式下它到点会照存源码框里那份
+    /* 焦点该不该挪回来，在动 DOM 之前看（斜杠菜单的判据认正文里那一块，重画以后就没了）：
+       等的这一会儿用户去了别的输入框（⌘K 之类），或开着浮层（overlayOn，D5）：别把焦点挪到它后面，只换字。
+       光标位置也先记下：富文本按块记（A2），源码框照旧取 selectionStart（按新长度截断） */
+    const cur=t.id===curTab, ae=document.activeElement;
+    const busy=cur && overlayOn();
+    const free=!ae || ae===document.body || !!(ae.closest && ae.closest('#conflict')) || p.contains(ae);
+    const inPane=!!ae && ae!==document.body && p.contains(ae);
+    const spot=cur ? (docSpot(t) || spot0) : null;
     unwatch(t);
     // 开着的块源码框：同 toggleSrc，先挂 closing 再拿掉。不然 paintWork 冲掉它时 Chromium 同步发 blur，框里的字落进旧台账、置 touched
     p.querySelectorAll('.md > textarea.blk').forEach(x=>{ x.dataset.closing='1'; x.remove(); });
@@ -10517,24 +10679,35 @@ $('#takeTheirs').onclick=async()=>{
        光标、滚动留在原处：换字之前取 selectionStart（按新长度截断）和 scrollTop。 */
     const ta=p.querySelector('.ed'), at=ta.selectionStart|0, top=p.scrollTop;
     t.raw=r.正文; t.rawAt=r.改于; t.work=r.正文; t.touched=false; t.conflict=null;
+    t.eol=eolOf(r.正文, r.字节);                        // 对方那一版的换行照它自己的认（D3）
+    /* 文件现在是对方那一版：胶囊不再写「已保存 我上次存的时间」，放弃、关标签的提示也不再拿这个时间说事（C4） */
+    t.savedAt=null; t.extSeen=true;
     ta.value=t.work;
     t.loadSeq=(t.loadSeq|0)+1; t.loading=false;        // V 轮：改用对方的＝现读的正主，在途的旧重载作废
     saveOk(t); t.redraw=null; t.pendingBad=null; t.stuckEls=null;   // 之前没存上的那几次、等着重画的块、存不进的块都作废
     paintWork(t); prepEdit(t);
-    if(t.id===curTab){                                  // 不是当前标签：焦点、选区一概不动，大纲和状态行切回来时会重画
+    if(cur){                                            // 不是当前标签：焦点、选区一概不动，大纲和状态行切回来时会重画
       if(p.classList.contains('src')){                  // 源码模式不走 ensureCaret：它认 .md，会把选区拽进藏着的正文，打字哪儿都不进
-        const k=Math.min(at, ta.value.length), ae=document.activeElement;
+        const k=Math.min(at, ta.value.length);
         growEd(ta);
-        // 等的这一会儿用户去了别的输入框（⌘K 之类），或开着设置／⌘K／快看／排版／标签列表／个人资料这些浮层（判据都是 AMN.escape 里现成的）：
-        // 别把焦点挪到它后面，只换字
-        const busy=cfgOn() || quickOn() || qlOn || typeOn() || tabPickOn() || userPopOn();
-        if(!busy && (!ae || ae===document.body || (ae.closest && ae.closest('#conflict')) || p.contains(ae))){ ta.focus(); ta.setSelectionRange(k, k); }
-        p.scrollTop=top;
-      }else ensureCaret(t);
+        if(!busy && free){ ta.focus(); ta.setSelectionRange(k, k); }
+      }else{
+        /* 富文本（A2）：光标放回原来那一块、原来那个字数处，接着打的字进正文。
+           焦点本来就在正文里、只是开着浮层：只把选区放回去，不动焦点——不然重画留下的选区挂在正文根上，
+           之后打的字落成文首新的一段 */
+        if(!busy && free) putCaret(t, spot, true);
+        else if(inPane) putCaret(t, spot, false);
+        slashAway();                                    // 斜杠菜单认的那一块已经重画掉了，收起来
+      }
+      p.scrollTop=top;
       buildToc(); syncStatusLine(); syncNative();
-    }
+    }else paintSaveState(t);
     syncTabDirty();
   }catch(e){ flash(TR('服务没应答')); }
+  finally{
+    if(t.resolving===tk) t.resolving=null;
+    syncConflict();                                    // 没换成（读不到、作废了）而冲突还在：横幅挂回去
+  }
 };
 
 /* 探针：D 路在沙箱里验「双击之后光标在正文」用的就是这个。 */
@@ -13227,9 +13400,11 @@ async function syncStatus(){
     const scanning = busy || s.状态==='扫描中';
     /* 开机同步结束后补拉一次树，接住 App 关闭期间外部修改的笔记。
        页面自己重扫期间等它完成，避免拿到尚未同步的那一棵树。 */
+    /* C3：开机那一趟快到页面一次「扫描中」都没看见（srvScan 还是 0），就看服务端报的「同步轮次」：
+       大于 0＝后台已经扫完过至少一趟，同样补拉一次。旧服务没有这个字段，照原来只认「扫描中→就绪」。 */
     if(srvScan<2){
       if(s.状态==='扫描中'){ if(!busy) srvScan=1; }
-      else if(srvScan===1 && !busy){ srvScan=2; loadTree(); }
+      else if(!busy && (srvScan===1 || (s.同步轮次|0)>0)){ srvScan=2; loadTree(); }
     }
     const idx=s.索引||{};
     setState(scanning?'scan':'ok',

@@ -58,7 +58,9 @@ VOLATILE = {"生成时间", "上次扫描", "上次同步", "端口", "秒前", 
 # 旧键一个没动、值也没变，所以按 NEW_KEYS 放行，不是「单库有变化」。
 # 5.14 添 任务、基于：有没勾待办、写得回去的 md 多这两个键（索引时抽的
 # [[行, 原文], …]，和现 stat 核对过的 mtime 串），同样是新增字段。
-NEW_KEYS = {"模式", "笔记本", "接口版本", "骨架", "任务", "基于"}
+# 5.18 之后添 同步轮次：/__status（连带 /__config 的「状态」）多这一个键，后台同步跑完了几趟，
+# 页面开机补拉列表用（/__pulse 形状不许动，所以捎在 /__status 上）。同样是新增字段。
+NEW_KEYS = {"模式", "笔记本", "接口版本", "骨架", "任务", "基于", "同步轮次"}
 
 PNG = base64.b64decode(
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==")

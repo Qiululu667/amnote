@@ -489,7 +489,8 @@ def cur_agent() -> str:
 
 _lock = threading.Lock()
 _cache = {}                           # {vid: {"fp":…, "at":…, "耗时":…}}
-_state = {"port": 0, "started": time.time()}
+_state = {"port": 0, "started": time.time(),
+          "同步轮次": 0}                   # 后台同步（_sync_vault）跑完了几趟，/__status 带出去（C3）
 
 
 # /__pulse 指纹里的「汇总」（5.14）：只看「最新 mtime」的话，库里只要有一份 mtime 在
@@ -1123,6 +1124,21 @@ def _open_read(pl):
         return fulltext.open_regular(pl.name, os.O_RDONLY | _NOFOLLOW, dir_fd=pl.dfd)
     except OSError as e:
         raise _abs_err(e, {pl.name: pl.full})
+
+
+def _fdopen_read(fd, *a, **kw):
+    """os.fdopen，失败时把传进去的 fd 关掉再原样抛（D7③，R-report P3-7）。
+
+    open_regular 对目录是放行的（「目录放行」按定案不改），判完之后名字被换成目录时，os.fdopen 抛
+    IsADirectoryError，**但不关传进去的 fd**，每撞一次漏一个句柄。抛的还是那个异常，回执文案一字不变。"""
+    try:
+        return os.fdopen(fd, *a, **kw)
+    except BaseException:
+        try:
+            os.close(fd)
+        except OSError:
+            pass
+        raise
 
 
 def _mtime_at(pl):
@@ -1882,7 +1898,7 @@ def _save_md(req, rel, full, body, force):
 
 def _save_md_at(req, rel, full, pl, body, force):
     try:
-        with os.fdopen(_open_read(pl), encoding="utf-8") as f:
+        with _fdopen_read(_open_read(pl), encoding="utf-8") as f:
             old = f.read()
     except (OSError, UnicodeDecodeError) as e:
         return _bad(T("读不了原文：{e}", e=e))
@@ -1954,8 +1970,8 @@ def _save_md_at(req, rel, full, pl, body, force):
 # 所以这里也按 '\n' 切、按 '\n' 拼，CRLF 文件行尾那个 \r 留在行里一起搬，
 # 不要用 splitlines()——它还会在 \x0b \x0c   这些字符上断行，下标当场就错位。
 #
-# 判据跟渲染器逐条对齐（template.html:3482 的 LIRE ＋ 3780 的 /^\[([ xX])\]\s+/）：
-# 方括号后面必须还有一个空白，`- [ ]` 这种光秃秃的在页面上是字面文字不是勾选框。
+# 判据跟渲染器逐条对齐（template.html 的 LIRE ＋ listHtml 认方框那一句，C2 起三段空白同一套，见 fulltext.TASK_RE）：
+# 方括号后面必须还有一个空白（空格、Tab、U+00A0、U+3000），`- [ ]` 这种光秃秃的在页面上是字面文字不是勾选框。
 # 正则和取「[ ] 后面那截原文」的函数在 fulltext，这里保留别名；
 # 与阅读页的行格式和「期望」校验保持同一口径。
 TASK_RE = fulltext.TASK_RE
@@ -2024,7 +2040,7 @@ def _task_toggle_at(req, v, rel, pl, n, want):
     # 二进制读 ＋ 自己 decode：文本模式会把 CRLF 悄悄换成 LF，
     # 一次勾选就把整份文件的换行符改了（save_md 那条路上本来就是这样，行级写不行）
     try:
-        with os.fdopen(_open_read(pl), "rb") as f:
+        with _fdopen_read(_open_read(pl), "rb") as f:
             old = f.read().decode("utf-8")
     except (OSError, UnicodeDecodeError) as e:
         return _bad(T("读不了原文：{e}", e=e))
@@ -2615,6 +2631,8 @@ def read_config(v=None):
                 raw = json.load(f)
         except (OSError, ValueError):
             raw = {}
+    if not isinstance(raw, dict):                # 写坏成数组 / 数字：跟 load_config 一样整份按默认（D7①）
+        raw = {}
     return {"配置": c, "默认值": fulltext.DEFAULTS, "可编辑": list(EDITABLE),
             "问题": problems, "文件存在": os.path.exists(path),
             "状态": status(), "笔记本": v.name,
@@ -2916,7 +2934,10 @@ def status():
             "上次扫描": last, "索引": idx, "门禁": True,
             "随手记目录": nd,
             "名字": display_name(), "接口版本": 3,
-            "模式": nb_mode(), "笔记本": nb_entries()}
+            "模式": nb_mode(), "笔记本": nb_entries(),
+            # C3：后台同步跑完了几趟。开机那一趟快到页面一次「扫描中」都没看见时，页面靠它知道
+            # 「已经扫完过了」、补拉一次列表。/__pulse 的形状不许动，所以捎在这里
+            "同步轮次": _state["同步轮次"]}
 
 
 _nb_count = {}                        # {vid: {"key": _db_key(), "值": 收录}}
@@ -2945,8 +2966,8 @@ def _nb_doc_count(v):
 def nb_entries():
     """`笔记本[]`：/__status 和 /__notebooks 共用一份。
 
-    `状态` 三档：离线（文件夹不在）／扫描中／就绪。`收录` 是那一本索引里的
-    文档数——不是全体，页面按本显示篇数。
+    `状态` 四档：离线（文件夹不在）／扫描中／异常（上一趟同步失败了、还没成过，B1）／就绪。
+    `收录` 是那一本索引里的文档数——不是全体，页面按本显示篇数。
     """
     dflt = nb_default()
     rows = []
@@ -2959,7 +2980,8 @@ def nb_entries():
         rows.append({"id": v.vid, "名字": v.name, "路径": v.root,
                      "颜色": v.color,
                      "状态": ("离线" if not v.online else
-                              "扫描中" if v.state["运行中"] else "就绪"),
+                              "扫描中" if v.state["运行中"] else
+                              "异常" if v.state.get("出错") else "就绪"),
                      "收录": n, "随手记目录": nd, "默认": v is dflt})
     return rows
 
@@ -3362,11 +3384,27 @@ def kick_sync(v=None):
         threading.Thread(target=_sync_vault, args=(one,), daemon=True).start()
 
 
+#: 后台同步抛了错，隔这么久各再跑一趟（B1）。原来抛了就算了：开机建索引那一趟撞上一次「库被锁」，
+#: 索引就一直空着，搜索和列表都是空的，要用户自己点「重扫」。三次都不成就停手，状态报「异常」（见 fulltext.sync）。
+SYNC_RETRY_WAITS = (1.0, 3.0, 10.0)
+
+
 def _sync_vault(v):
     try:
         with fulltext.use(v):
-            fulltext.sync()
+            for wait in SYNC_RETRY_WAITS + (None,):
+                try:
+                    fulltext.sync()
+                    break
+                except Exception:
+                    if wait is None or not v.online:
+                        raise                     # 最后一次也没成：照旧抛给线程，stderr 上留得下
+                # 等着重跑的这几秒也算「扫描中」：页面开机补拉（C3）别在这时候拿一棵还空着的树
+                v.state["运行中"] = True
+                time.sleep(wait)
     finally:
+        with _lock:
+            _state["同步轮次"] += 1
         # 添加一本时先手动把「扫描中」点亮了（线程可能还没排上），这里落下来。
         # 锁还被别人拿着就说明真有一趟在跑，别把它的状态抹了
         if not v.sync_lock.locked():
@@ -5078,6 +5116,44 @@ class Handler(SimpleHTTPRequestHandler):
             return False
         return True
 
+    def _route_safe(self) -> bool:
+        """_route 加一道跟写请求（do_POST）一样的兜底（D7①）：读接口里抛了没接住的异常，回一条
+        `{"ok": false, "错误": …}`，不把连接掐了（原来 config.json 写成数组时打开设置就断连）。
+        已经开始应答了才抛的（写到一半连接断了之类）照旧往上抛，不往半截响应后面再接一份。"""
+        self._replied = False
+        try:
+            return self._route()
+        except Exception as e:
+            if self._replied:
+                raise
+            self._json(json.dumps({"ok": False, "错误": f"{type(e).__name__}: {e}"},
+                                  ensure_ascii=False))
+            return True
+
+    def send_response(self, code, message=None):
+        self._replied = True                     # _route_safe 靠它判断「已经开始应答」
+        super().send_response(code, message)
+
+    def send_head(self):
+        """静态下发前多挡一道（D7②）。访问文件夹时，基类自己拼上 index.html / index.htm 再打开：那一下
+        跟随链接、也不经 translate_path 的库内判定，文件夹里一条指到库外的 index.html 链接就被发出去了
+        （直接 GET 那个链接本来是 404）。这里照基类同样的顺序找到它会选中的那一份，按它自己的地址再过一遍
+        translate_path（逐段 + realpath 不出库 + 落点再判段），过不去就回 404，不跟。库内的链接照常。"""
+        path = self.translate_path(self.path)
+        url = urllib.parse.urlsplit(self.path).path
+        if url.endswith("/") and os.path.isdir(path):
+            # 3.9 认「存在」的第一份，3.12 起认「是文件」的第一份（index_pages）：两种都覆盖到
+            for name in getattr(self, "index_pages", ("index.html", "index.htm")):
+                cand = os.path.join(path, name)
+                if not os.path.exists(cand):
+                    continue
+                if self.translate_path(url + name) == NOWHERE:
+                    self.send_error(404, "File not found")
+                    return None
+                if os.path.isfile(cand):
+                    break
+        return super().send_head()
+
     def do_GET(self):
         self._cache_sent = False
         self._nosniff_sent = False
@@ -5087,7 +5163,7 @@ class Handler(SimpleHTTPRequestHandler):
         bind(None)                               # 每趟从主笔记本起算（keep-alive 复用线程）
         if not self._gate():
             return
-        if not self._route():
+        if not self._route_safe():
             super().do_GET()
 
     def do_HEAD(self):
@@ -5099,7 +5175,7 @@ class Handler(SimpleHTTPRequestHandler):
         bind(None)
         if not self._gate():
             return
-        if not self._route():
+        if not self._route_safe():
             super().do_HEAD()
 
     def do_POST(self):
