@@ -284,10 +284,11 @@ NATIVE_SRC = "app_shell.m"
 # 四步留在同一张卡片里。头像仍是：只有点在头像上才接受粘贴，已有头像时先问再换。
 # 壳本身一行没改，只跟版本号。
 # 版本号是唯一能在「关于 AM·Note」里看出来跑的是新壳还是旧壳的地方，改了壳就要动它。
+# 5.18.3 = Note-list file badges follow the green and blue theme colors.
 # 5.18.2 = Conflict banner names its note, safer conflict choices, CRLF kept, and index/checkbox fixes.
 # 5.18.1 = Dock icon stays the closed-app size for purple, green, and blue.
 # 5.18.0 = Coordinated color themes, adaptive app icon, and refined Settings.
-NATIVE_VERSION = ("5.18.2", "60")
+NATIVE_VERSION = ("5.18.3", "61")
 MIN_MACOS = "12.0"
 
 
