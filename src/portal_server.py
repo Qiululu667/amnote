@@ -163,6 +163,11 @@ ALIAS = {
     # ——38/42 KB 走环回口，比塞进每份 /portal 的 base64 便宜得多。
     "/file-md.png": (os.path.join(HERE, "file-md.png"), "image/png"),
     "/file-html.png": (os.path.join(HERE, "file-html.png"), "image/png"),
+    # 同一对徽标按主题色重新上色的版本：雾紫用上面原图，苔绿、晴蓝各一对。
+    "/file-md-green.png": (os.path.join(HERE, "file-md-green.png"), "image/png"),
+    "/file-html-green.png": (os.path.join(HERE, "file-html-green.png"), "image/png"),
+    "/file-md-blue.png": (os.path.join(HERE, "file-md-blue.png"), "image/png"),
+    "/file-html-blue.png": (os.path.join(HERE, "file-html-blue.png"), "image/png"),
     # 界面词典：键是简体中文源串，页面按当前语言查表；文件在 src/locales/
     "/__i18n/en.js": (os.path.join(HERE, "locales", "en.js"), "application/javascript; charset=utf-8"),
     "/__i18n/zh-HK.js": (os.path.join(HERE, "locales", "zh-HK.js"), "application/javascript; charset=utf-8"),

@@ -3540,6 +3540,11 @@ function applyPref(){
   // 全屏内容视图把网页铺进原生标题栏后，两层必须用同一套明暗外观。
   // 不同步的话，系统深色＋网页浅色时会变成白色标题和白色按钮落在白底上。
   document.documentElement.setAttribute('data-accent', PREF.accent);
+  // 列表里的文件徽标是位图，跟不了 CSS 变量，换主题色时逐枚换图（见 fpearlSrc）
+  $$('img.fpearl').forEach(im=>{
+    const s=fpearlSrc(im.dataset.k);
+    if(im.getAttribute('src')!==s) im.src=s;
+  });
   if(SHELL) post({type:'theme', value:PREF.theme, accent:PREF.accent});
   syncPrefControls();
 }
@@ -5267,10 +5272,17 @@ const agentMark = i => (i && i.代理)
    alt="" ＝ 纯装饰。外面这枚 .nthumb 本来就挂着 aria-hidden，行按钮自己带
    aria-label「打开 {标题}」，类型从来不靠这枚徽标报给读屏 —— 5.11 那枚 SVG
    也一个字都没给。所以这一轮一句新文案都不开，两份词典不用动。 */
+/* 徽标跟主题色：雾紫用原图，苔绿、晴蓝各有一对重新上色的图（-green / -blue）。
+   不用品牌云朵那条 --brand-filter：hue-rotate 把深紫字转成偏艳的绿、偏青的蓝，
+   html 那枚偏蓝的灰在晴蓝下还会转成绿色。图是位图，换主题色只能换 src ——
+   已经画在页上的行由 applyPref 一起换，所以 data-k 记住是哪一枚。 */
+function fpearlSrc(k){
+  return `/file-${k}${PREF.accent==='purple'?'':'-'+PREF.accent}.png`;
+}
 function thumbHtml(i){
-  const html=kindOf(i)==='html';
+  const k=kindOf(i)==='html'?'html':'md';
   return `<span class="nthumb" aria-hidden="true">`
-    + `<img class="fpearl" src="${html?'/file-html.png':'/file-md.png'}" alt=""></span>`;
+    + `<img class="fpearl" data-k="${k}" src="${fpearlSrc(k)}" alt=""></span>`;
 }
 /* ── 副行：一行灰字，给一个点开的理由 ────────────────────────
    来源有规则，不靠手写副标题（brief §1.3-1）：

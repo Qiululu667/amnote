@@ -325,6 +325,11 @@ RESOURCE_FILES = (
     # 该在构建期就炸（copy_resources 末尾那条 raise SystemExit）。
     "file-md.png",
     "file-html.png",
+    # 苔绿、晴蓝两套主题色下的同款徽标，理由同上。
+    "file-md-green.png",
+    "file-html-green.png",
+    "file-md-blue.png",
+    "file-html-blue.png",
 )
 
 # 命令行包装脚本。**可执行位要留住**：`~/.local/bin/amnote` 是一条指到它的
