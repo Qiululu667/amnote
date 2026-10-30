@@ -4891,23 +4891,25 @@ async function loadEntry(t){
    继承下去。
 
    顺序也得守住：先 setAttribute('sandbox', …) 再赋 src。沙箱标记是文档开始加载
-   的那一刻定下来的，先给 src 再补属性，这一次加载就是没沙箱的。 */
+   的那一刻定下来的，先给 src 再补属性，这一次加载就是没沙箱的。
+
+   每次都换一块新框，属性和 src 在插进页面之前给齐：只走一次导航，不经过定时器。
+   原先是同一块框先赋 about:blank、再 setTimeout 0 赋真地址。从访达双击 html 时
+   窗口多半在别的桌面上，整页算「看不见」，WebKit 会把隐藏页的定时器往后拖，
+   拖久了窗口端到前面也不一定马上跑——框就停在 about:blank，一片白，关掉再开
+   （这时已在前台）才出来。新框天然会把同一个地址重载一遍，about:blank 那一步
+   本来就是为这个。 */
 function loadHtml(t){
   const p=paneOf(t); if(!p) return;
-  let ifr=p.querySelector('.htmlframe');
-  if(!ifr){
-    ifr=document.createElement('iframe');
-    ifr.className='htmlframe';
-    ifr.setAttribute('sandbox','allow-scripts');
-    ifr.setAttribute('referrerpolicy','no-referrer');
-    p.appendChild(ifr);
-  }
+  const old=p.querySelector('.htmlframe');
+  const ifr=document.createElement('iframe');
+  ifr.className='htmlframe';
   ifr.setAttribute('sandbox','allow-scripts');
   ifr.setAttribute('referrerpolicy','no-referrer');
   ifr.title=t.title||'';
-  const u=url(t.path);
-  ifr.src='about:blank';
-  setTimeout(()=>{ ifr.setAttribute('sandbox','allow-scripts'); ifr.src=u; }, 0);
+  ifr.src=url(t.path);
+  if(old) old.replaceWith(ifr);
+  else p.appendChild(ifr);
   drawDocMeta(t);
 }
 /* 换一页就轻轻淡进来一下。重复调用要先摘掉再挂，不然动画不重放。 */
