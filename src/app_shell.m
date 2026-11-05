@@ -71,6 +71,9 @@
 //    `body.shell #app/#hub`。**网页主题和原生标题栏也必须同步**：
 //    门户发 `{type:'theme', value:'auto|light|dark'}`，壳给窗口设置
 //    Aqua / DarkAqua / 跟随系统。漏掉这条会让白色标题和白色按钮落在浅色网页上，近乎消失。
+//    拖动不靠网页的 `-webkit-app-region`：WKWebView 不认这条，全尺寸内容又把系统
+//    标题栏盖住，非全屏时窗口就拖不动。标签条的空白由 AMNDragOverlay 交给
+//    performWindowDragWithEvent:，按钮和标签仍把点击让回网页。
 // 8. 冷启动时 application:openURLs: 会在 applicationDidFinishLaunching: 之前到达。
 //    _pendingOpens 必须在 init 里建好；didFinishLaunching 里不许换成新数组，
 //    否则访达双击进来的路径会被静默丢掉，窗口只停在首页。flushPending
@@ -1280,6 +1283,10 @@ static void applySeamlessChrome(NSWindow *window) {
 /// ⌘V / 菜单粘贴进 WKWebView 之前先拍一版系统剪贴板。WebKit 随后可能改写
 /// public.html（剥掉 <img> / data URI），clipPeek 必须读这一拍，不能再读现场。
 @property (nonatomic, copy) void (^onPasteSnap)(void);
+/// 网页报来的可拖区域和要让开的控件，单位是网页视口左上角的 CSS 像素。
+/// 全屏、或者还没报过，两份都空，窗口不从网页上拖。
+@property (nonatomic, copy) NSArray<NSValue *> *dragBands;
+@property (nonatomic, copy) NSArray<NSValue *> *dragHoles;
 @end
 
 @implementation PortalWebView
@@ -1332,6 +1339,89 @@ static void applySeamlessChrome(NSWindow *window) {
     }
     return [super performKeyEquivalent:event];
 }
+
+@end
+
+// 标签条空白处的拖动层。WKWebView 铺满全尺寸内容视图之后，系统标题栏收不到点击，
+// 网页里的 -webkit-app-region 也不起作用。这一层盖在网页上面，只在「空白带里、
+// 又不在按钮上」的那一下认领鼠标，当场把窗口拖起来；其余点击返回 nil，照旧落到网页。
+
+static const CGFloat kDragEdge = 5;   // 窗口外缘留给系统缩放，不拿去拖
+
+static BOOL amnRectContains(NSRect r, CGFloat x, CGFloat y) {
+    return x >= r.origin.x && y >= r.origin.y
+        && x < r.origin.x + r.size.width && y < r.origin.y + r.size.height;
+}
+
+static BOOL amnPointInDragRegions(CGFloat x, CGFloat y,
+                                  NSArray<NSValue *> *bands,
+                                  NSArray<NSValue *> *holes) {
+    BOOL inBand = NO;
+    for (NSValue *v in bands) {
+        if (amnRectContains(v.rectValue, x, y)) { inBand = YES; break; }
+    }
+    if (!inBand) return NO;
+    for (NSValue *v in holes) {
+        if (amnRectContains(v.rectValue, x, y)) return NO;
+    }
+    return YES;
+}
+
+static NSArray<NSValue *> *amnParseRects(id raw) {
+    if (![raw isKindOfClass:NSArray.class]) return @[];
+    NSMutableArray<NSValue *> *out = [NSMutableArray array];
+    for (id item in (NSArray *)raw) {
+        if (out.count >= 80) break;
+        if (![item isKindOfClass:NSArray.class]) continue;
+        NSArray *a = item;
+        if (a.count != 4) continue;
+        if (![a[0] isKindOfClass:NSNumber.class] || ![a[1] isKindOfClass:NSNumber.class]
+            || ![a[2] isKindOfClass:NSNumber.class] || ![a[3] isKindOfClass:NSNumber.class]) continue;
+        double x = [a[0] doubleValue], y = [a[1] doubleValue];
+        double w = [a[2] doubleValue], h = [a[3] doubleValue];
+        if (!isfinite(x) || !isfinite(y) || !isfinite(w) || !isfinite(h)) continue;
+        if (w <= 0 || h <= 0 || w > 10000 || h > 10000) continue;
+        if (x < -1000 || y < -1000 || x > 10000 || y > 10000) continue;
+        [out addObject:[NSValue valueWithRect:NSMakeRect(x, y, w, h)]];
+    }
+    return out;
+}
+
+@interface AMNDragOverlay : NSView
+@property (nonatomic, weak) PortalWebView *web;
+@end
+
+@implementation AMNDragOverlay
+
+- (BOOL)isOpaque { return NO; }
+- (BOOL)acceptsFirstMouse:(NSEvent *)event {
+    (void)event;
+    return YES;
+}
+
+- (NSView *)hitTest:(NSPoint)point {
+    PortalWebView *web = self.web;
+    NSWindow *window = self.window;
+    if (!web || !window) return nil;
+    if (window.styleMask & NSWindowStyleMaskFullScreen) return nil;
+    NSPoint inWeb = [web convertPoint:point fromView:self.superview];
+    NSRect b = web.bounds;
+    CGFloat cssX = inWeb.x - NSMinX(b);
+    CGFloat cssY = NSMaxY(b) - inWeb.y;
+    // 贴着窗口外缘的几像素是缩放热区。让回去，不然顶边和两个上角拖不动大小。
+    if (cssX < kDragEdge || cssY < kDragEdge) return nil;
+    if (cssX > NSWidth(b) - kDragEdge) return nil;
+    if (!amnPointInDragRegions(cssX, cssY, web.dragBands, web.dragHoles)) return nil;
+    return self;
+}
+
+- (void)mouseDown:(NSEvent *)event {
+    if (event.buttonNumber == 0 && event.clickCount == 1 && self.window) {
+        [self.window performWindowDragWithEvent:event];
+        return;
+    }
+}
+
 @end
 
 // ──────────────── 调试钩子：把菜单树打出来（`-AMNDumpMenu 1`）────────────────
@@ -1816,6 +1906,18 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
     [_ucc addUserScript:[self shellUserScript]];
 }
 
+/// 盖一层透明拖动条。同一块内容视图里旧的先摘掉，避免关窗重开叠两层。
+- (void)installDragOverlayFor:(PortalWebView *)web in:(NSView *)content {
+    if (!web || !content) return;
+    for (NSView *v in [content.subviews copy]) {
+        if ([v isKindOfClass:AMNDragOverlay.class]) [v removeFromSuperview];
+    }
+    AMNDragOverlay *drag = [[AMNDragOverlay alloc] initWithFrame:content.bounds];
+    drag.web = web;
+    drag.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
+    [content addSubview:drag positioned:NSWindowAbove relativeTo:web];
+}
+
 /// 建一块 WKWebView 挂进窗口并载入门户。首次启动走这条，关窗后重开也走这条
 /// （关窗口把上一块拆掉了，见设计约束 4）。
 - (void)attachWebView {
@@ -1855,6 +1957,8 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
     [self attachPasteSnap:w];
 
     [_win.contentView addSubview:w positioned:NSWindowBelow relativeTo:_findBar];
+    [self installDragOverlayFor:w in:_win.contentView];
+    if (_findBar) [_win.contentView addSubview:_findBar positioned:NSWindowAbove relativeTo:nil];
     _web = w;
     _loadedOnce = NO;
     _pageReady = NO;
@@ -1878,6 +1982,9 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
     // 传进来的那份 configuration）。主窗口关了但还有独立窗口开着时不能摘 handler，
     // 摘了那几个窗口的标题和脏点就不再更新。
     if (!_soloWebs.count) { [_ucc removeScriptMessageHandlerForName:@"amn"]; _ucc = nil; }
+    for (NSView *v in [_win.contentView.subviews copy]) {
+        if ([v isKindOfClass:AMNDragOverlay.class]) [v removeFromSuperview];
+    }
     [_web removeFromSuperview];
     _web = nil;
 
@@ -2506,6 +2613,18 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
     // 粘贴图文：主窗和独立窗都要回给发件的那块 webview，所以排在分岔之前。
     if ([type isEqualToString:@"clipPeek"]) {
         [self clipPeek:m from:message.webView];
+        return;
+    }
+
+    // 标签条空白的位置。主窗和完整浏览器辅窗都要，排在按窗口分岔之前。
+    // 独立文稿窗有自己的系统标题栏，网页报来的空列表写上也不生效（那边没有拖动层）。
+    if ([type isEqualToString:@"dragRegions"]) {
+        WKWebView *host = message.webView;
+        if ([host isKindOfClass:PortalWebView.class]) {
+            PortalWebView *pw = (PortalWebView *)host;
+            pw.dragBands = amnParseRects(m[@"bands"]);
+            pw.dragHoles = amnParseRects(m[@"holes"]);
+        }
         return;
     }
 
@@ -4329,6 +4448,7 @@ static BOOL isBenignNavError(NSError *e) {
     [self attachPasteSnap:web];
 
     [content addSubview:web];
+    [self installDragOverlayFor:web in:content];
     [_soloWebs addObject:web];
     [_soloWins addObject:win];
     [win makeKeyAndOrderFront:nil];

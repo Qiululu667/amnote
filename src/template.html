@@ -400,6 +400,8 @@ svg{fill:none;stroke:currentColor}
 /* ═══ 浏览器壳：只剩一条标签条 ═══════════
    42px 一行装下全部窗口层控件：左 ☁（壳里从红绿灯右缘 80px 起，云就是 ⌂），
    中间标签，右边搜索胶囊 ＋ ⚙。空处可拖窗口，控件一律 no-drag。
+   WKWebView 不认 -webkit-app-region，这两条只是标明哪一块该拖。
+   真正拖窗口的是壳里的透明层，区域由 amnPublishDragRegions 报过去。
    5.13 起前进后退从顶栏拿掉（⌘[ / ⌘] 仍走键盘和菜单），头像并进开始页问候。
    5.8.1 起整条改成 align-items:flex-end：所有标签一样高、底边贴住条底，当前那张
    点亮成 --win 并在左右下角长出外翻角，直接接进下一行（首页是 .pagebox 的白，
@@ -2781,6 +2783,59 @@ const SHELL = !!window.__AMN_SHELL__;
 if(SHELL) document.body.classList.add('shell');
 function post(o){
   try{ window.webkit.messageHandlers.amn.postMessage(o); }catch(e){}
+}
+/* 非全屏时窗口靠这里才能拖。WKWebView 不认 -webkit-app-region，系统标题栏又被网页盖住。
+   报两份矩形给壳：标签条（和欢迎页那条空白）是可拖的整块，按钮、标签、打开着的浮层是要让开的洞。
+   壳只在「落在整块里、又不在洞里」的那一下拖窗口，其余点击原样进网页。 */
+function amnPublishDragRegions(){
+  if(!SHELL) return;
+  const bands=[], holes=[];
+  const box=el=>{
+    if(!el) return null;
+    const cs=getComputedStyle(el);
+    if(cs.display==='none'||cs.visibility==='hidden') return null;
+    const r=el.getBoundingClientRect();
+    if(r.width<1||r.height<1) return null;
+    return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)];
+  };
+  const hole=el=>{
+    if(!el) return;
+    const cs=getComputedStyle(el);
+    if(cs.display==='none'||cs.visibility==='hidden'||cs.pointerEvents==='none') return;
+    const r=el.getBoundingClientRect();
+    if(r.width<1||r.height<1) return;
+    holes.push([Math.round(r.left)-1, Math.round(r.top)-1, Math.round(r.width)+2, Math.round(r.height)+2]);
+  };
+  const strip=$('#tabstrip');
+  const sb=box(strip);
+  if(sb){
+    bands.push(sb);
+    strip.querySelectorAll('button,a,input,textarea,select,.tab').forEach(hole);
+  }
+  const onb=box($('#onbDrag'));
+  if(onb) bands.push(onb);
+  ['#cfgWrap','#cmdkWrap','#qlwrap','#ctx','#tabpick','#slash','#typeWrap','#userPop','#wlpick','#outfloat'].forEach(sel=>hole($(sel)));
+  post({type:'dragRegions', bands:bands, holes:holes});
+}
+let _dragRegionsQueued=false;
+function amnPublishDragRegionsSoon(){
+  if(!SHELL||_dragRegionsQueued) return;
+  _dragRegionsQueued=true;
+  queueMicrotask(()=>{ _dragRegionsQueued=false; amnPublishDragRegions(); });
+}
+if(SHELL){
+  const dragWatch=new MutationObserver(amnPublishDragRegionsSoon);
+  dragWatch.observe(document.body,{attributes:true,attributeFilter:['class']});
+  const dragStrip=$('#tabstrip');
+  if(dragStrip) dragWatch.observe(dragStrip,{subtree:true,childList:true,attributes:true,attributeFilter:['class','hidden','style']});
+  ['#cfgWrap','#cmdkWrap','#qlwrap','#ctx','#tabpick','#slash','#typeWrap','#userPop','#wlpick','#outfloat','#onbDrag'].forEach(sel=>{
+    const el=$(sel); if(el) dragWatch.observe(el,{attributes:true,attributeFilter:['class','style']});
+  });
+  addEventListener('resize', amnPublishDragRegionsSoon);
+  if(window.ResizeObserver&&dragStrip) new ResizeObserver(amnPublishDragRegionsSoon).observe(dragStrip);
+  amnPublishDragRegions();
+  // 窗口还没摆到屏幕上时，第一次量到的矩形可能是空的。等真正画出来再报一次。
+  requestAnimationFrame(amnPublishDragRegionsSoon);
 }
 
 /* 确认框。壳里走结构化字符串，壳那边解成带标题、动词按钮、破坏性标红的 NSAlert；
