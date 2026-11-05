@@ -2808,10 +2808,17 @@ function amnPublishDragRegions(){
   };
   const strip=$('#tabstrip');
   const sb=box(strip);
-  if(sb){
+  if(sb && sb[3]<=80){
     bands.push(sb);
     strip.querySelectorAll('button,a,input,textarea,select,.tab').forEach(hole);
   }
+  // 笔记顶上那条（路径、按钮）的空白也能拖。按钮本身仍是洞。
+  document.querySelectorAll('.pane.on .doc-toolbar').forEach(bar=>{
+    const b=box(bar);
+    if(!b || b[1]<-2 || b[3]>80) return;
+    bands.push(b);
+    bar.querySelectorAll('button,a,input,textarea,select').forEach(hole);
+  });
   const onb=box($('#onbDrag'));
   if(onb) bands.push(onb);
   ['#cfgWrap','#cmdkWrap','#qlwrap','#ctx','#tabpick','#slash','#typeWrap','#userPop','#wlpick','#outfloat'].forEach(sel=>hole($(sel)));
@@ -2828,6 +2835,8 @@ if(SHELL){
   dragWatch.observe(document.body,{attributes:true,attributeFilter:['class']});
   const dragStrip=$('#tabstrip');
   if(dragStrip) dragWatch.observe(dragStrip,{subtree:true,childList:true,attributes:true,attributeFilter:['class','hidden','style']});
+  const dragPanes=$('#panes');
+  if(dragPanes) dragWatch.observe(dragPanes,{subtree:true,childList:true,attributes:true,attributeFilter:['class']});
   ['#cfgWrap','#cmdkWrap','#qlwrap','#ctx','#tabpick','#slash','#typeWrap','#userPop','#wlpick','#outfloat','#onbDrag'].forEach(sel=>{
     const el=$(sel); if(el) dragWatch.observe(el,{attributes:true,attributeFilter:['class','style']});
   });

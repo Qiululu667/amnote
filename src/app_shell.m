@@ -1399,27 +1399,69 @@ static NSArray<NSValue *> *amnParseRects(id raw) {
     return YES;
 }
 
-- (NSView *)hitTest:(NSPoint)point {
+/// local 是内容视图坐标（左下角为原点，不受网页视图翻转影响）。
+/// 网页报来的矩形是视口左上角的 CSS 像素，跟网页视图的 frame 顶边对齐。
+/// 不能把点换进 WKWebView 再翻一次：它自己是翻转的，顶上的标签条会被算成窗口底部。
+- (BOOL)claimsContentPoint:(NSPoint)local {
     PortalWebView *web = self.web;
     NSWindow *window = self.window;
-    if (!web || !window) return nil;
-    if (window.styleMask & NSWindowStyleMaskFullScreen) return nil;
-    NSPoint inWeb = [web convertPoint:point fromView:self.superview];
-    NSRect b = web.bounds;
-    CGFloat cssX = inWeb.x - NSMinX(b);
-    CGFloat cssY = NSMaxY(b) - inWeb.y;
-    // 贴着窗口外缘的几像素是缩放热区。让回去，不然顶边和两个上角拖不动大小。
-    if (cssX < kDragEdge || cssY < kDragEdge) return nil;
-    if (cssX > NSWidth(b) - kDragEdge) return nil;
-    if (!amnPointInDragRegions(cssX, cssY, web.dragBands, web.dragHoles)) return nil;
+    if (!web || !window) return NO;
+    if (window.styleMask & NSWindowStyleMaskFullScreen) return NO;
+    NSRect frame = web.frame;
+    if (!NSPointInRect(local, frame)) return NO;
+    CGFloat cssX = local.x - NSMinX(frame);
+    CGFloat cssY = NSMaxY(frame) - local.y;
+    // 外缘留给缩放。左边约 74px 是红绿灯，让回系统，不拿来拖。
+    if (cssX < 74 || cssY < kDragEdge) return NO;
+    if (cssX > NSWidth(frame) - kDragEdge) return NO;
+    return amnPointInDragRegions(cssX, cssY, web.dragBands, web.dragHoles);
+}
+
+- (NSView *)hitTest:(NSPoint)point {
+    // point 是父视图（内容视图）的坐标，跟 claimsContentPoint: 用的是同一套。
+    if (![self claimsContentPoint:point]) return nil;
     return self;
 }
 
 - (void)mouseDown:(NSEvent *)event {
-    if (event.buttonNumber == 0 && event.clickCount == 1 && self.window) {
-        [self.window performWindowDragWithEvent:event];
-        return;
+    NSWindow *window = self.window;
+    if (event.buttonNumber != 0 || event.clickCount != 1 || !window) return;
+    NSTimeInterval t0 = [NSDate timeIntervalSinceReferenceDate];
+    [window performWindowDragWithEvent:event];
+    // 系统这下若没接住，会立刻返回，鼠标仍按着。这时自己跟着鼠标挪窗口。
+    BOOL stillDown = (NSEvent.pressedMouseButtons & 1) != 0;
+    if (!stillDown || [NSDate timeIntervalSinceReferenceDate] - t0 > 0.05) return;
+    NSPoint origin = window.frame.origin;
+    NSPoint start = NSEvent.mouseLocation;
+    while (YES) {
+        NSEvent *next = [window nextEventMatchingMask:(NSEventMaskLeftMouseDragged | NSEventMaskLeftMouseUp)
+                                             untilDate:[NSDate distantFuture]
+                                                inMode:NSEventTrackingRunLoopMode
+                                               dequeue:YES];
+        if (!next || next.type == NSEventTypeLeftMouseUp) break;
+        NSPoint now = NSEvent.mouseLocation;
+        [window setFrameOrigin:NSMakePoint(origin.x + (now.x - start.x),
+                                           origin.y + (now.y - start.y))];
     }
+}
+
+@end
+
+/// 内容视图先问拖动层。WKWebView 有时会把盖在它上面的兄弟视图的点击抢走，
+/// 不先问的话，标签条空白永远到不了拖动层。
+@interface AMNContentView : NSView
+@property (nonatomic, weak) AMNDragOverlay *dragOverlay;
+@end
+
+@implementation AMNContentView
+
+- (NSView *)hitTest:(NSPoint)point {
+    AMNDragOverlay *drag = self.dragOverlay;
+    if (drag) {
+        NSPoint local = [self convertPoint:point fromView:self.superview];
+        if ([drag claimsContentPoint:local]) return drag;
+    }
+    return [super hitTest:point];
 }
 
 @end
@@ -1914,8 +1956,12 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
     }
     AMNDragOverlay *drag = [[AMNDragOverlay alloc] initWithFrame:content.bounds];
     drag.web = web;
+    drag.wantsLayer = YES;
+    drag.layer.backgroundColor = NSColor.clearColor.CGColor;
     drag.autoresizingMask = NSViewWidthSizable | NSViewHeightSizable;
     [content addSubview:drag positioned:NSWindowAbove relativeTo:web];
+    if ([content isKindOfClass:AMNContentView.class])
+        ((AMNContentView *)content).dragOverlay = drag;
 }
 
 /// 建一块 WKWebView 挂进窗口并载入门户。首次启动走这条，关窗后重开也走这条
@@ -2086,7 +2132,7 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
     _win.tabbingMode = NSWindowTabbingModeDisallowed;
     [_win setFrameAutosaveName:@"AMNoteMainWindow"];
 
-    NSView *content = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, kWinW, kWinH)];
+    AMNContentView *content = [[AMNContentView alloc] initWithFrame:NSMakeRect(0, 0, kWinW, kWinH)];
     content.wantsLayer = YES;
     _win.contentView = content;
 
@@ -4424,7 +4470,7 @@ static BOOL isBenignNavError(NSError *e) {
     win.releasedWhenClosed = NO;
     win.delegate = self;
     win.tabbingMode = NSWindowTabbingModeDisallowed;
-    NSView *content = [[NSView alloc] initWithFrame:NSMakeRect(0, 0, ww, hh)];
+    AMNContentView *content = [[AMNContentView alloc] initWithFrame:NSMakeRect(0, 0, ww, hh)];
     content.wantsLayer = YES;
     win.contentView = content;
     applySeamlessChrome(win);
