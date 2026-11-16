@@ -1532,9 +1532,13 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
 /// 有对话框、查找栏、或正在用输入法拼字时，不抢。
 static void amnArmEscapeMonitor(void);
 
+@interface NSObject (AMNPageCall)
+- (void)amn:(NSString *)fn args:(NSArray *)args;
+@end
+
 @interface AMNWindow : NSWindow
 - (BOOL)amn_keepFullScreenForEscape:(NSEvent *)event;
-- (void)amn_deliverEscape:(NSEvent *)event;
+- (BOOL)amn_deliverEscape:(NSEvent *)event;
 @end
 
 static PortalWebView *amnFindWeb(NSView *view) {
@@ -1581,35 +1585,46 @@ static PortalWebView *amnWebForWindow(NSWindow *window) {
     return mods == 0;
 }
 
-- (void)amn_deliverEscape:(NSEvent *)event {
-    // 监听和 performKeyEquivalent: 可能各走一次，同一次按键只交给页面一遍。
-    static NSInteger lastNo = -1;
-    static NSTimeInterval lastTs = -1;
-    if (event.eventNumber == lastNo && event.timestamp == lastTs) return;
-    lastNo = event.eventNumber;
-    lastTs = event.timestamp;
+- (BOOL)amn_deliverEscape:(NSEvent *)event {
+    // 同一次按键会进监听，也会进 performKeyEquivalent:。按事件对象去重。
+    // 交不出去不要记成已处理，后面那条路还能再试。
+    static const NSEvent *done = nil;
+    if (event == done) return YES;
 
-    PortalWebView *web = amnWebForWindow(self);
     NSResponder *fr = self.firstResponder;
-    // 查找栏的输入框不在网页里。它的 Esc 是关掉查找。
+    // 只有查找栏的字段编辑器才走「关掉查找」。网页内部的文本视图不是它。
     if ([fr isKindOfClass:NSTextView.class]
-        && (!web || ![(NSView *)fr isDescendantOf:web])) {
+        && [[(NSTextView *)fr delegate] isKindOfClass:NSSearchField.class]) {
+        done = event;
         [(NSTextView *)fr doCommandBySelector:@selector(cancelOperation:)];
-        return;
+        return YES;
     }
-    // 5.18.9 在监听里调用网页的 performKeyEquivalent:。焦点若在网页外面
-    // （全屏时经常是内容视图，不是网页的子视图），那个方法直接返回，页面收不到。
-    // 事件又被丢掉了，所以 Esc 变成完全没反应。这里直接叫页面的处理，并且等这次
-    // 按键分发完再叫，避免卡在监听里面时网页把调用丢掉。
-    if (!web.onEscape) return;
-    void (^cb)(void) = [web.onEscape copy];
-    dispatch_async(dispatch_get_main_queue(), cb);
+    if ([self.identifier isEqualToString:@"amn.solo"]) {
+        done = event;
+        [self performClose:nil];
+        return YES;
+    }
+    // 5.18.9 / 5.18.10 只在视图树里找网页。全屏时第一响应者经常不在那棵树里，
+    // 调用被丢掉，Esc 就完全没反应。菜单快捷键走的是委托的 amn:，这里同一条。
+    id appDel = NSApp.delegate;
+    if ([appDel respondsToSelector:@selector(amn:args:)]) {
+        done = event;
+        [(id)appDel amn:@"escape" args:nil];
+        return YES;
+    }
+    PortalWebView *web = amnWebForWindow(self);
+    if (web.onEscape) {
+        done = event;
+        web.onEscape();
+        return YES;
+    }
+    return NO;
 }
 
 - (BOOL)performKeyEquivalent:(NSEvent *)event {
     if ([self amn_keepFullScreenForEscape:event]) {
-        [self amn_deliverEscape:event];
-        return YES;
+        if ([self amn_deliverEscape:event]) return YES;
+        return [super performKeyEquivalent:event];
     }
     return [super performKeyEquivalent:event];
 }
@@ -1637,8 +1652,10 @@ static void amnArmEscapeMonitor(void) {
         if (![window isKindOfClass:AMNWindow.class]) return event;
         AMNWindow *amn = (AMNWindow *)window;
         if (![amn amn_keepFullScreenForEscape:event]) return event;
-        [amn amn_deliverEscape:event];
-        return nil;
+        // 页面收到了才把事件丢掉，系统就没法跟着退出全屏。
+        // 没收到就放行，至少不要变成按了完全没反应。
+        if ([amn amn_deliverEscape:event]) return nil;
+        return event;
     }];
 }
 
