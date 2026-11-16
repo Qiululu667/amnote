@@ -1340,6 +1340,10 @@ static void applySeamlessChrome(NSWindow *window) {
     return [super performKeyEquivalent:event];
 }
 
+// 全屏时系统还会另走一条：-[NSWindow cancelOperation:] 默认退出全屏。
+// 上面这一下已经把 Esc 交给了页面（退专注、关浮层、退编辑），
+// 窗口那条不拦住的话，同一次按键会把全屏缩成小窗。见 AMNWindow。
+
 @end
 
 // 标签条空白处的拖动层。WKWebView 铺满全尺寸内容视图之后，系统标题栏收不到点击，
@@ -1523,6 +1527,26 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
 }
 
 // ─────────────────────────── 主程序 ───────────────────────────
+
+/// 主窗口、独立阅读窗、浏览器辅窗。
+/// macOS 全屏时把 Esc 交给 cancelOperation:，默认动作是退出全屏。
+/// 门户里 Esc 已经是关浮层、退编辑、退专注，两次不能叠在同一次按键上。
+/// 全屏且没有对话框时吞掉；退出全屏仍走 ⌃⌘F 和绿色按钮。
+/// 挂着表单时交给系统，对话框的「取消」不能被吞掉。
+@interface AMNWindow : NSWindow
+@end
+
+@implementation AMNWindow
+
+- (void)cancelOperation:(id)sender {
+    if ((self.styleMask & NSWindowStyleMaskFullScreen) == NSWindowStyleMaskFullScreen
+        && self.attachedSheet == nil) {
+        return;
+    }
+    [super cancelOperation:sender];
+}
+
+@end
 
 @interface AppDelegate : NSObject <NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate,
                                    WKScriptMessageHandler, NSToolbarDelegate, NSSearchFieldDelegate,
@@ -2110,7 +2134,7 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
 // MARK: 窗口
 
 - (void)buildWindow {
-    _win = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, kWinW, kWinH)
+    _win = [[AMNWindow alloc] initWithContentRect:NSMakeRect(0, 0, kWinW, kWinH)
                                        styleMask:(NSWindowStyleMaskTitled |
                                                   NSWindowStyleMaskFullSizeContentView |
                                                   NSWindowStyleMaskClosable |
@@ -4398,7 +4422,7 @@ static BOOL isBenignNavError(NSError *e) {
     ww = MAX(kSoloMinW, MIN(ww, 2400));
     hh = MAX(kSoloMinH, MIN(hh, 1800));
 
-    NSWindow *win = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, ww, hh)
+    NSWindow *win = [[AMNWindow alloc] initWithContentRect:NSMakeRect(0, 0, ww, hh)
                                                 styleMask:(NSWindowStyleMaskTitled |
                                                            NSWindowStyleMaskClosable |
                                                            NSWindowStyleMaskMiniaturizable |
@@ -4452,7 +4476,7 @@ static BOOL isBenignNavError(NSError *e) {
     ww = MAX(kMinW, MIN(ww, 2400));
     hh = MAX(kMinH, MIN(hh, 1800));
 
-    NSWindow *win = [[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, ww, hh)
+    NSWindow *win = [[AMNWindow alloc] initWithContentRect:NSMakeRect(0, 0, ww, hh)
                                                 styleMask:(NSWindowStyleMaskTitled |
                                                            NSWindowStyleMaskFullSizeContentView |
                                                            NSWindowStyleMaskClosable |
