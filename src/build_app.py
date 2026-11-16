@@ -284,6 +284,7 @@ NATIVE_SRC = "app_shell.m"
 # 四步留在同一张卡片里。头像仍是：只有点在头像上才接受粘贴，已有头像时先问再换。
 # 壳本身一行没改，只跟版本号。
 # 版本号是唯一能在「关于 AM·Note」里看出来跑的是新壳还是旧壳的地方，改了壳就要动它。
+# 5.18.10 = Fullscreen Escape still reaches the page. 5.18.9 dropped the key and the page never saw it.
 # 5.18.9 = Escape in fullscreen is taken before the system can leave fullscreen.
 # 5.18.8 = Esc in focus mode leaves focus mode and stays fullscreen. That hook was the wrong one.
 # 5.18.7 = The tab-strip search field is an icon. Next to it, a new-note icon.
@@ -295,7 +296,7 @@ NATIVE_SRC = "app_shell.m"
 # 5.18.2 = Conflict banner names its note, safer conflict choices, CRLF kept, and index/checkbox fixes.
 # 5.18.1 = Dock icon stays the closed-app size for purple, green, and blue.
 # 5.18.0 = Coordinated color themes, adaptive app icon, and refined Settings.
-NATIVE_VERSION = ("5.18.9", "67")
+NATIVE_VERSION = ("5.18.10", "68")
 MIN_MACOS = "12.0"
 
 

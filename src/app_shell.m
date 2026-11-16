@@ -1538,12 +1538,27 @@ static void amnArmEscapeMonitor(void);
 @end
 
 static PortalWebView *amnFindWeb(NSView *view) {
+    if (!view) return nil;
     if ([view isKindOfClass:PortalWebView.class]) return (PortalWebView *)view;
     for (NSView *sub in view.subviews) {
         PortalWebView *found = amnFindWeb(sub);
         if (found) return found;
     }
     return nil;
+}
+
+/// 全屏时内容不一定还挂在 contentView 下面。沿第一响应者往上找，再从窗口最外层的视图找。
+static PortalWebView *amnWebForWindow(NSWindow *window) {
+    PortalWebView *web = amnFindWeb(window.contentView);
+    if (web) return web;
+    NSResponder *r = window.firstResponder;
+    while (r && r != window) {
+        if ([r isKindOfClass:PortalWebView.class]) return (PortalWebView *)r;
+        r = r.nextResponder;
+    }
+    NSView *root = window.contentView;
+    while (root.superview) root = root.superview;
+    return amnFindWeb(root);
 }
 
 @implementation AMNWindow
@@ -1574,15 +1589,21 @@ static PortalWebView *amnFindWeb(NSView *view) {
     lastNo = event.eventNumber;
     lastTs = event.timestamp;
 
-    PortalWebView *web = amnFindWeb(self.contentView);
+    PortalWebView *web = amnWebForWindow(self);
     NSResponder *fr = self.firstResponder;
-    if (web && [fr isKindOfClass:NSView.class] && ![(NSView *)fr isDescendantOf:web]) {
-        // 查找栏的输入框。它的 Esc 是关掉查找，不是退出全屏。
-        if ([fr isKindOfClass:NSTextView.class])
-            [(NSTextView *)fr doCommandBySelector:@selector(cancelOperation:)];
+    // 查找栏的输入框不在网页里。它的 Esc 是关掉查找。
+    if ([fr isKindOfClass:NSTextView.class]
+        && (!web || ![(NSView *)fr isDescendantOf:web])) {
+        [(NSTextView *)fr doCommandBySelector:@selector(cancelOperation:)];
         return;
     }
-    if (web) [web performKeyEquivalent:event];
+    // 5.18.9 在监听里调用网页的 performKeyEquivalent:。焦点若在网页外面
+    // （全屏时经常是内容视图，不是网页的子视图），那个方法直接返回，页面收不到。
+    // 事件又被丢掉了，所以 Esc 变成完全没反应。这里直接叫页面的处理，并且等这次
+    // 按键分发完再叫，避免卡在监听里面时网页把调用丢掉。
+    if (!web.onEscape) return;
+    void (^cb)(void) = [web.onEscape copy];
+    dispatch_async(dispatch_get_main_queue(), cb);
 }
 
 - (BOOL)performKeyEquivalent:(NSEvent *)event {
