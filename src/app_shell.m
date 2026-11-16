@@ -1340,10 +1340,6 @@ static void applySeamlessChrome(NSWindow *window) {
     return [super performKeyEquivalent:event];
 }
 
-// 全屏时系统还会另走一条：-[NSWindow cancelOperation:] 默认退出全屏。
-// 上面这一下已经把 Esc 交给了页面（退专注、关浮层、退编辑），
-// 窗口那条不拦住的话，同一次按键会把全屏缩成小窗。见 AMNWindow。
-
 @end
 
 // 标签条空白处的拖动层。WKWebView 铺满全尺寸内容视图之后，系统标题栏收不到点击，
@@ -1529,14 +1525,73 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
 // ─────────────────────────── 主程序 ───────────────────────────
 
 /// 主窗口、独立阅读窗、浏览器辅窗。
-/// macOS 全屏时把 Esc 交给 cancelOperation:，默认动作是退出全屏。
-/// 门户里 Esc 已经是关浮层、退编辑、退专注，两次不能叠在同一次按键上。
-/// 全屏且没有对话框时吞掉；退出全屏仍走 ⌃⌘F 和绿色按钮。
-/// 挂着表单时交给系统，对话框的「取消」不能被吞掉。
+/// macOS 27 上，全屏时 Esc 不走 cancelOperation:。系统在事件分发前就把它当成
+/// 「退出全屏」。只改 cancelOperation: 拦不住，5.18.8 就是这样漏掉的。
+/// 这里在进全屏后再登记一次本地监听，让自己排在系统前面：普通 Esc 先交给页面
+/// （退专注、关浮层、退编辑），然后把事件丢掉。退出全屏仍是绿色按钮或 ⌃⌘F。
+/// 有对话框、查找栏、或正在用输入法拼字时，不抢。
+static void amnArmEscapeMonitor(void);
+
 @interface AMNWindow : NSWindow
+- (BOOL)amn_keepFullScreenForEscape:(NSEvent *)event;
+- (void)amn_deliverEscape:(NSEvent *)event;
 @end
 
+static PortalWebView *amnFindWeb(NSView *view) {
+    if ([view isKindOfClass:PortalWebView.class]) return (PortalWebView *)view;
+    for (NSView *sub in view.subviews) {
+        PortalWebView *found = amnFindWeb(sub);
+        if (found) return found;
+    }
+    return nil;
+}
+
 @implementation AMNWindow
+
+- (instancetype)initWithContentRect:(NSRect)contentRect
+                          styleMask:(NSWindowStyleMask)style
+                            backing:(NSBackingStoreType)backingStoreType
+                              defer:(BOOL)flag {
+    self = [super initWithContentRect:contentRect styleMask:style backing:backingStoreType defer:flag];
+    if (self) amnArmEscapeMonitor();
+    return self;
+}
+
+- (BOOL)amn_keepFullScreenForEscape:(NSEvent *)event {
+    if (event.keyCode != 53) return NO;
+    if ((self.styleMask & NSWindowStyleMaskFullScreen) == 0) return NO;
+    if (self.attachedSheet) return NO;
+    NSEventModifierFlags mods = event.modifierFlags & NSEventModifierFlagDeviceIndependentFlagsMask;
+    mods &= ~NSEventModifierFlagCapsLock;
+    return mods == 0;
+}
+
+- (void)amn_deliverEscape:(NSEvent *)event {
+    // 监听和 performKeyEquivalent: 可能各走一次，同一次按键只交给页面一遍。
+    static NSInteger lastNo = -1;
+    static NSTimeInterval lastTs = -1;
+    if (event.eventNumber == lastNo && event.timestamp == lastTs) return;
+    lastNo = event.eventNumber;
+    lastTs = event.timestamp;
+
+    PortalWebView *web = amnFindWeb(self.contentView);
+    NSResponder *fr = self.firstResponder;
+    if (web && [fr isKindOfClass:NSView.class] && ![(NSView *)fr isDescendantOf:web]) {
+        // 查找栏的输入框。它的 Esc 是关掉查找，不是退出全屏。
+        if ([fr isKindOfClass:NSTextView.class])
+            [(NSTextView *)fr doCommandBySelector:@selector(cancelOperation:)];
+        return;
+    }
+    if (web) [web performKeyEquivalent:event];
+}
+
+- (BOOL)performKeyEquivalent:(NSEvent *)event {
+    if ([self amn_keepFullScreenForEscape:event]) {
+        [self amn_deliverEscape:event];
+        return YES;
+    }
+    return [super performKeyEquivalent:event];
+}
 
 - (void)cancelOperation:(id)sender {
     if ((self.styleMask & NSWindowStyleMaskFullScreen) == NSWindowStyleMaskFullScreen
@@ -1547,6 +1602,24 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
 }
 
 @end
+
+static id amnEscMonitor;
+
+static void amnArmEscapeMonitor(void) {
+    if (amnEscMonitor) {
+        [NSEvent removeMonitor:amnEscMonitor];
+        amnEscMonitor = nil;
+    }
+    amnEscMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:NSEventMaskKeyDown
+                                                          handler:^NSEvent *(NSEvent *event) {
+        NSWindow *window = event.window ?: NSApp.keyWindow;
+        if (![window isKindOfClass:AMNWindow.class]) return event;
+        AMNWindow *amn = (AMNWindow *)window;
+        if (![amn amn_keepFullScreenForEscape:event]) return event;
+        [amn amn_deliverEscape:event];
+        return nil;
+    }];
+}
 
 @interface AppDelegate : NSObject <NSApplicationDelegate, WKNavigationDelegate, WKUIDelegate,
                                    WKScriptMessageHandler, NSToolbarDelegate, NSSearchFieldDelegate,
@@ -2260,9 +2333,17 @@ static void amnDumpMenuTree(NSMenu *main, NSMenu *status) {
 /// 只刷分隔线不够：系统会重新塞进一层偏白的 vibrancy，必须连底色一起重上。
 - (void)windowDidEnterFullScreen:(NSNotification *)n {
     NSWindow *window = n.object;
-    dispatch_async(dispatch_get_main_queue(), ^{ applySeamlessChrome(window); });
+    // 系统可能在进入全屏时才登记自己的 Esc 监听。之后再登记一次，我们才排在它前面。
+    amnArmEscapeMonitor();
+    dispatch_async(dispatch_get_main_queue(), ^{
+        applySeamlessChrome(window);
+        amnArmEscapeMonitor();
+    });
     dispatch_after(dispatch_time(DISPATCH_TIME_NOW, (int64_t)(0.12 * NSEC_PER_SEC)),
-                   dispatch_get_main_queue(), ^{ applySeamlessChrome(window); });
+                   dispatch_get_main_queue(), ^{
+        applySeamlessChrome(window);
+        amnArmEscapeMonitor();
+    });
 }
 
 - (void)windowDidExitFullScreen:(NSNotification *)n {
