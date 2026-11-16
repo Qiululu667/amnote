@@ -30,6 +30,7 @@ window.AMN_I18N["en"] = {
   "已放进「已收藏」": "Added to Pinned",
   "库根": "Vault root",
   "新建随手记": "New Quick Note",
+  "在{nb}新建随手记": "New Quick Note in {nb}",
   "展开文件夹": "Show folders",
   "{n} 个文件夹": {
     "one": "{n} folder",

@@ -36,7 +36,7 @@ AM·Note doesn't move anything. Pick a folder and you get a window as light as a
 
 1. The first time you open it, pick a folder — or let it make one for you. Any folder will do, including an empty one. That folder is your first **notebook**.
 2. It creates one `.amnote/` folder inside for the index and edit backups. Not a single byte of your notes is touched.
-3. The window is two rows: tabs, search and settings on top; below them, where this file lives and what you can do with it. Every note gets its own **tab**. Press **⌘K** to search the whole folder.
+3. The window is two rows: tabs, a new quick note, search and settings on top; below them, where this file lives and what you can do with it. Every note gets its own **tab**. Press **⌘K**, or the search icon at the top right, to search the whole folder.
 4. To read folders that live elsewhere as well, add another notebook. With a single notebook, the interface and the paths are exactly what they were.
 
 ## What you can do

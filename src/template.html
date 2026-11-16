@@ -434,9 +434,9 @@ body.solo #chrome{display:none!important}
 #tabcluster{
   display:flex;align-items:flex-end;gap:5px;
   flex:0 1 auto;min-width:0;
-  /* 右边那簇（搜索胶囊 ＋ ⚙）加左边那颗云大概 220px，
+  /* 右边三颗 28px 图标加左边那颗云大概 150px。
      给标签留出上限，剩下的交给 flex 收缩和 layoutTabs 的 ▾ 收纳。 */
-  max-width:max(120px, calc(100% - 240px));
+  max-width:max(120px, calc(100% - 170px));
   transition:opacity var(--d-base) var(--ease-out);
 }
 #tabstrip .tabbar{
@@ -553,34 +553,26 @@ body.solo #chrome{display:none!important}
 }
 #navHome:hover img{transform:scale(1.06)}
 
-/* 标签条右端：搜索胶囊（⌘K 的唯一入口）＋ ⚙。品牌标 5.5 起挪去了左端当 ⌂。
-   5.13：头像离开这一簇。margin-bottom 7px 让 28px 药丸在 42px 条里上下对称，
-   不再贴着页缝（4px 时上面 10、下面 4，胶囊看起来沉在条底）。 */
+/* 标签条右端：新建随手记、搜索、设置，三颗一样大的图标。
+   搜索点开才是 ⌘K，框上不再留字。品牌标 5.5 起在左端当 ⌂。
+   5.13：头像离开这一簇。margin-bottom 7px 让 28px 图标在 42px 条里上下对称。 */
 .rightgrp{
-  display:flex;align-items:center;gap:6px;flex:none;margin-bottom:7px;
+  display:flex;align-items:center;gap:2px;flex:none;margin-bottom:7px;
   -webkit-app-region:no-drag;
 }
-/* 搜索胶囊：不描边（无线条规则），--chrome-search 比框架浅一档才在玻璃洗上立住，
-   hover 抬 1px 加 --el-1。 */
-.topsearch{
-  display:flex;align-items:center;gap:8px;flex:none;
-  width:150px;height:28px;padding:0 11px;border-radius:999px;
-  background:var(--chrome-search);border:0;color:var(--t3);font-size:11px;
-  -webkit-app-region:no-drag;
-  transition:background-color var(--d-base) ease,box-shadow var(--d-base) var(--ease-out),
-             transform var(--d-base) var(--ease-out);
-}
-.topsearch svg{width:13px;height:13px;flex:none;stroke-width:1.6}
-.topsearch .lbl{flex:1;text-align:left;white-space:nowrap}
-.topsearch kbd{font:10px/1.6 var(--ui);font-weight:500;white-space:nowrap;
-  color:var(--t4);background:none;border:0;padding:0}
-.topsearch:hover{background:var(--win);box-shadow:var(--el-1);transform:translateY(-1px)}
-.topsearch:active{transform:translateY(0);box-shadow:none}
-/* 窗口窄了收成一枚 28px 圆钮，只留放大镜——标签永远优先。 */
-@media(max-width:1000px){
-  .topsearch{width:28px;padding:0;gap:0;justify-content:center}
-  .topsearch .lbl,.topsearch kbd{display:none}
-}
+/* 新建随手记的色点：多本时挂在笔尖右下角，颜色是这一笔会落到的那本。
+   「全部」用默认本的颜色。单本不挂。环用框架色托起来，跟云上那枚同一套。 */
+#topNew{position:relative}
+#topNew .nd{position:absolute;right:1px;bottom:1px;width:7px;height:7px;
+  box-shadow:0 0 0 2px var(--chrome);pointer-events:none}
+.chrometip{position:fixed;z-index:80;margin:0;pointer-events:none;
+  background:var(--tip-bg);color:var(--tip-fg);
+  font-size:11px;line-height:1.45;text-align:center;
+  padding:5px 9px;border-radius:var(--r-xs);white-space:nowrap;
+  box-shadow:var(--el-2)}
+.chrometip b{display:block;font-weight:600}
+.chrometip span{display:block;opacity:.72;font-size:10.5px;
+  max-width:280px;overflow:hidden;text-overflow:ellipsis}
 /* ── 开始页问候旁那颗人 ──────────────────
    5.13 起从顶栏右上角搬到「早晨，Lulu」左侧。40px 圆：有头像就是头像，
    没有就是显示名的第一个字。阅读页没有问候，资料入口改走设置。 */
@@ -2565,10 +2557,11 @@ body.solo #chrome{display:none!important}
     </div>
     <div id="tabflex" aria-hidden="true"></div>
     <div class="rightgrp">
-      <button type="button" class="topsearch" id="topSearch" title="搜索 ⌘K" aria-label="搜索">
-        <i data-ic="search" data-sz="13"></i>
-        <span class="lbl">搜索</span>
-        <kbd aria-hidden="true">⌘K</kbd>
+      <button type="button" class="navb" id="topNew" aria-label="新建随手记" aria-describedby="topNewTip">
+        <i data-ic="edit" data-sz="16"></i>
+      </button>
+      <button type="button" class="navb" id="topSearch" title="搜索 ⌘K" aria-label="搜索">
+        <i data-ic="search" data-sz="16"></i>
       </button>
       <button type="button" class="navb" id="navCfgTop" title="设置 ⌘," aria-label="设置">
         <i data-ic="gear" data-sz="16"></i>
@@ -2577,6 +2570,7 @@ body.solo #chrome{display:none!important}
     <div class="loadbar" id="loadbar"></div>
   </div>
 </div>
+<div id="topNewTip" class="chrometip" role="tooltip" hidden></div>
 <div id="userPop" role="dialog" aria-modal="false" aria-label="个人资料"></div>
 <div id="toast" role="status" aria-live="polite"></div>
 
@@ -5706,12 +5700,58 @@ function syncChrome(){
 /* 云的右下角那枚色点：只在聚焦某一本时挂，「全部」和单库不挂（§4b.6）。
    它回答「我现在在哪本」，笔记本条回答「我可以去哪本」，两者不重复。 */
 function syncHomeDot(){
+  syncTopNew();
   const h=$('#navHome'); if(!h) return;
   const cur=NB.cur;
   let d=h.querySelector('.nd');
   if(!cur){ if(d) d.remove(); return; }
   if(!d){ d=document.createElement('i'); d.setAttribute('aria-hidden','true'); h.appendChild(d); }
   d.className='nd sm '+NB.cls(cur);
+}
+/* 新建随手记会落到哪一本。跟 newNote() 同一条：聚焦的那本，不然默认本。单本没有名字。 */
+function noteTarget(){ return NB.multi ? (NB.cur || NB.default) : ''; }
+function syncTopNew(){
+  const btn=$('#topNew'); if(!btn) return;
+  const book=noteTarget();
+  let d=btn.querySelector('.nd');
+  if(!book){ if(d) d.remove(); }
+  else{
+    if(!d){ d=document.createElement('i'); d.setAttribute('aria-hidden','true'); btn.appendChild(d); }
+    d.className='nd sm '+NB.cls(book);
+  }
+  btn.setAttribute('aria-label', book ? TR('在{nb}新建随手记',{nb:book}) : TR('新建随手记'));
+  const tip=$('#topNewTip');
+  if(!tip) return;
+  const rel=noteDirOf(book);
+  const folder=NB.multi && book ? NB.strip(rel) : rel;
+  const title=book
+    ? book+(!NB.cur && book===NB.default ? ' · '+TR('默认') : '')
+    : TR('新建随手记');
+  tip.innerHTML='<b>'+esc(title)+'</b>'+(folder ? '<span>'+esc(folder)+'</span>' : '');
+}
+let topNewTipT=0;
+function hideTopNewTip(){
+  clearTimeout(topNewTipT); topNewTipT=0;
+  const tip=$('#topNewTip'); if(tip) tip.hidden=true;
+}
+function showTopNewTip(){
+  const btn=$('#topNew'), tip=$('#topNewTip');
+  if(!btn || !tip) return;
+  clearTimeout(topNewTipT);
+  const wait=matchMedia('(prefers-reduced-motion: reduce)').matches ? 0 : 180;
+  topNewTipT=setTimeout(()=>{
+    syncTopNew();
+    tip.hidden=false;
+    const r=btn.getBoundingClientRect();
+    const w=tip.offsetWidth||160;
+    let left=Math.round(r.left+r.width/2-w/2);
+    left=Math.max(8, Math.min(left, innerWidth-w-8));
+    let top=Math.round(r.bottom+6);
+    const h=tip.offsetHeight||36;
+    if(top+h>innerHeight-8) top=Math.max(8, Math.round(r.top-h-6));
+    tip.style.left=left+'px';
+    tip.style.top=top+'px';
+  }, wait);
 }
 
 /* 这个标签属于哪一本（库外文档和页面标签没有本）。 */
@@ -11580,7 +11620,7 @@ function setKw(v){
 }
 function clearQ(focus){ setKw(''); render(); if(focus) focusSearch(); }
 /* 5.4 起搜索只有一个入口：⌘K 面板。地址栏（#omnibox）连同书签栏整条删了，
-   ⌘L／⌥⌘K／开始页直接打字／点搜索胶囊都落到这里。
+   ⌘L／⌥⌘K／开始页直接打字／点右上角搜索图标都落到这里。
    名字留着不改：壳菜单指着 AMN.focusOmnibox / AMN.focusSearch，页内也到处在调。
    opts.seed 预填一段文字；opts.select 决定预填的是全选（AMN.search）还是
    把光标放在末尾（开始页敲第一个字那条路，接着敲第二个字才不会把第一个顶掉）。 */
@@ -11601,9 +11641,9 @@ function toggleBookmarks(){
 
 (function wireChromeBtns(){
   const home=$('#navHome'), plus=$('#tabplus'),
-        sp=$('#topSearch'), cfg=$('#navCfgTop');
+        nw=$('#topNew'), sp=$('#topSearch'), cfg=$('#navCfgTop');
   /* 品牌标：不在开始页就回开始页；已经在开始页就把这一页滚回顶——
-     不弹 ⌘K，搜索只有右边那颗胶囊一个入口。 */
+     不弹 ⌘K，搜索只有右边那颗图标一个入口。 */
   if(home) home.onclick=()=>{
     home.blur();
     const t=active();
@@ -11616,7 +11656,14 @@ function toggleBookmarks(){
     navigate(makeEntry('start', {title:TR('开始')}));
   };
   if(plus) plus.onclick=()=>{ newTab(); plus.blur(); };
-  if(sp) sp.onclick=()=>{ sp.blur(); AMN.quickOpen(); };
+  if(nw){
+    nw.onclick=()=>{ hideTopNewTip(); nw.blur(); newNote(); };
+    nw.addEventListener('pointerenter', showTopNewTip);
+    nw.addEventListener('pointerleave', hideTopNewTip);
+    nw.addEventListener('focus', showTopNewTip);
+    nw.addEventListener('blur', hideTopNewTip);
+  }
+  if(sp) sp.onclick=()=>{ hideTopNewTip(); sp.blur(); AMN.quickOpen(); };
   if(cfg) cfg.onclick=()=>{ cfg.blur(); openCfg(); };
   /* 头像在开始页问候里，paintStart 每次都会重画，所以点按走委托。 */
   document.addEventListener('click', e=>{
